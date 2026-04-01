@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+
+# uv
+uv.lock
+
+# Data（大容量・再生成可能）
+data/raw/
+data/processed/
+data/output/oof/
+data/output/models/
+data/output/submissions/
+
+# 可視化画像（大容量）
+data/output/plots/
+
+# 学習アーティファクト
+catboost_info/
+mlruns/
+experiments/mlflow/
+
+# 圧縮・一時ファイル
+*.zip
+*.tar.gz
