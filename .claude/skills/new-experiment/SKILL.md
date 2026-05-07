@@ -1,6 +1,6 @@
 ---
 name: new-experiment
-description: 実験の目的を言語化してからブランチとインフラを整備する。「なぜこの実験をするか」を明確にしないまま実装を始めることを防ぐ。
+description: 実験・学習を始める前に必ず呼ぶ。「スクリプトを書いて走らせましょう」という流れになる前に起動して目的・成功基準・撤退基準を先に言語化する。新しい特徴量・モデル・HP調整・ブレンドなど何であれ、実験行為を始めるときはこのスキルから。
 argument-hint: <実験名>
 ---
 
@@ -78,17 +78,24 @@ argument-hint: <実験名>
    ```
    → 当てはまらない場合は「この実験は現在のブランチで進めます（ブランチ作成不要）」と明示して続行する
 
-3. `src/config.py` の `EXPERIMENT_NAME` を更新
+3. **実験番号の重複チェック**（衝突防止）
+   ```bash
+   ls experiments/runs/ | grep "^exp" | sort | tail -5
+   tail -3 experiments/log.csv | cut -d',' -f2
+   ```
+   未コミットの `experiments/runs/exp{NNN}_*` が存在する場合、その番号は使用済みとして扱い、より大きい番号を使う。
 
-4. `experiments/log.csv` に今回の実験行を予約追記する
+4. `src/config.py` の `EXPERIMENT_NAME` を更新
+
+5. `experiments/log.csv` に今回の実験行を予約追記する
    - `experiment_name`, `experiment_question`（Q1の回答）, `success_criteria`（Q2）, `abort_criteria`（Q3）を記録
    - スコア列は空欄のまま（`/kaggle-submit` で埋める）
 
-5. **`SESSION.md` を更新する**（セッション引き継ぎのため）
+6. **`SESSION.md` を更新する**（セッション引き継ぎのため）
    - `現在のステージ`: 現在の Stage 番号と状況
    - `最後に完了したこと`: 今回の実験開始を記録（スコアは後で埋める）
    - `次にやること`: 「<実験名> の学習を実行する」を先頭に記載
-   - `現在の主要スコア`: 最新のOOF・LBベストを更新
+   - `現在の主要スコア`: 最新のOOF tuned / LB / OOF-LB乖離 / 実験IDを1テーブルで上書き更新
 
 ### フェーズ4: スタートへの接続
 

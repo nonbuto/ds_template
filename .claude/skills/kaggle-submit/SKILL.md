@@ -1,6 +1,6 @@
 ---
 name: kaggle-submit
-description: 提出前確認・提出・OOF/LB振り返り・学びの記録を通じて実験サイクルを完結させる
+description: Kaggleへの提出・LBスコア確認・OOF/LB比較・learning記録を1サイクルで完結させる。「提出したい」「LBを確認したい」「実験結果を記録したい」「学びをlog.csvに書きたい」という場面で呼ぶ。learning列が空欄のまま次の実験へ進むことを防ぐ。
 disable-model-invocation: true
 ---
 
@@ -114,7 +114,11 @@ disable-model-invocation: true
 
 ### フェーズ4: 次サイクルへの接続（思考層）
 
-1. `log.csv` の該当行に `submit_score`・`lb_rank`・`learning` を更新する
+1. `log.csv` の該当行を更新する:
+   - `submit_score` = LBスコア
+   - `lb_rank` = 順位
+   - `oof_lb_gap` = `oof_score` − `submit_score`（正=OOF過大評価、負=OOF過小評価）
+   - `learning` = ユーザーが語った学び
 
 2. **`learning` は必ず記入してから終了する。空欄のまま次の実験に進まない。**
    - 記入が難しい場合は以下の問いかけで引き出す:
@@ -127,10 +131,15 @@ disable-model-invocation: true
    「この学びを踏まえると、次に検証すべき仮説は何でしょうか？」
 
 4. **`SESSION.md` を更新する**（セッション引き継ぎのため）
-   - `最後に完了したこと`: 実験ID・LBスコア・learning を記録
+   - `最後に完了したこと`: 実験ID・LBスコア・oof_lb_gap・learning を記録
    - `次にやること`: ユーザーが答えた「次に検証すべき仮説」を記載
-   - `現在の主要スコア`: 新しいベストスコアがあれば更新
-   - `未解決の問い・ブロッカー`: OOF/LBギャップが説明できていない場合などを記録
+   - `現在の主要スコア`: 以下のテーブルを最新値で**上書き**（追記禁止）:
+     ```
+     | 指標 | OOF tuned | LB | OOF-LB乖離 | 実験ID |
+     |---|---|---|---|---|
+     | ベスト | 0.XXXXX | 0.XXXXX | ±0.XXXXX | expNNN |
+     ```
+   - `未解決の問い・ブロッカー`: oof_lb_gap > 0.001 の場合は原因を必ず記録
    - `今サイクルで決めた重要な方針`: この実験の学びから方針変更があれば追記
 
 5. 次の実験の方向性が決まれば `/new-experiment <次の実験名>` へ誘導する
