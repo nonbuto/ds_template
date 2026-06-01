@@ -88,6 +88,27 @@ disable-model-invocation: true
   現在ベストLB: Z
 ```
 
+**Plateau 検出（強制）:**
+
+提出後、`experiments/log.csv` の直近 5 件の `submit_score` を確認する。
+**同一 LB ± 0.00002 で 5 回以上提出が続いている場合、強制的に Plateau モードに入る**:
+
+```
+⚠️ Plateau 検出: 直近 5 提出が <LB値> ± 0.00002 に集中しています。
+
+強制 brainstorm を実施します:
+1. 未試行情報次元を 5 個以上列挙してください:
+   (例: 天候、地域、時刻、外部統計、ドメイン特化指標)
+2. `data/external/` の `保留` 判定ファイルを列挙し、再評価:
+   ls data/external/
+3. Kaggle Discussion / 上位 Notebook を調査:
+   kaggle kernels list --competition <id> --sort-by voteCount --page-size 10
+
+注: 「飽和」「全方向探索済み」は禁句。代わりに「現在の角度では伸びていない」と表現すること。
+```
+
+ユーザーの回答を受けて、新しい実験方向を確定してから次のステップへ進む。
+
 **OOF/LBの差分パターンに応じて問いかけを変える:**
 
 | パターン | AIのコメントと問い |
@@ -146,9 +167,87 @@ disable-model-invocation: true
 
 ---
 
+### フェーズ5: Final 2 選定モード（最終日または残り 2 提出以下の時）
+
+以下の条件のいずれかに該当する場合、フェーズ4 完了後に **Final 2 選定モード** に入る:
+
+- コンペ締切まで残り 24 時間以内
+- 残り総提出枠が 2 以下
+- ユーザーが「Final 2 を決めたい」と明示的に依頼
+
+**Step 1: 候補プール拡張（CLAUDE.md AI 指針 #19）**
+
+Persona 投票の前に、候補プールを以下のルールで構築:
+
+- **Public LB Top-10 と OOF Top-10 の和集合** （重複除去で 10-15 個）
+- Public ベースのみのスクリーニングは Public 過適合候補を優先しがちなので禁止
+
+各候補について以下を併記して提示:
+
+```python
+# 候補テーブル生成例
+import pandas as pd
+log = pd.read_csv("experiments/log.csv")
+log["public_rank"] = log["submit_score"].rank(ascending=False)
+log["oof_rank"] = log["oof_score"].rank(ascending=False)
+candidates = log[(log["public_rank"] <= 10) | (log["oof_rank"] <= 10)]
+print(candidates[["experiment_id", "oof_score", "submit_score", "oof_rank", "public_rank"]])
+```
+
+**注目度の分類:**
+
+| プロファイル | 意味 | Final 2 での扱い |
+|---|---|---|
+| OOF Top + Public Top | 標準候補 | 1 本目候補 |
+| **OOF only Top** | Public sampling で過小評価 | ⭐ 必ず Persona 投票対象に |
+| **Public only Top** | Public 過適合の可能性 | ⚠️ hedge を必ず付ける |
+| Public LB +1σ 微改善 | ノイズ床近辺 (#17) | ⚠️ 「突破」と呼ばない、保留扱い |
+
+**Step 2: AI 指針 #17-20 の適用チェック:**
+- #17: 各候補の Public LB 改善が評価指標別ノイズ床（AUC ±0.0001 等）を超えているか
+- #18: OOF と Public LB が乖離している候補を見落としていないか
+- #19: 候補プールが Public Top と OOF Top の和集合になっているか
+- #20: 「Private 過適合候補」マーク済みの blend を Final 1 に置いていないか
+
+**Step 3: Persona 投票プロトコル（9 ペルソナ）:**
+
+拡張プールに対して 9 ペルソナそれぞれの視点で投票する。
+AI が各ペルソナの主張を簡潔にまとめ、ユーザーと一緒に投票結果を集計する。
+
+| Persona | 視点 |
+|---|---|
+| **Kaggle Grandmaster** (経験派) | Public LB の微差はノイズと判断。OOF が安定したペアを選ぶ |
+| **Statistical Theorist** (理論派) | ±0.00005 以内は統計的区別不能。variance minimization で構造的に異なる 2 つ |
+| **Risk Management** (守り派) | 共倒れ防止が最優先。独立な 2 blend |
+| **Pragmatic Engineer** (実践派) | 実証された Public 最高を捨てるな |
+| **Newcomer** (素朴視点) | Blend of Blends は親の 50% 平均。親をそのまま使えばいい |
+| **Domain Expert** | ドメイン的に最適な model を必ず 1 本入れる |
+| **ML Researcher** | Bias 差が最大の異なる philosophy のペアを取る |
+| **External Reviewer** | Family が同じ 2 つは hedge にならない |
+| **Behavioral Economist** | Hindsight bias / Loss aversion を排除、データに基づけ |
+
+**投票ルール:**
+- 各 Persona が候補ペアに 1 票
+- 多数派の候補ペアを採択
+- 同数の場合は **Risk Management の意見を優先**（shakedown 回避を最優先）
+
+**実装手順:**
+
+1. AI が Final 2 候補（3-5 個）を一覧化
+2. 各 Persona の主張を簡潔に提示（CLAUDE.md「最終選択」セクション参照）
+3. AI が投票を集計し、推奨ペアを提示
+4. ユーザーが最終決定（多数派と異なる場合は理由を明示）
+5. 結果を SESSION.md「Final 2 確定」セクションに記録
+
+> **目的**: 主観バイアスや hindsight bias を排除し、複数視点で robust な選定を行う。
+> Public LB 最高への執着で Private LB shakedown を起こすパターンを防ぐ。
+
+---
+
 ## 注意事項
 
 - このスキルは**ユーザーが明示的に呼び出した場合のみ**実行する
 - `kaggle.json` が `~/.kaggle/` に存在することが前提
 - フェーズ3の問いかけは省略しない。スコアだけ記録して終わることを防ぐのがこのスキルの存在意義
 - **`learning` 列が空欄のまま次の実験に進むことを許可しない**
+- **フェーズ5 (Final 2 選定モード) は最終日に必ず実施**。Persona 投票を省略しない

@@ -146,6 +146,92 @@ def plot_train_test_compare(train: pd.DataFrame, test: pd.DataFrame, var: str, o
 
 
 # ──────────────────────────────────────────────
+# モデル/Blend 評価系プロット (Stage 4-6 向け)
+# 「早期却下の禁止」原則のために必須
+# ──────────────────────────────────────────────
+
+def plot_feature_importance(fi_series: pd.Series, out: Path, title: str = "Feature importance (gain)", top_n: int = 30) -> Path:
+    """LGB/XGB feature_importances_ を棒グラフで可視化
+
+    使い方:
+        fi = pd.Series(model.feature_importances_, index=FEATURES).sort_values(ascending=False)
+        plot_feature_importance(fi, PLOTS_DIR, title="exp042 importance")
+    """
+    top = fi_series.sort_values(ascending=False).head(top_n)
+    fig, ax = plt.subplots(figsize=(10, max(4, top_n * 0.25)))
+    top[::-1].plot.barh(ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Importance (gain)")
+    fig.tight_layout()
+    path = out / f"feature_importance_{title.replace(' ', '_')}.png"
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_oof_distribution(y_true, oof_old, oof_new, out: Path, label_old: str = "old", label_new: str = "new") -> Path:
+    """新旧 OOF 予測の分布比較 (前後評価)"""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    # クラス別に分けてヒストグラム
+    for ax, oof, lbl in zip(axes, [oof_old, oof_new], [label_old, label_new]):
+        ax.hist(oof[y_true == 0], bins=50, alpha=0.5, label="class=0", density=True)
+        ax.hist(oof[y_true == 1], bins=50, alpha=0.5, label="class=1", density=True)
+        ax.set_title(f"{lbl}")
+        ax.set_xlabel("Predicted probability")
+        ax.legend()
+    fig.tight_layout()
+    path = out / f"oof_distribution_{label_old}_vs_{label_new}.png"
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_correlation_matrix(oof_dict: dict, out: Path, title: str = "OOF correlation") -> Path:
+    """複数モデルの OOF 相関マトリクス (blend overfit / 冗長性チェック)
+
+    使い方:
+        oofs = {"lgb": oof_lgb, "xgb": oof_xgb, "cb": oof_cb}
+        plot_correlation_matrix(oofs, PLOTS_DIR)
+    """
+    names = list(oof_dict.keys())
+    mat = np.zeros((len(names), len(names)))
+    for i, a in enumerate(names):
+        for j, b in enumerate(names):
+            mat[i, j] = np.corrcoef(oof_dict[a], oof_dict[b])[0, 1]
+    df_mat = pd.DataFrame(mat, index=names, columns=names)
+    fig, ax = plt.subplots(figsize=(max(6, len(names) * 0.6), max(5, len(names) * 0.5)))
+    sns.heatmap(df_mat, annot=True, fmt=".3f", cmap="RdYlBu_r", vmin=0.95, vmax=1.0, ax=ax,
+                cbar_kws={"label": "Pearson r"})
+    ax.set_title(title)
+    fig.tight_layout()
+    path = out / f"correlation_matrix_{title.replace(' ', '_')}.png"
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_lb_history(log_csv_path: Path, out: Path, title: str = "LB history") -> Path:
+    """experiments/log.csv の submit_score を実験順にプロット (LB プラトー検出用)"""
+    df = pd.read_csv(log_csv_path)
+    df = df.dropna(subset=["submit_score"])
+    df = df[df["submit_score"] > 0].copy()
+    df["experiment_id"] = df["experiment_id"].astype(str)
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(range(len(df)), df["submit_score"], marker="o", linestyle="-")
+    for i, (idx, row) in enumerate(df.iterrows()):
+        ax.annotate(row["experiment_id"], (i, row["submit_score"]), fontsize=8, ha="center", va="bottom")
+    ax.set_xlabel("Submission order")
+    ax.set_ylabel("Public LB")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    path = out / "lb_history.png"
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+# ──────────────────────────────────────────────
 # メインエントリ
 # ──────────────────────────────────────────────
 
@@ -153,11 +239,16 @@ def main():
     parser = argparse.ArgumentParser(description="EDA可視化スクリプト")
     parser.add_argument("--var", type=str, default="", help="対象変数名")
     parser.add_argument("--theme", type=str, default="target_dist",
-                        choices=["target_dist", "target_rate", "missing", "train_test", "overview"],
+                        choices=["target_dist", "target_rate", "missing", "train_test", "overview", "lb_history"],
                         help="可視化テーマ")
     args = parser.parse_args()
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.theme == "lb_history":
+        from src.config import EXPERIMENTS_DIR
+        plot_lb_history(EXPERIMENTS_DIR / "log.csv", PLOTS_DIR)
+        return
 
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     test_path = PROCESSED_DATA_DIR / "test_features.pkl"

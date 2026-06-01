@@ -1,10 +1,53 @@
-# DS Template — Kaggle Competition Workspace
+# DS Template v3 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
 「実験の目的を先に言語化する」「1列ずつΔAUCを計測する」「学びをサイクルとして蓄積する」という
 3つの原則を、スキルとスクリプトで仕組みとして強制します。
 
-**実践コンペ**: s6e3（Churn Prediction）・s6e4（Irrigation Need Prediction, rank 293/4316）で開発・改良
+**実践コンペ**:
+- v1: s6e3（Churn Prediction）
+- v2: s6e4（Irrigation Need Prediction, rank 293/4316）
+- **v3: s6e5 (Predicting F1 Pit Stops)** で開発・改良
+
+---
+
+## v3 で追加された主な改善
+
+s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強化:
+
+### AI 行動規範 #10-20（CLAUDE.md）
+- **#10**: コンペ初日の外部データインベントリ義務化（使う/skip/保留 の 3 択判定）
+- **#11**: ドメイン知識先行プロセス（EDA より前に当然影響変数を 5-10 個列挙）
+- **#12**: LB プラトー検出時の強制 brainstorm（同 LB ±0.00002 で 5 回続いたら）
+- **#13**: 早期却下の禁止（FE 却下前に 3 重チェック: 可視化/関連変数/相関-importance）
+- **#14**: Final 2 早期決定の禁止（残り slot ≥ 2 では Final 議論禁止）
+- **#15**: 1実験1コミットの厳守（並行実行時も例外なし、OOF 判明後 5 分以内）
+- **#16**: 可視化の自発的提案（数値報告時に「グラフ生成しますか？」必須）
+- **#17**: Public LB 微改善の懐疑主義（評価指標別ノイズ床テーブル: AUC/Logloss/RMSE/Acc-F1）
+- **#18**: OOF を Public LB と同等以上に Private LB の predictor として尊重
+- **#19**: Final 2 候補プール拡張（Public Top-10 ∪ OOF Top-10）
+- **#20**: 新規 FE / 外部データの「Private 過適合候補」分類
+
+### Stage 4-6 強化
+- Stage 4: AV (Adversarial Validation) 診断を標準化
+- Stage 5: FE 変更時の HP retune ルール（FE ±20% 変動で再実行）
+- Stage 6: 新規 STEP 8「Blend of Blends - 構造的に異なる blend の consensus」
+- Stage 6 STEP 6: Multi-seed averaging のデフォルト化（n_seeds=5）
+
+### Final 2 Selection 完全改訂
+- 9 Persona 投票プロトコル（Grandmaster/Theorist/Risk/Pragmatic/Newcomer/Domain/Researcher/Reviewer/Behavioral）
+- 候補プール拡張ルール（Public 過適合候補の見落としを防ぐ）
+- 典型 Final 2 構成パターン A-D 明文化
+
+### Autonomous Skill Application
+- スキル呼び出しが無くても skill のフェーズプロトコルに従う義務
+- 場面別の autonomous 適用テーブル
+
+### scripts/visualize.py 拡張
+- `plot_feature_importance()`: LGB/XGB importance top N
+- `plot_oof_distribution()`: 新旧 OOF 比較
+- `plot_correlation_matrix()`: 複数モデル OOF 相関 heatmap
+- `plot_lb_history()`: LB プラトー検出用
 
 ---
 

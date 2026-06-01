@@ -201,3 +201,128 @@
 - **対応内容**: `run_ensemble.py` または `src/utils/ensemble.py` に「相関行列の表示 → weight=0 のモデルを自動スキップ」ロジックを追加する
 - **影響ファイル**: src/utils/ensemble.py, run_ensemble.py（または同等のアンサンブルスクリプト）
 - **状態**: [TODO]
+
+---
+
+## [2026-05-31] HIGH — Kickoff 時の外部生データ判定リスト
+- **説明**: 今回 woodshole F1 Weather data がコンペ最終日まで未使用だった。Kickoff時に `data/external/` 内の全ファイルを「使う/使わない」明示判定する儀式を追加すべき。
+- **教訓**: Weather 投入で LB 0.95426 → 0.95427 → 0.95428 突破。**もっと早く使えていればさらなる伸び代があった**。
+- **対応内容**:
+  - `/kickoff` skill にフェーズ1 Q6「外部データインベントリ」追加（使う/保留/skip の 3 択判定）
+  - CLAUDE.md AIへの指針 #10 に「コンペ初日の外部データインベントリ義務化」を追加
+  - `COMPETITION.md` テンプレートに「外部データインベントリ」セクション追加
+- **影響ファイル**: `.claude/skills/kickoff/SKILL.md`, CLAUDE.md
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] HIGH — ドメイン知識先行ヒアリング
+- **説明**: F1 ドメインでは weather が pit stop に直結することは自明だが、ML パイプライン優先で「データから学習」発想に偏った。
+- **教訓**: 「is_wet_race」binary 1 つで天候 signal をカバーしたと早期判断、AirTemp/TrackTemp/Humidity 等の連続値を見落とし。
+- **対応内容**:
+  - `/kickoff` skill にフェーズ1 Q5「ドメイン知識先行ヒアリング」追加（ターゲットに影響する変数を 5-10 個列挙）
+  - CLAUDE.md AIへの指針 #11 に「ドメイン知識先行プロセス」を追加
+  - `COMPETITION.md` テンプレートに「ドメイン知識先行リスト」セクション追加
+- **影響ファイル**: `.claude/skills/kickoff/SKILL.md`, CLAUDE.md
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] HIGH — Plateau 検出時の Discussion 強制調査
+- **説明**: LB プラトー (5+ 提出同値) で「飽和」と判断しがち。CLAUDE.md には書いてあるが skill 化されていない。
+- **教訓**: 0.95425-0.95426 ceiling を 7+ 実験で確認後、外部 voting に注力したが weather data の存在は知っていながら投入せず。
+- **対応内容**:
+  - `/kaggle-submit` skill フェーズ3 に「Plateau 検出（強制）」を追加（同一 LB ± 0.00002 で 5 回以上で発動）
+  - CLAUDE.md AIへの指針 #12 に「LB プラトー検出時の強制 brainstorm」を追加
+- **影響ファイル**: `.claude/skills/kaggle-submit/SKILL.md`, CLAUDE.md
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] MEDIUM — HP retune スケジュール
+- **説明**: FE 変更時に HP 最適点が変動することを今回実証 (Δ=+0.00014 OOF)。テンプレートに「FE が ±20% 変わったら HP retune を検討」のガイドライン追加。
+- **対応内容**: CLAUDE.md Stage 5 完了条件に「FE変更時の HP retune ルール」追加
+- **影響ファイル**: CLAUDE.md (Stage 5 セクション)
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] MEDIUM — Multi-seed Averaging のデフォルト化
+- **説明**: 全ベース blend モデルで multi-seed avg5 が +0.00010-0.00020 OOF 改善を提供。テンプレートで multi-seed 5+ をデフォルトに。
+- **対応内容**: CLAUDE.md Stage 6 STEP 6 への重要追記として「Multi-seed averaging のデフォルト化」を追加（n_ens=5 デフォルト推奨）
+- **影響ファイル**: CLAUDE.md (Stage 6)
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] MEDIUM — Blend of Blends パターン記録
+- **説明**: 構造的に異なる 2 blend (greedy HC vs equal weight) の 50/50 平均で +0.00001 LB 改善が出ることを今回実証。
+- **対応内容**: CLAUDE.md Stage 6 に新規「STEP 8【Blend of Blends - 構造的に異なる blend の consensus】」追加。実装パターン・メカニズム・Final 2 への影響を明記。
+- **影響ファイル**: CLAUDE.md (Stage 6)
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] LOW — AV 診断 (Adversarial Validation) を Stage 4 標準化
+- **説明**: 今回最終日に AV を実行し、TabM 拡張特徴量に leakage を発見。BASE_FEATURES は AV=0.501 で問題なかったが、もっと早く確認すべきだった。
+- **対応内容**: CLAUDE.md Stage 4 完了条件に「AV 診断で train/test 分布シフトの有無を確認済み」を追加。Stage 6 移行前ガイダンスとして「AV 診断（Adversarial Validation）の標準実施手順」セクション追加（判定基準テーブル付き）
+- **影響ファイル**: CLAUDE.md (Stage 4 セクション)
+- **状態**: [DONE] 2026-06-01 反映完了
+
+## [2026-05-31] LOW — DSチームペルソナ投票による Final 2 選定
+- **説明**: 今回 9 人のペルソナ投票で Final 2 を選定 (sub_140 + sub_141)。シェイクダウン回避に有効な手法。
+- **対応内容**:
+  - CLAUDE.md「最終選択（Final Submission Selection）」セクションを大幅改訂、9 ペルソナ投票プロトコル追加
+  - `/kaggle-submit` skill にフェーズ5「Final 2 選定モード」追加（最終日または残り 2 提出以下で発動）
+  - Persona 主張テーブル、投票ルール、典型パターン (A/B/C/D)、警告を明文化
+- **影響ファイル**: CLAUDE.md, `.claude/skills/kaggle-submit/SKILL.md`
+- **状態**: [DONE] 2026-06-01 反映完了
+
+---
+
+## [2026-06-01] HIGH — AI 行動規範 #13-16 と Autonomous Skill Application 追加
+- **背景**: s6e5 終了時のユーザー振り返りで判明した AI の行動パターン問題
+  - 早期却下しがち（weather 特徴量を最終日まで見送り）
+  - Final 2 早期決定癖（残り 3 slot で確定提案、ユーザーが止めなければ +0.00001 LB 改善取り逃がし）
+  - 1実験1コミット違反（exp148-154 を 1 コミット）
+  - 可視化の自発提案不足（数値表のみ報告）
+- **対応内容**:
+  - CLAUDE.md AIへの指針 #13-16 追加:
+    - #13: 早期却下の禁止（可視化・関連変数列挙・相関/importance 三重チェック）
+    - #14: Final 2 早期決定の禁止（残り slot ≥ 2 では Final 議論禁止）
+    - #15: 1実験1コミットの厳守（並行実行時も例外なし）
+    - #16: 可視化の自発的提案（「グラフ生成しますか？」を必ず提示）
+  - CLAUDE.md「Autonomous Skill Application」セクション新設:
+    - スキル呼び出しが無くてもプロトコルに従う義務
+    - 場面別の autonomous 適用テーブル
+    - ユーザーが skill 呼ぶ場面 vs AI が autonomous で従う場面の整理
+  - CLAUDE.md コミット規約に並行実行時の特例ルール追加（バッチコミット禁止）
+- **影響ファイル**: CLAUDE.md
+- **状態**: [DONE] 2026-06-01
+
+## [2026-06-01] MEDIUM — scripts/visualize.py に Stage 4-6 向け関数追加
+- **背景**: 「早期却下の禁止」原則を実行するための可視化 helper 不足
+- **対応内容**:
+  - `plot_feature_importance()`: LGB/XGB importance top N 棒グラフ
+  - `plot_oof_distribution()`: 新旧 OOF 予測のヒストグラム比較
+  - `plot_correlation_matrix()`: 複数モデル OOF 相関マトリクス（heatmap）
+  - `plot_lb_history()`: experiments/log.csv の submit_score 時系列 + experiment_id ラベル付き
+  - CLI に `--theme lb_history` 追加
+- **影響ファイル**: scripts/visualize.py
+- **状態**: [DONE] 2026-06-01
+
+---
+
+## [2026-06-01] HIGH — Private LB 検証で判明した 4 つの戦略的教訓
+- **背景**: s6e5 のコンペ終了後 Private LB 確認で判明した発見
+  - Private LB 全体で reverse-shakedown（Private > Public for 全自前 submission）
+  - 採用 Final 2 = sub_140 (Private 0.95448)、しかし真の最高は sub_127 (Private 0.95450, +0.00002)
+  - sub_127 は Public LB 0.95426 で「平凡」と判断され Final 候補から除外されていた
+  - 新規 FE (外部データ集約) は Public +0.00001 (ノイズ床) のみ改善、Private では -0.00002 悪化
+  - BoB (Public 最高 +0.00001) の Private は親 blend と同等 → Public 微改善が Private に反映されない実例
+- **対応内容**:
+  - CLAUDE.md AI 指針 #17 追加: Public LB 微改善の懐疑主義（評価指標別の閾値テーブル付き）
+    - AUC: ±0.0001 ノイズ床、+0.0002 で「突破」
+    - Logloss: ±0.001 absolute、-0.002 で「突破」
+    - RMSE: ±0.1% relative、-0.2% で「突破」
+    - Accuracy/F1: ±0.001 ノイズ床、+0.003 で「突破」
+  - CLAUDE.md AI 指針 #18 追加: OOF を Public LB と同等以上に Private LB 指標として尊重
+  - CLAUDE.md AI 指針 #19 追加: Final 2 候補プール拡張ルール（Public Top-10 ∪ OOF Top-10）
+  - CLAUDE.md AI 指針 #20 追加: 新規 FE/外部データの「Private 過適合候補」分類
+  - CLAUDE.md「最終選択」セクションに候補プール構築ステップ追加（注目度分類テーブル付き）
+  - CLAUDE.md Stage 6 STEP 8 (BoB) に Private 注意点追記（共倒れリスク警告）
+  - kaggle-submit skill フェーズ5 に Step 1-3 追加（候補プール拡張 → AI 指針チェック → Persona 投票）
+- **設計判断**:
+  - 評価指標別の閾値テーブルで AUC 以外のコンペにも汎用適用可能に
+  - 個別特徴量名（weather など）と特定スコア（0.95428 など）を記述から除去
+  - 「教訓」は具体的事例ではなく一般化されたパターンとして記述
+- **影響ファイル**: CLAUDE.md, .claude/skills/kaggle-submit/SKILL.md
+- **状態**: [DONE] 2026-06-01

@@ -17,6 +17,9 @@ data/output/oof/
 data/output/models/
 data/output/submissions/
 
+# 外部データ（Kaggle Datasets/公開 Notebook 等から再取得可能）
+data/external/
+
 # 可視化画像（大容量）
 data/output/plots/
 
@@ -28,3 +31,14 @@ experiments/mlflow/
 # 圧縮・一時ファイル
 *.zip
 *.tar.gz
+
+# ルート直下の一時/外部ログ（コンペ調査時にダウンロードした他者 Notebook 等）
+/*.log
+/submission.csv
+
+# 外部 blending 出力ディレクトリ（コンペ調査用）
+/outputs/
+
+# .claude 内のセッション状態
+.claude/projects/
+.claude/scheduled_tasks.lock
