@@ -19,6 +19,36 @@ EDAは手元のデータを見る作業だが、kickoff はデータが生まれ
 
 ## 実行手順
 
+### フェーズ0: データの存在確認とダウンロード（セーフティネット）
+
+フェーズ1の前に `data/raw/` を確認する。`/kaggle-setup` 経由なら既にダウンロード済みだが、
+kickoff を単独実行した場合に備えてセーフティネットとして動作する。
+
+```bash
+ls data/raw/ 2>/dev/null
+```
+
+- **train/test 等が存在する** → そのままフェーズ1へ
+- **空 or 存在しない** → `src/config.py` の `COMPETITION` を読み、ダウンロードを提案する:
+
+  ```
+  data/raw/ が空です。COMPETITION = "<slug>" のデータをダウンロードしますか？
+    A) 容量確認してからダウンロード（kaggle competitions files -c <slug>）
+    B) そのままダウンロード
+    C) スキップ（後で手動）
+  ```
+
+  実行コマンド:
+  ```bash
+  uv run kaggle competitions download -c <slug> -p data/raw/
+  cd data/raw/ && unzip -q "*.zip" 2>/dev/null; cd -
+  ```
+
+> `COMPETITION` がまだプレースホルダー（`your-competition-name`）の場合は、
+> 先にユーザーへコンペスラッグを確認してから `src/config.py` を更新する。
+
+---
+
 ### フェーズ1: コンペ概要の精読（思考層）
 
 ユーザーにコンペ概要ページまたはデータ説明を共有・確認してもらいながら、以下を順番に問いかける。
@@ -55,6 +85,22 @@ EDAは手元のデータを見る作業だが、kickoff はデータが生まれ
 - `data/raw/` のファイル一覧を表示して確認する
 - train/test 以外に追加ファイル（external data, supplemental など）が含まれているか
 - カラム数・行数の規模感（学習データが小さい場合は CV 設計が重要になる）
+
+**ターゲット列の自動検出（フェーズ3 の config 自動補完に使う）:**
+
+`sample_submission.csv` のヘッダーから `TARGET_COL` を推定する:
+```bash
+head -1 data/raw/sample_submission.csv
+```
+- 先頭は通常 ID 列、2 列目以降がターゲット列
+- 2 列構成（id, target）→ 2 列目が `TARGET_COL`
+- 3 列以上（multiclass の確率列等）→ multiclass の可能性。ユーザーに確認する
+
+検出結果をユーザーに提示して確認する:
+```
+sample_submission.csv のヘッダー: id,<col>
+→ TARGET_COL = "<col>" と推定しました（フェーズ3 で config に反映）。正しいですか？
+```
 
 **Q4: Discussion / Notebooks の初期調査**
 
@@ -140,24 +186,44 @@ EDAは手元のデータを見る作業だが、kickoff はデータが生まれ
 
 ---
 
-### フェーズ3: src/config.py のコンペ設定を更新（実行層）
+### フェーズ3: src/config.py のコンペ設定を自動補完（実行層）
 
-`COMPETITION.md` への記録後、`src/config.py` の TODO セクションを更新する:
+**ユーザーが手で入力するのは `COMPETITION` だけ**（`/kaggle-setup` が設定済み）。
+残りの項目は以下の情報源から **自動で決定** し、`src/config.py` の TODO セクションを上書きする:
 
 ```python
 # ===== コンペティション設定（/kickoff スキルが更新する） =====
-COMPETITION = "<コンペ名>"          # 例: "playground-series-s6e4"
-TARGET_COL  = "<ターゲット列名>"    # 例: "Churn"
-PROBLEM_TYPE = "<タスク種別>"       # "binary_classification" | "regression" | "multiclass"
-EVAL_METRIC  = "<評価指標>"         # "auc" | "rmse" | "logloss"
-CV_STRATEGY  = "<CV戦略>"           # "StratifiedKFold" | "KFold" | "TimeSeriesSplit"
+COMPETITION = "<slug>"             # /kaggle-setup が設定済み（変更不要）
+TARGET_COL  = "<col>"              # ← sample_submission.csv の 2 列目（Q3 で検出）
+PROBLEM_TYPE = "<type>"            # ← 評価指標 + ターゲット列の値域から推定
+EVAL_METRIC  = "<metric>"          # ← Kaggle メタデータから取得
+CV_STRATEGY  = "<strategy>"        # ← CV 設計の初期判断（Q4）から
 N_SPLITS     = 5
 ```
 
-更新値はフェーズ1・2の回答（Q1〜Q4）から決定する。特に:
-- `PROBLEM_TYPE` はタスク種別から（分類 / 回帰）
-- `CV_STRATEGY` はCV設計の初期判断から（StratifiedKFold が最多、時系列は TimeSeriesSplit）
-- `EVAL_METRIC` は評価指標から
+**各項目の自動決定ロジック:**
+
+| 項目 | 情報源 | 決定方法 |
+|---|---|---|
+| `TARGET_COL` | `sample_submission.csv` のヘッダー | 2 列目（ID 以外）。Q3 で検出・確認済み |
+| `EVAL_METRIC` | Kaggle メタデータ | `kaggle competitions view -c <slug>` の評価指標欄を参照（取得不可なら Q2 の回答から） |
+| `PROBLEM_TYPE` | `EVAL_METRIC` + ターゲット値域 | auc/logloss→分類、rmse/mae→回帰、確率列が 3+→multiclass |
+| `CV_STRATEGY` | Q4 の CV 設計判断 | StratifiedKFold が既定。時系列→TimeSeriesSplit、グループ構造→GroupKFold |
+
+```bash
+# 評価指標の取得（取得できれば EVAL_METRIC / PROBLEM_TYPE の根拠にする）
+kaggle competitions view -c <slug> 2>/dev/null
+```
+
+**推定結果は config に書き込む前に必ずユーザーへ提示して確認する:**
+```
+config を以下で自動補完します（COMPETITION は設定済み）:
+  TARGET_COL   = "<col>"      （sample_submission 2 列目）
+  EVAL_METRIC  = "<metric>"   （Kaggle メタデータ）
+  PROBLEM_TYPE = "<type>"     （指標+値域から推定）
+  CV_STRATEGY  = "<strategy>" （Q4 の判断）
+この内容でよいですか？
+```
 
 ---
 

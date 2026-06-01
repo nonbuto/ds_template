@@ -61,41 +61,53 @@ s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強
 
 ## 新しいコンペを始める手順
 
-### Step 1: リポジトリをクローンしてコンペブランチを作る
+ユーザーが手で入力するのは **コンペスラッグ 1 つだけ**。残りはすべて 2 つのスキルが自動化する。
 
-```bash
-git clone https://github.com/nonbuto/ds_template.git my-competition
-cd my-competition
-git checkout -b comp/<competition-name>   # 例: comp/s6e5-tabular
-uv sync
+### Step 1: `/kaggle-setup <コンペ名>` でセットアップ
+
+**親となる作業フォルダの中で**、コンペスラッグを渡して実行するだけ:
+
+```
+/kaggle-setup playground-series-s6e5
 ```
 
-### Step 2: コンペ設定を更新する
+この 1 コマンドで、**コンペを始められる状態までのすべての準備が自動で整う**:
 
-`src/config.py` の以下を書き換える:
+1. **GitHub（ds_template）から clone** され、コンペ名から導出したフォルダ名に配置される
+   （例: `playground-series-s6e5` → `s6e5_playground-series/`。フォルダ名は実行時に確認・変更可）
+2. `comp/<slug>` ブランチを作成
+3. **Kaggle からデータを取得**（`data/raw/` へ、容量確認後にダウンロード・解凍）
+4. **Python 基本環境を構築**（`uv sync`。**Python 3.12** を `.python-version` で固定）
+5. `src/config.py` の `COMPETITION` を自動設定（他項目はプレースホルダーのまま）
+6. `SESSION.md`（最小プレースホルダー）/ `experiments/log.csv` を初期化
 
-```python
-COMPETITION   = "playground-series-s6e5"   # kaggle competitions list で確認
-TARGET_COL    = "target"
-PROBLEM_TYPE  = "binary_classification"    # "regression" / "multiclass"
-EVAL_METRIC   = "auc"
-CV_STRATEGY   = "StratifiedKFold"
-N_FOLDS       = 5
-```
+→ **ここまでが `/kaggle-setup` の役割。** ユーザーが手で clone したり config.py を編集したりする必要はない。
+   あとは `/kickoff` を実行すればコンペをスタートできる。
 
-### Step 3: データをダウンロードする
-
-```bash
-uv run kaggle competitions download -c <competition-name> -p data/raw/
-```
-
-### Step 4: Claude Code でキックオフする
+### Step 2: `/kickoff` でコンペ文脈を記録 & config を自動補完
 
 ```
 /kickoff
 ```
 
-→ COMPETITION.md にデータ種別・外部データ有無・CV設計の初期判断が記録される
+- データ種別・評価指標・外部データ・CV 設計を対話で記録 → `COMPETITION.md`
+- `src/config.py` の残り項目（`TARGET_COL` / `PROBLEM_TYPE` / `EVAL_METRIC` / `CV_STRATEGY`）を
+  **sample_submission・Kaggle メタデータ・回答から自動で埋める**（手作業不要）
+- データ未取得なら自動ダウンロード（セーフティネット）
+
+→ 完了後は学習サイクルへ。`/new-experiment` で最小ベースライン実験を開始する。
+
+### （参考）スキルを使わない手動フロー
+
+```bash
+git clone https://github.com/nonbuto/ds_template.git my-competition
+cd my-competition
+git checkout -b comp/<slug>
+uv sync                                                  # .python-version=3.12 で構築される
+# src/config.py の COMPETITION だけ設定（残りは /kickoff が埋める）
+uv run kaggle competitions download -c <slug> -p data/raw/
+# Claude Code を起動して /kickoff
+```
 
 ---
 

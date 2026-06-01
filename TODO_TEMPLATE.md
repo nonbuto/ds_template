@@ -326,3 +326,18 @@
   - 「教訓」は具体的事例ではなく一般化されたパターンとして記述
 - **影響ファイル**: CLAUDE.md, .claude/skills/kaggle-submit/SKILL.md
 - **状態**: [DONE] 2026-06-01
+
+---
+
+## [2026-06-01] HIGH — コンペ開始手順の自動化（手作業を COMPETITION 1 項目に削減）
+- **背景**: README の「Step 2: コンペ設定を更新」が config 6 項目の手編集を案内、「Step 3: データDL」も手動コマンド案内。実態は `/kaggle-setup`（COMPETITION設定+DL）と `/kickoff`（残り config 自動更新）が既に自動化しており、README が古いまま矛盾していた。
+- **対応内容**:
+  - **Python 3.12 固定**: `.python-version`（=3.12）新規作成。`pyproject.toml` を `requires-python = ">=3.12,<3.13"` に変更。理由: MLスタック（LGB/XGB/CB/PyTorch/RealMLP/TabM 等）の wheel 成熟度。uv が pin 不在で 3.14 を自動選択していた問題を解消
+  - **README 全面簡素化**: 手作業 Step2/3 を削除。`/kaggle-setup <slug>` → `/kickoff` の 2 スキルで完結する「スラッグ1つだけ入力」フローに書き換え。手動フローは参考として圧縮
+  - **kickoff 強化**:
+    - フェーズ0 新設: `data/raw/` 空ならダウンロード提案（kickoff 単独実行時のセーフティネット）
+    - Q3 に TARGET_COL 自動検出（sample_submission.csv 2 列目）追加
+    - フェーズ3 を「手編集」→「自動補完」に改訂。EVAL_METRIC は `kaggle competitions view` メタデータ、PROBLEM_TYPE は指標+値域、CV_STRATEGY は Q4 から自動決定。書込前にユーザー確認
+- **設計判断**: 手入力は `COMPETITION` 1 項目のみ。残りはデータ・メタデータ・対話から自動導出し提示確認する方式
+- **影響ファイル**: `.python-version`（新規）, pyproject.toml, README.md, `.claude/skills/kickoff/SKILL.md`
+- **状態**: [DONE] 2026-06-01
