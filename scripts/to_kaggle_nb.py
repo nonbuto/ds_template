@@ -210,6 +210,35 @@ def _clean_script_for_kaggle(code: str, py_path: Path, dataset_name: str) -> str
     return "\n".join(cleaned)
 
 
+_GPU_INDICATORS = {
+    "torch": "PyTorch を使用",
+    "realmlp": "RealMLP を使用",
+    "tabnet": "TabNet を使用",
+    "lightning": "PyTorch Lightning を使用",
+    "tensorflow": "TensorFlow を使用",
+}
+_GPU_OPTIONAL = {
+    "xgboost": "XGBoost (GPU で高速化可能)",
+    "cuml": "cuML を使用",
+}
+
+
+def detect_gpu_need(py_path: Path) -> tuple[bool, str]:
+    """スクリプトの import からGPU必要性を自動判定する。
+
+    Returns:
+        (recommended, reason): 推奨値と理由
+    """
+    content = py_path.read_text(encoding="utf-8").lower()
+    for keyword, reason in _GPU_INDICATORS.items():
+        if keyword in content:
+            return True, f"{reason} → GPU 推奨"
+    for keyword, reason in _GPU_OPTIONAL.items():
+        if keyword in content:
+            return True, f"{reason} → GPU 推奨（任意）"
+    return False, "GPU依存ライブラリなし → CPU で十分"
+
+
 def generate_kernel_metadata(
     py_path: Path,
     out_dir: Path,
@@ -254,8 +283,11 @@ def main():
                         help="コンペスラッグ（デフォルト: src/config.py の COMPETITION）")
     parser.add_argument("--submission-mode", action="store_true",
                         help="Notebook提出コンペ用: submission.csv を /kaggle/working/ に保存するセルを追加")
-    parser.add_argument("--gpu", action="store_true",
-                        help="kernel-metadata.json で GPU を有効化する")
+    gpu_group = parser.add_mutually_exclusive_group()
+    gpu_group.add_argument("--gpu", action="store_true", default=None,
+                           help="GPU を強制的に有効化する")
+    gpu_group.add_argument("--no-gpu", action="store_true",
+                           help="GPU を強制的に無効化する（自動判定を上書き）")
     parser.add_argument("--push", action="store_true",
                         help="変換後に kaggle kernels push を実行する")
     args = parser.parse_args()
@@ -268,9 +300,29 @@ def main():
     dataset_name = args.dataset_name or f"ds-template-{args.competition}"
     out_path = Path(args.output) if args.output else ROOT / "kaggle_nb" / f"{py_path.stem}.ipynb"
 
-    print(f"変換: {py_path.relative_to(ROOT)} → {out_path.relative_to(ROOT)}")
-    print(f"  Dataset  : {dataset_name}")
+    # GPU 判定（自動 → 確認 → 上書き可能）
+    gpu_recommended, gpu_reason = detect_gpu_need(py_path)
+    if args.no_gpu:
+        enable_gpu = False
+        gpu_decision = "無効（--no-gpu で上書き）"
+    elif args.gpu:
+        enable_gpu = True
+        gpu_decision = "有効（--gpu で上書き）"
+    else:
+        # 自動判定結果を表示して確認を求める
+        print(f"\n[GPU 自動判定] {gpu_reason}")
+        prompt = f"  GPU を{'有効' if gpu_recommended else '無効'}にします。変更しますか？ [y=変更/Enter=そのまま]: "
+        answer = input(prompt).strip().lower()
+        if answer == "y":
+            enable_gpu = not gpu_recommended
+        else:
+            enable_gpu = gpu_recommended
+        gpu_decision = f"{'有効' if enable_gpu else '無効'}（自動判定{'→変更' if answer == 'y' else ''}）"
+
+    print(f"\n変換: {py_path.relative_to(ROOT)} → {out_path.relative_to(ROOT)}")
+    print(f"  Dataset    : {dataset_name}")
     print(f"  Competition: {args.competition}")
+    print(f"  GPU        : {gpu_decision}")
     print(f"  Submission mode: {args.submission_mode}")
 
     # marimo形式かどうかで変換方法を切り替える
@@ -291,7 +343,7 @@ def main():
     print(f"\n✅ 変換完了: {out_path}")
 
     # kernel-metadata.json の生成
-    generate_kernel_metadata(py_path, out_path.parent, args.competition, dataset_name, args.gpu)
+    generate_kernel_metadata(py_path, out_path.parent, args.competition, dataset_name, enable_gpu)
 
     # 必要に応じて kaggle kernels push
     if args.push:
