@@ -83,10 +83,17 @@ disable-model-invocation: true
 
 ```
 今回の実験結果
-  OOF変化: <前回比 ±X>
-  LB変化:  <前回比 ±Y>
+  OOF変化:     <前回比 ±X>
+  LB変化:      <前回比 ±Y>
+  pub_oof_gap: <LB − OOF>（正=LBがOOFより高い, 負=OOFがLBより高い）
   現在ベストLB: Z
 ```
+
+**pub_oof_gap 監視（CLAUDE.md 指針 #21）:**
+
+`experiments/log.csv` の全提出の pub_oof_gap 中央値（基準線）と比較する:
+- 基準線 + 0.0005 を超えた場合: 「⚠️ Public 過剰浮上警告: pub_oof_gap が基準線を超えています。OOFを犠牲にした gap 拡大でないか確認してください」と SESSION.md に記録する
+- 「OOF↓ かつ LB↑」パターン: 外部データ由来 FE を除き原則棄却を推奨する（OOF を犠牲に gap を操作しない）
 
 **Plateau 検出（強制）:**
 

@@ -19,10 +19,21 @@ EDAは手元のデータを見る作業だが、kickoff はデータが生まれ
 
 ## 実行手順
 
-### フェーズ0: データの存在確認とダウンロード（セーフティネット）
+### フェーズ0: 環境確認とデータの存在確認（セーフティネット）
 
-フェーズ1の前に `data/raw/` を確認する。`/kaggle-setup` 経由なら既にダウンロード済みだが、
-kickoff を単独実行した場合に備えてセーフティネットとして動作する。
+フェーズ1の前に、実行環境と `data/raw/` を確認する。
+
+**環境確認（ローカル vs Kaggle Notebook）:**
+
+```python
+from src.config import IS_KAGGLE, RAW_DATA_DIR
+print(f"IS_KAGGLE={IS_KAGGLE}, RAW_DATA_DIR={RAW_DATA_DIR}")
+```
+
+- **IS_KAGGLE=True（Kaggle Notebook）**: `/kaggle/input/` にコンペデータが自動マウントされる。ダウンロード不要。フェーズ1へ進む。
+- **IS_KAGGLE=False（ローカル）**: `data/raw/` を確認してダウンロードが必要か判断する。
+
+**ローカル環境でのデータ確認:**
 
 ```bash
 ls data/raw/ 2>/dev/null
