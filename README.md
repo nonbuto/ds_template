@@ -167,7 +167,7 @@ subprocess.run([
 ## 学習サイクル（スキルとスクリプトの使い方）
 
 ```
-/resume ─────── 毎セッション開始時に必ず呼ぶ
+/ds-resume ──── 毎セッション開始時に必ず呼ぶ
     ↓
 /kickoff ─────── コンペ参加直後に1回だけ
     ↓ データ種別・合成データ判定・外部データ確認
@@ -232,7 +232,7 @@ uv run python scripts/feature_report.py
 
 | スキル | タイミング | 役割 |
 |---|---|---|
-| `/resume` | **毎セッション開始時（必須）** | SESSION.md + log.csv + FE_HYPOTHESES.md を読み「今どこにいるか」を1画面で復元 |
+| `/ds-resume` | **毎セッション開始時（必須）** | SESSION.md + log.csv + FE_HYPOTHESES.md を読み「今どこにいるか」を1画面で復元 |
 | `/kickoff` | コンペ参加直後（1回のみ） | データ種別・外部データ有無・CV設計の初期判断を COMPETITION.md に記録 |
 | `/new-experiment` | 実験開始前 | 目的・成功基準・撤退基準を言語化してからブランチとインフラを整備 |
 | `/kaggle-submit` | 提出前後 | 提出前確認 → LBスコア取得 → OOF/LB乖離分析 → 学びを log.csv に記録 |
@@ -251,7 +251,7 @@ uv run python scripts/feature_report.py
 ├── FE_HYPOTHESES.md       # FE仮説の立案・検証・棄却記録（/fe-hypothesis が管理）
 ├── FEATURE_REPORT.md      # 特徴量の生きたレポート（EDA・FE段階を通じて記入）
 ├── EDA_SUMMARY.md         # EDA対話の発見まとめ（/eda-visual が生成）
-├── SESSION.md             # セッション現在地・次のアクション（/resume で参照）
+├── SESSION.md             # セッション現在地・次のアクション（/ds-resume で参照）
 ├── TODO_TEMPLATE.md       # テンプレート改善タスク（/template-update が追記）
 │
 ├── scripts/               # 汎用骨格スクリプト（コンペ開始時に TODO を埋めて使う）

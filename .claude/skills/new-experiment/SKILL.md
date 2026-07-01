@@ -124,7 +124,7 @@ argument-hint: <実験名>
         OOF=<score>  model=<model>  features=<feature_set>
   ※ tracker.end_run() がコミットメッセージ案を自動出力します
 
-SESSION.md を更新しました。次のセッションで /resume を実行すると
+SESSION.md を更新しました。次のセッションで /ds-resume を実行すると
 この実験の目的と次のアクションが復元されます。
 
 実験完了後は `/kaggle-submit` で提出・振り返りを行い、
