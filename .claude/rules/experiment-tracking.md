@@ -38,10 +38,10 @@ tracker.end_run(
 `{competition}_{model}_{feature_set}_{variant}`
 
 例:
-- `playground-series-s6e3_lgb_baseline`
-- `playground-series-s6e3_lgb_fe_v2`
-- `playground-series-s6e3_cb_optuna`
-- `playground-series-s6e3_ensemble_lgb_cb`
+- `playground-series-s6e6_lgb_baseline`
+- `playground-series-s6e6_lgb_fe_v2`
+- `playground-series-s6e6_cb_optuna`
+- `playground-series-s6e6_ensemble_lgb_cb`
 
 ## log.csvへの記録
 
@@ -54,13 +54,13 @@ tracker.end_run(
 `scripts/train.py` などを呼び出すか、同様のトラッキングコードを含める。
 
 ```python
-# experiments/runs/exp042_s4_fe_tenure.py の例
+# experiments/runs/exp042_s4_fe_col_a_interaction.py の例
 from src.experiment import ExperimentTracker
 
-tracker = ExperimentTracker(experiment_name="lgb_fe_tenure")
+tracker = ExperimentTracker(experiment_name="lgb_fe_col_a_interaction")
 # ... 学習・記録 ...
 tracker.end_run(...)
 # end_run() がコミットメッセージの雛形を提案する:
-# feat(exp042): tenure×MonthlyChargesの交互作用特徴量を追加
+# feat(exp042): col_A×col_Bの交互作用特徴量を追加
 # OOF=0.91688  model=lgb  features=fe_v7_interaction
 ```

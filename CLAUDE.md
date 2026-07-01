@@ -419,8 +419,9 @@ SESSION.md のオーバーフロー検知:
 - スクリプト実行: `uv run python scripts/<script>.py`
 - スクリプト実行例: `uv run python scripts/train.py --model lgb`
 
-**marimoは使用しない。** 可視化はスクリプトから画像ファイルとして出力し、Claudeが読んで対話する。
-→ 理由: Claudeはmarimoのレンダリング結果を認識できず、可視化→対話のループが回らないため。
+**marimo の用途:**
+- **可視化 EDA では使わない** — Claude は marimo のレンダリング結果を認識できない。可視化はスクリプトから `data/output/plots/` に画像保存し、Claude が Read で読んで対話する
+- **`.ipynb` 変換に使う** — `scripts/to_kaggle_nb.py` が marimo 形式スクリプトを `marimo export ipynb` で変換する。Kaggle Notebook 実行用の `.ipynb` 生成に使う
 
 ### ディレクトリ規約
 
@@ -492,84 +493,137 @@ from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
 #   OOF_DIR      = <project_root>/data/output/oof/
 
 # Kaggle Notebook 環境: IS_KAGGLE = True
-#   RAW_DATA_DIR = /kaggle/input/   ← コンペデータが自動マウント
+#   RAW_DATA_DIR = /kaggle/input/<competition>/   ← コンペスラッグで自動決定
 #   OOF_DIR      = /kaggle/working/data/output/oof/
 ```
 
-**Kaggle Notebook でのセットアップ手順:**
+---
 
-1. このリポジトリを Kaggle Dataset として登録する（または `kaggle datasets create`）
-2. Notebook に Dataset を追加すると `/kaggle/input/<dataset-name>/` にマウントされる
-3. Notebook の最初のセルで以下を実行する:
+### Kaggle GPU ワークフロー（CSV提出コンペ）
 
-```python
-# セル1: リポジトリをパスに追加
-import sys
-sys.path.insert(0, "/kaggle/input/<dataset-name>")
+GPU を使う重い学習をKaggle Notebook で実行し、成果物（OOF .npy, submission.csv）をローカルに回収するフロー。
 
-# セル2: 設定確認
-from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
-print(f"IS_KAGGLE={IS_KAGGLE}")        # → True
-print(f"RAW_DATA_DIR={RAW_DATA_DIR}")  # → /kaggle/input/
-print(f"OOF_DIR={OOF_DIR}")            # → /kaggle/working/data/output/oof/
+**Step 1: テンプレートを Kaggle Dataset として同期する**
+
+```bash
+# 初回: Dataset を作成（プロジェクトルートで実行）
+kaggle datasets create -p . --dir-mode zip
+
+# 2回目以降: 変更を新バージョンとして push
+kaggle datasets version -p . -m "exp{NNN} 追加" --dir-mode zip
 ```
 
-**Kaggle Notebook での実験スクリプト実行:**
+Dataset 名: `{your-username}/ds-template-{competition}` として登録される。
 
-```python
-# Notebook セルから実験スクリプトを実行
-import subprocess
-result = subprocess.run(
-    ["python", "/kaggle/input/<dataset-name>/experiments/runs/exp001_s1_lgb_baseline.py"],
-    capture_output=True, text=True
-)
-print(result.stdout)
-print(result.stderr)  # エラーがある場合はここに出る
+**Step 2: 実験スクリプトを .ipynb に変換する**
+
+```bash
+# 通常スクリプト → Kaggle Notebook 用 .ipynb
+uv run python scripts/to_kaggle_nb.py experiments/runs/exp001_s1_lgb_baseline.py \
+  --competition <competition-slug> \
+  --dataset-name ds-template-<competition> \
+  --gpu   # GPU を有効化する場合
+
+# 生成先: kaggle_nb/exp001_s1_lgb_baseline.ipynb
+#         kaggle_nb/kernel-metadata.json
 ```
 
-**Kaggle Notebook でのデータ読み込みパターン:**
+**Step 3: Notebook を Kaggle に push して実行する**
+
+```bash
+# push（初回: Notebook を作成、2回目以降: 上書き更新して自動実行開始）
+kaggle kernels push -p kaggle_nb/
+
+# 実行状況を確認
+kaggle kernels status {username}/exp001-s1-lgb-baseline
+# → "status": "running" / "complete" / "error"
+```
+
+**Step 4: 成果物をローカルに回収する**
+
+```bash
+# 学習完了後、出力ファイルを取得
+kaggle kernels output {username}/exp001-s1-lgb-baseline -p kaggle_nb/output/
+
+# OOF .npy をローカルの data/output/oof/ に移動
+mv kaggle_nb/output/data/output/oof/*.npy data/output/oof/
+# submission CSV も同様
+mv kaggle_nb/output/data/output/submissions/*.csv data/output/submissions/
+```
+
+**フロー全体:**
+
+```
+[ローカル] スクリプト編集 (.py)
+    ↓ kaggle datasets version (Step 1)
+[Kaggle]  Dataset に最新コードが反映される
+    ↓ to_kaggle_nb.py (Step 2)  →  kaggle kernels push (Step 3)
+[Kaggle]  GPU 環境で学習実行（最大12時間）
+    ↓ kaggle kernels output (Step 4)
+[ローカル] OOF .npy / submission.csv を回収 → commit → LB提出
+```
+
+**注意事項:**
+
+- `/kaggle/working/` のみ書き込み可能（`/kaggle/input/` は読み取り専用）
+- `/kaggle/working/` はセッション終了で消える → `kaggle kernels output` で即回収する
+- GPU 利用時: LightGBM は `device = "gpu"`、PyTorch 系は `device = "cuda"`
+- Internet access が必要な場合は Notebook 設定で有効化する
+
+---
+
+### Notebook提出コンペ向けフロー
+
+Notebook が直接 `/kaggle/working/submission.csv` を生成する必要があるコンペ向け。
+
+**変換（--submission-mode を追加）:**
+
+```bash
+uv run python scripts/to_kaggle_nb.py experiments/runs/exp001_s1_lgb_baseline.py \
+  --competition <competition-slug> \
+  --dataset-name ds-template-<competition> \
+  --submission-mode \
+  --gpu
+```
+
+`--submission-mode` を付けると、末尾に `SUBMISSIONS_DIR` の最新 CSV を
+`/kaggle/working/submission.csv` にコピーするセルが自動追加される。
+
+**Notebook 提出フロー:**
+
+```bash
+# 1. push して実行
+kaggle kernels push -p kaggle_nb/
+
+# 2. 実行完了を待つ（Notebook提出コンペは実行完了が提出）
+kaggle kernels status {username}/exp001-s1-lgb-baseline
+
+# 3. 提出結果を確認（提出は kaggle competitions submit 不要）
+kaggle competitions submissions -c <competition-slug> | head -3
+```
+
+---
+
+### データ読み込みパターン（config.py 統一）
+
+`src/config.py` の設定後は、環境を意識せずにデータを読める:
 
 ```python
 import pandas as pd
-from src.config import RAW_DATA_DIR, IS_KAGGLE, COMPETITION
+from src.config import RAW_DATA_DIR
 
-if IS_KAGGLE:
-    # コンペデータは /kaggle/input/<competition-slug>/ 以下にある
-    train = pd.read_csv(RAW_DATA_DIR / COMPETITION / "train.csv")
-    test  = pd.read_csv(RAW_DATA_DIR / COMPETITION / "test.csv")
-else:
-    train = pd.read_csv(RAW_DATA_DIR / "train.csv")
-    test  = pd.read_csv(RAW_DATA_DIR / "test.csv")
+# ローカル: data/raw/train.csv
+# Kaggle:  /kaggle/input/<competition>/train.csv
+train = pd.read_csv(RAW_DATA_DIR / "train.csv")
+test  = pd.read_csv(RAW_DATA_DIR / "test.csv")
 ```
 
-**Kaggle Notebook からの提出フロー:**
+ファイルが見つからない場合のフォールバックも `raw_data_path()` が処理する:
 
 ```python
-# 1. 予測・提出ファイル生成（submission_path() で /kaggle/working/ 以下に保存）
-from src.config import submission_path
-sub_path = submission_path(model="lgb", oof_score=0.91777, exp_id="001")
-sub_df.to_csv(sub_path, index=False)
-print(f"Saved: {sub_path}")
-
-# 2. Kaggle CLI で直接提出（Notebook 内から）
-import subprocess
-result = subprocess.run(
-    ["kaggle", "competitions", "submit",
-     "-c", COMPETITION,
-     "-f", str(sub_path),
-     "-m", "exp001 lgb baseline"],
-    capture_output=True, text=True
-)
-print(result.stdout)
+from src.config import raw_data_path
+train = pd.read_csv(raw_data_path("train.csv"))
 ```
-
-**注意点:**
-
-- Kaggle Notebook は `/kaggle/working/` のみ書き込み可能（`/kaggle/input/` は読み取り専用）
-- GPU 利用時は `device = "cuda"` を config で設定する（LightGBM は `device = "gpu"`）
-- セッションをまたぐ場合、`/kaggle/working/` 以下の成果物は消えることがある（Dataset に保存して持ち出す）
-- Kaggle CLI で提出するには Notebook の「Internet access」を有効にする必要がある
-- `submission_path()` が生成する CSV は `/kaggle/working/data/output/submissions/` に保存される
 
 ### 提出ファイルの命名規約
 
