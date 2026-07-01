@@ -1,53 +1,62 @@
-# DS Template v3 — Kaggle Competition Workspace
+# DS Template v4 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
 「実験の目的を先に言語化する」「1列ずつΔAUCを計測する」「学びをサイクルとして蓄積する」という
 3つの原則を、スキルとスクリプトで仕組みとして強制します。
 
+**ローカル環境と Kaggle Notebook 環境の両方に対応しています。**
+
 **実践コンペ**:
 - v1: s6e3（Churn Prediction）
 - v2: s6e4（Irrigation Need Prediction, rank 293/4316）
-- **v3: s6e5 (Predicting F1 Pit Stops)** で開発・改良
+- v3: s6e5 (Predicting F1 Pit Stops)
+- **v4: s6e6 (SDSS Star Classification)** で開発・改良
 
 ---
 
-## v3 で追加された主な改善
+## v4 で追加された主な改善
 
-s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強化:
+s6e6 実践（3クラス Balanced Accuracy）を経て、アーキテクチャ探索戦略と OOF/LB 評価軸を大幅強化。
 
-### AI 行動規範 #10-20（CLAUDE.md）
-- **#10**: コンペ初日の外部データインベントリ義務化（使う/skip/保留 の 3 択判定）
-- **#11**: ドメイン知識先行プロセス（EDA より前に当然影響変数を 5-10 個列挙）
-- **#12**: LB プラトー検出時の強制 brainstorm（同 LB ±0.00002 で 5 回続いたら）
-- **#13**: 早期却下の禁止（FE 却下前に 3 重チェック: 可視化/関連変数/相関-importance）
-- **#14**: Final 2 早期決定の禁止（残り slot ≥ 2 では Final 議論禁止）
-- **#15**: 1実験1コミットの厳守（並行実行時も例外なし、OOF 判明後 5 分以内）
-- **#16**: 可視化の自発的提案（数値報告時に「グラフ生成しますか？」必須）
-- **#17**: Public LB 微改善の懐疑主義（評価指標別ノイズ床テーブル: AUC/Logloss/RMSE/Acc-F1）
-- **#18**: OOF を Public LB と同等以上に Private LB の predictor として尊重
-- **#19**: Final 2 候補プール拡張（Public Top-10 ∪ OOF Top-10）
-- **#20**: 新規 FE / 外部データの「Private 過適合候補」分類
+### AI 行動規範 #21-22（CLAUDE.md）
 
-### Stage 4-6 強化
-- Stage 4: AV (Adversarial Validation) 診断を標準化
-- Stage 5: FE 変更時の HP retune ルール（FE ±20% 変動で再実行）
-- Stage 6: 新規 STEP 8「Blend of Blends - 構造的に異なる blend の consensus」
-- Stage 6 STEP 6: Multi-seed averaging のデフォルト化（n_seeds=5）
+- **#21**: OOF最大化 + pub_oof_gap最小化の二軸評価（gap最大化戦略を廃止）
+  - 実証: OOF→Private r=+0.998、pub_oof_gap→シェイクダウン量 r=+0.853
+  - 第一目標: OOF最大化。第二目標: 同OOF水準なら pub_oof_gap 最小化
+  - モデルファミリー別 OOF 信頼性テーブル（NN系/Tree系/Blend の傾向）
+- **#22**: アーキテクチャ乗り換え時の公正比較義務
+  - 同一特徴量セット × 作業用HP確定済み × 同一CV の3条件を揃えてから比較
+  - 「最適化済み LGB vs デフォルト HP の RealMLP」は不公正比較として禁止
 
-### Final 2 Selection 完全改訂
-- 9 Persona 投票プロトコル（Grandmaster/Theorist/Risk/Pragmatic/Newcomer/Domain/Researcher/Reviewer/Behavioral）
-- 候補プール拡張ルール（Public 過適合候補の見落としを防ぐ）
-- 典型 Final 2 構成パターン A-D 明文化
+### Stage 1.5（早期アーキテクチャサーベイ）新設
 
-### Autonomous Skill Application
-- スキル呼び出しが無くても skill のフェーズプロトコルに従う義務
-- 場面別の autonomous 適用テーブル
+FE探索を始める前に「主軸アーキテクチャ」を決定するステージを追加。
 
-### scripts/visualize.py 拡張
-- `plot_feature_importance()`: LGB/XGB importance top N
-- `plot_oof_distribution()`: 新旧 OOF 比較
-- `plot_correlation_matrix()`: 複数モデル OOF 相関 heatmap
-- `plot_lb_history()`: LB プラトー検出用
+```
+Stage 1（最小ベースライン）完了後 → Stage 1.5 → Stage 2（EDA）開始
+```
+
+- 候補アーキテクチャ（LGB / CatBoost / RealMLP 等）を最小特徴量 × 作業用HP × 同一CVで評価
+- 各アーキテクチャの OOF と pub_oof_gap を記録し、主軸を1つ決定
+- 副軸（主軸と OOF 差 10% 以内）は Stage 6 アンサンブル候補として記録
+
+> **教訓**: 過去コンペで LGB 主軸のまま 40+ 実験を費やした後、RealMLP に移行したら提出効率が 50x 改善（+0.000007 LB/提出 → +0.000343 LB/提出）。Stage 1.5 で早期に特定すべきだった。
+
+### FE 有効性のアーキテクチャ依存性明記
+
+- LGB で棄却した FE が RealMLP では有効なケースに対応
+- FE 棄却記録に「棄却したアーキテクチャ名」の明記を義務化
+- Stage 4 → Stage 6 移行時に全候補アーキテクチャへ同一 FE を移植して再評価
+
+### Kaggle Notebook 環境サポート追加
+
+`src/config.py` が `/kaggle/input` の存在を自動検出し、パスを切り替える。
+
+```python
+from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
+# ローカル: IS_KAGGLE=False、RAW_DATA_DIR=data/raw/
+# Kaggle:  IS_KAGGLE=True、RAW_DATA_DIR=/kaggle/input/
+```
 
 ---
 
@@ -59,7 +68,7 @@ s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強
 
 ---
 
-## 新しいコンペを始める手順
+## 新しいコンペを始める手順（ローカル環境）
 
 ユーザーが手で入力するのは **コンペスラッグ 1 つだけ**。残りはすべて 2 つのスキルが自動化する。
 
@@ -68,21 +77,17 @@ s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強
 **親となる作業フォルダの中で**、コンペスラッグを渡して実行するだけ:
 
 ```
-/kaggle-setup playground-series-s6e5
+/kaggle-setup playground-series-s6e6
 ```
 
 この 1 コマンドで、**コンペを始められる状態までのすべての準備が自動で整う**:
 
 1. **GitHub（ds_template）から clone** され、コンペ名から導出したフォルダ名に配置される
-   （例: `playground-series-s6e5` → `s6e5_playground-series/`。フォルダ名は実行時に確認・変更可）
 2. `comp/<slug>` ブランチを作成
-3. **Kaggle からデータを取得**（`data/raw/` へ、容量確認後にダウンロード・解凍）
+3. **Kaggle からデータを取得**（`data/raw/` へ）
 4. **Python 基本環境を構築**（`uv sync`。**Python 3.12** を `.python-version` で固定）
-5. `src/config.py` の `COMPETITION` を自動設定（他項目はプレースホルダーのまま）
-6. `SESSION.md`（最小プレースホルダー）/ `experiments/log.csv` を初期化
-
-→ **ここまでが `/kaggle-setup` の役割。** ユーザーが手で clone したり config.py を編集したりする必要はない。
-   あとは `/kickoff` を実行すればコンペをスタートできる。
+5. `src/config.py` の `COMPETITION` を自動設定
+6. `SESSION.md` / `experiments/log.csv` を初期化
 
 ### Step 2: `/kickoff` でコンペ文脈を記録 & config を自動補完
 
@@ -91,23 +96,59 @@ s6e5 実践を経て、AI 行動規範と Final 2 選定プロセスを大幅強
 ```
 
 - データ種別・評価指標・外部データ・CV 設計を対話で記録 → `COMPETITION.md`
-- `src/config.py` の残り項目（`TARGET_COL` / `PROBLEM_TYPE` / `EVAL_METRIC` / `CV_STRATEGY`）を
-  **sample_submission・Kaggle メタデータ・回答から自動で埋める**（手作業不要）
+- `src/config.py` の残り項目を自動補完（手作業不要）
 - データ未取得なら自動ダウンロード（セーフティネット）
 
 → 完了後は学習サイクルへ。`/new-experiment` で最小ベースライン実験を開始する。
 
-### （参考）スキルを使わない手動フロー
+---
 
-```bash
-git clone https://github.com/nonbuto/ds_template.git my-competition
-cd my-competition
-git checkout -b comp/<slug>
-uv sync                                                  # .python-version=3.12 で構築される
-# src/config.py の COMPETITION だけ設定（残りは /kickoff が埋める）
-uv run kaggle competitions download -c <slug> -p data/raw/
-# Claude Code を起動して /kickoff
+## Kaggle Notebook 環境での使い方
+
+### セットアップ
+
+1. このリポジトリを Kaggle Dataset として登録する
+2. Notebook に Dataset を追加（`/kaggle/input/<dataset-name>/` にマウント）
+3. Notebook の最初のセルで実行:
+
+```python
+import sys
+sys.path.insert(0, "/kaggle/input/<dataset-name>")
+
+from src.config import IS_KAGGLE, RAW_DATA_DIR, COMPETITION
+print(f"IS_KAGGLE={IS_KAGGLE}")        # → True
+print(f"RAW_DATA_DIR={RAW_DATA_DIR}")  # → /kaggle/input/
 ```
+
+### 実験スクリプト実行
+
+```python
+import subprocess
+result = subprocess.run(
+    ["python", "/kaggle/input/<dataset-name>/experiments/runs/exp001_s1_lgb_baseline.py"],
+    capture_output=True, text=True
+)
+print(result.stdout)
+```
+
+### 提出
+
+```python
+from src.config import submission_path, COMPETITION
+import subprocess
+
+# 提出ファイル生成（/kaggle/working/data/output/submissions/ に保存）
+sub_path = submission_path(model="lgb", oof_score=0.91234, exp_id="001")
+sub_df.to_csv(sub_path, index=False)
+
+# Kaggle CLI で直接提出（Internet access を有効にすること）
+subprocess.run([
+    "kaggle", "competitions", "submit",
+    "-c", COMPETITION, "-f", str(sub_path), "-m", "exp001 lgb baseline"
+])
+```
+
+> **注意**: Kaggle Notebook は `/kaggle/working/` のみ書き込み可能。セッションをまたぐ場合は成果物を Dataset に保存して持ち出す。
 
 ---
 
@@ -122,12 +163,15 @@ uv run kaggle competitions download -c <slug> -p data/raw/
     ↓
 /kaggle-submit ── CV/LB相関を確立する（以降の改善判断の基準点）
     ↓
+Stage 1.5 ──────── 早期アーキテクチャサーベイ（LGB/RealMLP等を公正比較 → 主軸を決定）
+    ↓ OOFとpub_oof_gapを記録。主軸1つ・副軸候補を保持
 /eda-visual ───── 「何を知りたいか」を先に言語化してから可視化
     ↓ FE仮説の種を /fe-hypothesis に登録しながら進む
 Optuna 軽量 ──── 作業用HP（20〜30試行）。ΔAUCのノイズを低減する目的
     ↓
 /fe-hypothesis ── 「なぜ効くか」の因果を言語化 → 実装 → 可視化確認 → ΔAUCを計測
     ↓ 必ず1列ずつ feature_study.py で投入。複数列の一括追加は禁止
+    ↓ FE確定後、全候補アーキテクチャに同一FEを移植して再評価
 Optuna フル ───── 確定した特徴量セットで100試行以上
     ↓
 /kaggle-submit ── OOF/LBギャップを解釈して学びを言語化
@@ -213,7 +257,7 @@ uv run python scripts/feature_report.py
 │       └── exp{NNN}_s{stage}_{内容}.py
 │
 ├── src/                   # 共通ライブラリ
-│   ├── config.py          # パス・コンペ設定・命名規約（submission_path() など）
+│   ├── config.py          # パス・コンペ設定・命名規約（IS_KAGGLE 自動検出）
 │   ├── experiment.py      # 実験トラッキング（log.csv 書き込み）
 │   ├── validation.py      # データバリデーション
 │   ├── hp_spaces.py       # Optuna サーチスペース定義
@@ -247,7 +291,9 @@ uv run python scripts/feature_report.py
 | **FEは1列ずつ計測** | 複数列を一度に追加すると「どれが効いたか」が分からなくなる。`feature_study.py` で1列ずつΔAUCを計測する |
 | **実験の目的を先に記録** | 結果が出てから目的を決めると合理化が起きる。`/new-experiment` で「何を明らかにするか」を先に log.csv に記録する |
 | **SESSION.md は上書き原則** | 履歴を追記すると80行を超えて読めなくなる。各セクションは常に最新1件だけ上書きし、詳細は git log で追跡する |
-| **OOF-LB乖離を常に記録** | 「OOFは高いがLBで悪化」のパターンを早期検知するため、`oof_lb_gap` を log.csv の標準カラムとして記録する |
+| **OOF最大化を第一目標・pub_oof_gap最小化を第二目標** | OOF→Private 相関が極めて高い（r≈0.998）。gap最大化は Private で逆効果（r≈−0.51）と実証済み |
+| **Stage 1.5 でアーキテクチャを早期決定** | FE探索後のアーキテクチャ乗り換えは探索効率が大幅に落ちる。最小特徴量の段階で公正比較して主軸を固める |
+| **IS_KAGGLE 自動検出** | ローカルと Kaggle Notebook でパスが異なる。`/kaggle/input` の存在確認で自動切り替えし、コードの分岐を最小化する |
 
 ---
 
@@ -258,6 +304,7 @@ uv run python scripts/feature_report.py
 | `uv` | パッケージ管理（pip/conda 不使用） |
 | `LightGBM` | デフォルトモデル |
 | `XGBoost` / `CatBoost` | アンサンブル用追加モデル |
+| `RealMLP` | NN系主軸候補（pub_oof_gap 小・OOF信頼性高） |
 | `Optuna` | ハイパーパラメータ最適化 |
 | `matplotlib` / `seaborn` | 可視化（非インタラクティブ・画像保存） |
 | `SHAP` | 特徴量重要度の説明 |
