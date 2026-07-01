@@ -248,7 +248,7 @@ SESSION.md のオーバーフロー検知:
 
 21. **OOF最大化とpub_oof_gap最小化の二軸評価（gap最大化は禁止）**
 
-   **データに基づく根拠（s6e6 全50提出の実証）:**
+   **データに基づく根拠（過去コンペ全提出の実証）:**
    - OOF → Private の相関: **r=+0.998**（OOF最大化がPrivate最大化に直結）
    - pub_oof_gap → Private の相関: **r=−0.51**（gap拡大はPrivateに有害）
    - pub_oof_gap → シェイクダウン量 の相関: **r=+0.853**（gapが大きいほど必ずシェイクダウン）
@@ -269,7 +269,7 @@ SESSION.md のオーバーフロー検知:
    - 「OOF↓かつPublic↑」は外部データ由来FEを除き原則棄却（OOFを犠牲にしてgapを操作しない）
 
    **モデルファミリー別OOF信頼性（コンペごとに早期確認）:**
-   | ファミリー | 傾向（s6e6実証値） | 解釈 |
+   | ファミリー | 傾向（実証値） | 解釈 |
    |---|---|---|
    | NN系（RealMLP等） | pub_oof_gap小、OOF→Private r≈1.000 | OOFが信頼できる → 主軸候補 |
    | Tree系（LGB等） | pub_oof_gap大、Private≈OOF+0.0002 | 外部テストで浮上しやすい → 補完候補 |
@@ -488,9 +488,10 @@ import sys
 sys.path.insert(0, "/kaggle/input/<dataset-name>")
 
 # セル2: 設定確認
-from src.config import IS_KAGGLE, RAW_DATA_DIR, COMPETITIONS
-print(f"IS_KAGGLE={IS_KAGGLE}")  # → True
+from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
+print(f"IS_KAGGLE={IS_KAGGLE}")        # → True
 print(f"RAW_DATA_DIR={RAW_DATA_DIR}")  # → /kaggle/input/
+print(f"OOF_DIR={OOF_DIR}")            # → /kaggle/working/data/output/oof/
 ```
 
 **Kaggle Notebook での実験スクリプト実行:**
@@ -503,6 +504,43 @@ result = subprocess.run(
     capture_output=True, text=True
 )
 print(result.stdout)
+print(result.stderr)  # エラーがある場合はここに出る
+```
+
+**Kaggle Notebook でのデータ読み込みパターン:**
+
+```python
+import pandas as pd
+from src.config import RAW_DATA_DIR, IS_KAGGLE, COMPETITION
+
+if IS_KAGGLE:
+    # コンペデータは /kaggle/input/<competition-slug>/ 以下にある
+    train = pd.read_csv(RAW_DATA_DIR / COMPETITION / "train.csv")
+    test  = pd.read_csv(RAW_DATA_DIR / COMPETITION / "test.csv")
+else:
+    train = pd.read_csv(RAW_DATA_DIR / "train.csv")
+    test  = pd.read_csv(RAW_DATA_DIR / "test.csv")
+```
+
+**Kaggle Notebook からの提出フロー:**
+
+```python
+# 1. 予測・提出ファイル生成（submission_path() で /kaggle/working/ 以下に保存）
+from src.config import submission_path
+sub_path = submission_path(model="lgb", oof_score=0.91777, exp_id="001")
+sub_df.to_csv(sub_path, index=False)
+print(f"Saved: {sub_path}")
+
+# 2. Kaggle CLI で直接提出（Notebook 内から）
+import subprocess
+result = subprocess.run(
+    ["kaggle", "competitions", "submit",
+     "-c", COMPETITION,
+     "-f", str(sub_path),
+     "-m", "exp001 lgb baseline"],
+    capture_output=True, text=True
+)
+print(result.stdout)
 ```
 
 **注意点:**
@@ -510,23 +548,8 @@ print(result.stdout)
 - Kaggle Notebook は `/kaggle/working/` のみ書き込み可能（`/kaggle/input/` は読み取り専用）
 - GPU 利用時は `device = "cuda"` を config で設定する（LightGBM は `device = "gpu"`）
 - セッションをまたぐ場合、`/kaggle/working/` 以下の成果物は消えることがある（Dataset に保存して持ち出す）
+- Kaggle CLI で提出するには Notebook の「Internet access」を有効にする必要がある
 - `submission_path()` が生成する CSV は `/kaggle/working/data/output/submissions/` に保存される
-
-**Kaggle Notebook でのデータ読み込みパターン:**
-
-```python
-import pandas as pd
-from pathlib import Path
-from src.config import RAW_DATA_DIR, IS_KAGGLE
-
-if IS_KAGGLE:
-    # コンペ名に対応するサブディレクトリを指定
-    train = pd.read_csv(RAW_DATA_DIR / "competition-name" / "train.csv")
-    test  = pd.read_csv(RAW_DATA_DIR / "competition-name" / "test.csv")
-else:
-    train = pd.read_csv(RAW_DATA_DIR / "train.csv")
-    test  = pd.read_csv(RAW_DATA_DIR / "test.csv")
-```
 
 ### 提出ファイルの命名規約
 
@@ -849,8 +872,8 @@ STEP 8【Blend of Blends - 構造的に異なる blend の consensus】
 ```
 1. ΔOOF を確認する（目安: +0.0003 以上 = 明確な改善）
 2. 追加後モデルの feature importance (gain) を確認する
-   → 新列の importance が BASE 既存列の中位（例: PitStop の 2177 以上）なら「情報は持っているが既存列と重複」
-   → 新列の importance が BASE 最下位（PitStop: 2177）を大幅に下回るなら「真に情報なし」
+   → 新列の importance が BASE 既存列の中位以上なら「情報は持っているが既存列と重複」
+   → 新列の importance が BASE 最下位を大幅に下回るなら「真に情報なし」
 ```
 
 判断マトリクス:
@@ -1101,7 +1124,7 @@ OOF=<score>  model=<model>  features=<feature_set>
 
 例:
 ```
-feat(exp042): tenure×MonthlyCharges の交互作用特徴量を追加
+feat(exp042): col_A×col_B の交互作用特徴量を追加
 
 OOF=0.91688  model=lgb  features=fe_v7_interaction
 ```
