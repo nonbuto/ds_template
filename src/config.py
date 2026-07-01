@@ -1,15 +1,32 @@
 from datetime import datetime
 from pathlib import Path
+import os
+
+# ===== 環境検出（ローカル / Kaggle Notebook）=====
+# Kaggle Notebook 環境では /kaggle/ が存在する
+_KAGGLE_INPUT = Path("/kaggle/input")
+IS_KAGGLE = _KAGGLE_INPUT.exists()
 
 # プロジェクトのルートディレクトリ
-ROOT_DIR = Path(__file__).resolve().parent.parent
+if IS_KAGGLE:
+    ROOT_DIR = Path("/kaggle/working")
+else:
+    ROOT_DIR = Path(__file__).resolve().parent.parent
 
 # 各種ディレクトリ
-DATA_DIR = ROOT_DIR / "data"
-RAW_DATA_DIR = DATA_DIR / "raw"
-PROCESSED_DATA_DIR = DATA_DIR / "processed"
-OUTPUT_DIR = DATA_DIR / "output"
-EXPERIMENTS_DIR = ROOT_DIR / "experiments"
+if IS_KAGGLE:
+    # Kaggle Notebook: /kaggle/working/ 以下に出力する
+    DATA_DIR = ROOT_DIR / "data"
+    RAW_DATA_DIR = _KAGGLE_INPUT          # Kaggle dataset は /kaggle/input/ 以下
+    PROCESSED_DATA_DIR = DATA_DIR / "processed"
+    OUTPUT_DIR = DATA_DIR / "output"
+    EXPERIMENTS_DIR = ROOT_DIR / "experiments"
+else:
+    DATA_DIR = ROOT_DIR / "data"
+    RAW_DATA_DIR = DATA_DIR / "raw"
+    PROCESSED_DATA_DIR = DATA_DIR / "processed"
+    OUTPUT_DIR = DATA_DIR / "output"
+    EXPERIMENTS_DIR = ROOT_DIR / "experiments"
 
 # output/ のサブディレクトリ（役割別に分離）
 SUBMISSIONS_DIR = OUTPUT_DIR / "submissions"   # 提出CSVのみ
@@ -19,14 +36,17 @@ PARAMS_DIR = OUTPUT_DIR / "params"            # best_params JSON
 PLOTS_DIR = OUTPUT_DIR / "plots"              # EDA・可視化画像（Claude が Read で読む）
 
 # 実験スクリプトの保管先
-RUNS_DIR = ROOT_DIR / "experiments" / "runs"  # 実験ごとの1回限りスクリプト
+RUNS_DIR = EXPERIMENTS_DIR / "runs"           # 実験ごとの1回限りスクリプト
 
 # 乱数シードなどのグローバル定数
 RANDOM_STATE = 42
 
-# 必要なディレクトリが存在しない場合は作成
-for _d in [RAW_DATA_DIR, PROCESSED_DATA_DIR, EXPERIMENTS_DIR,
-           SUBMISSIONS_DIR, OOF_DIR, MODELS_DIR, PARAMS_DIR, PLOTS_DIR, RUNS_DIR]:
+# 必要なディレクトリが存在しない場合は作成（RAW_DATA_DIR は Kaggle 環境では作成しない）
+_dirs_to_create = [PROCESSED_DATA_DIR, EXPERIMENTS_DIR,
+                   SUBMISSIONS_DIR, OOF_DIR, MODELS_DIR, PARAMS_DIR, PLOTS_DIR, RUNS_DIR]
+if not IS_KAGGLE:
+    _dirs_to_create.append(RAW_DATA_DIR)
+for _d in _dirs_to_create:
     _d.mkdir(parents=True, exist_ok=True)
 
 
@@ -61,3 +81,7 @@ N_SPLITS = 5
 # 実験トラッキング
 MLFLOW_TRACKING_URI = str(EXPERIMENTS_DIR / "mlflow")
 EXPERIMENT_NAME = f"{COMPETITION}_baseline"  # 実験ブランチごとに更新する
+
+# Kaggle Notebook 環境情報（デバッグ用）
+if IS_KAGGLE:
+    _kaggle_datasets = list(_KAGGLE_INPUT.iterdir()) if _KAGGLE_INPUT.exists() else []

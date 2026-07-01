@@ -200,7 +200,7 @@
 - **背景（反省点）**: CB boosting_type変更（Ordered→Plain）が予測相関=1.000と判明したのは実装・学習後だった。事前に確認できる指標があれば計算コストを節約できた。
 - **対応内容**: `run_ensemble.py` または `src/utils/ensemble.py` に「相関行列の表示 → weight=0 のモデルを自動スキップ」ロジックを追加する
 - **影響ファイル**: src/utils/ensemble.py, run_ensemble.py（または同等のアンサンブルスクリプト）
-- **状態**: [TODO]
+- **状態**: [DONE] 2026-07-01 CLAUDE.md Stage 6 STEP 1（相関確認フロー）で反映済み。`correlation_check()` が相関≥0.998の場合スキップとなっている
 
 ---
 
@@ -341,3 +341,31 @@
 - **設計判断**: 手入力は `COMPETITION` 1 項目のみ。残りはデータ・メタデータ・対話から自動導出し提示確認する方式
 - **影響ファイル**: `.python-version`（新規）, pyproject.toml, README.md, `.claude/skills/kickoff/SKILL.md`
 - **状態**: [DONE] 2026-06-01
+
+---
+
+## [2026-07-01] HIGH — s6e6 コンペ振り返りによるテンプレート改善（5項目）
+
+### A. OOF最大化 + pub_oof_gap最小化の二軸評価（gap最大化廃止）
+- **背景**: s6e6 全50提出の統計分析。OOF→Private r=+0.998、pub_oof_gap→Private r=−0.51、gap→シェイクダウン量 r=+0.853。SESSION.md に記録されていた「ΔLB = ΔOOF + Δgap → gap拡大で改善」は誤り。
+- **対応内容**: CLAUDE.md AIへの指針 #21「OOF最大化とpub_oof_gap最小化の二軸評価」追加。モデルファミリー別OOF信頼性テーブル（NN/Tree/Blend）付き。pub_oof_gap監視ルール追記。
+- **影響ファイル**: CLAUDE.md
+- **状態**: [DONE] 2026-07-01
+
+### B. Stage 1.5（早期アーキテクチャサーベイ）新設
+- **背景**: s6e6 では LGB 主軸のまま 40+ 実験を費やし、RealMLP 移行が終盤になった。Phase 効率分析: LGB FE 探索 +0.000007 LB/提出 vs RealMLP 移行 +0.000343 LB/提出（50x 差）。
+- **対応内容**: CLAUDE.md ステージゲート表に「1.5. 早期アーキテクチャサーベイ」追加。公正比較条件（同一FE/HP/CV）の義務化。手順・記録テーブル・教訓を記載。AIへの指針 #22「アーキテクチャ乗り換え時の公正比較義務」追加。
+- **影響ファイル**: CLAUDE.md
+- **状態**: [DONE] 2026-07-01
+
+### C. FE有効性のアーキテクチャ依存性明記
+- **背景**: LGB で棄却した FE が RealMLP では有効だったケースが s6e6 で複数発生。「LGB 棄却 = 全アーキテクチャで棄却」という誤判断を防ぐ。
+- **対応内容**: CLAUDE.md FE棄却判断マトリクスの後に「FEの有効性はアーキテクチャに依存する」節追加。棄却記録に「棄却したアーキテクチャ名」明記義務。Stage 4 → Stage 6 移行時の FE 移植手順追加。Stage 4 完了条件に「全候補アーキテクチャに同一FEを移植して再評価済み」追記。
+- **影響ファイル**: CLAUDE.md
+- **状態**: [DONE] 2026-07-01
+
+### D. Kaggle Notebook 環境サポート追加
+- **背景**: テンプレートをローカル環境専用から Kaggle Notebook 環境でも動作するよう拡張する。IS_KAGGLE フラグで自動切り替え。
+- **対応内容**: `src/config.py` に `IS_KAGGLE` 環境検出追加（`/kaggle/input` 存在確認）。ローカル/Kaggle でパス自動切り替え。CLAUDE.md に「Kaggle Notebook 環境サポート」セクション追加（セットアップ手順・データ読み込みパターン・注意点）。
+- **影響ファイル**: src/config.py, CLAUDE.md
+- **状態**: [DONE] 2026-07-01
