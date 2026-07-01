@@ -26,6 +26,8 @@ AIが担うのは「構造化・分析・記録」であり、ユーザーが担
     ↓
 /kaggle-submit ── LBに提出してCV/LB相関を確立する（以降のOOF判断の基準点）
     ↓ CV/LB相関が確認できたら
+Stage 1.5 ──────── 早期アーキテクチャサーベイ（同一特徴量×作業用HP×同一CVで複数アーキテクチャ比較）
+    ↓ OOFとpub_oof_gapを記録し「主軸アーキテクチャ」を1つ決定する
 /eda-visual ───── 「何を知りたいか」を先に言語化する（kickoff と基準点を持ち込む）
     ↓ 仮説の種を /fe-hypothesis に登録しながら進む
 Optuna 軽量 ──── 作業用HP調整（20〜30試行）。FEのΔAUC計測ノイズを低減する目的
@@ -244,6 +246,62 @@ SESSION.md のオーバーフロー検知:
    → 候補評価表は必ず Public LB と OOF を併記する
    → **教訓**: 過去コンペで OOF Top の候補が Public LB で平凡だったため Final 2 から除外、結果 Private LB で最高だったことが事後判明
 
+21. **OOF最大化とpub_oof_gap最小化の二軸評価（gap最大化は禁止）**
+
+   **データに基づく根拠（s6e6 全50提出の実証）:**
+   - OOF → Private の相関: **r=+0.998**（OOF最大化がPrivate最大化に直結）
+   - pub_oof_gap → Private の相関: **r=−0.51**（gap拡大はPrivateに有害）
+   - pub_oof_gap → シェイクダウン量 の相関: **r=+0.853**（gapが大きいほど必ずシェイクダウン）
+
+   **廃止する考え方:**
+   - × 「ΔLB = ΔOOF + Δgap → gap拡大でLBが上がる」
+   - × 「Pub-OOF gapを大きく保つほどPrivateに有利」
+   - × 「OOF↓かつPublic↑ならgap効果で良いFE」
+
+   **採用する考え方（優先順）:**
+   1. **第一目標: OOF最大化** — r=0.998でPrivateに直結。これが唯一の主目標
+   2. **第二目標: 同OOF水準ならpub_oof_gap最小化** — シェイクダウンリスクを下げる
+   3. pub_oof_gap は「Privateの予測因子」ではなく **「シェイクダウンの警戒指標」** として記録する
+
+   **pub_oof_gap 監視ルール:**
+   - 全実験の pub_oof_gap 中央値を「基準線」として記録する
+   - 新実験で基準線 + 0.0005 を超えた場合: SESSION.md に「Public過剰浮上警告」を記録
+   - 「OOF↓かつPublic↑」は外部データ由来FEを除き原則棄却（OOFを犠牲にしてgapを操作しない）
+
+   **モデルファミリー別OOF信頼性（コンペごとに早期確認）:**
+   | ファミリー | 傾向（s6e6実証値） | 解釈 |
+   |---|---|---|
+   | NN系（RealMLP等） | pub_oof_gap小、OOF→Private r≈1.000 | OOFが信頼できる → 主軸候補 |
+   | Tree系（LGB等） | pub_oof_gap大、Private≈OOF+0.0002 | 外部テストで浮上しやすい → 補完候補 |
+   | Blend/EoS | pub_oof_gap最小でもPriv-OOF負 | OOFがCV誤差相殺で過大評価 → 要注意 |
+   → Stage 1.5（後述）でファミリー別pub_oof_gapを記録し「信頼できるOOF」を持つモデルを早期特定する
+
+   → **教訓**: 「gap拡大仮説（gap大=LB高）」はPublicに対しては局所的に観察されるが、Privateに対しては r=−0.51 の逆効果。OOF最大化こそが唯一信頼できる戦略。
+
+22. **アーキテクチャ乗り換え時の公正比較義務**
+
+   新しいアーキテクチャを既存と比較するとき、**以下の条件を揃えることは AI の義務**:
+
+   1. **同一特徴量セット**: 主軸アーキテクチャで確定した FE セットを新アーキテクチャにも適用する
+   2. **作業用 HP の確保**: デフォルト HP のまま比較しない。Optuna 20-30 試行以上で作業用 HP を確定してから比較する
+   3. **同一 CV 戦略**: fold 数・シード・分割戦略を揃える
+
+   比較前に必ず以下を宣言する:
+   ```
+   比較条件:
+     特徴量: <特徴量セット名>（主軸と同一）
+     HP: 作業用 HP 確定済み / デフォルト（要 Optuna）
+     CV: <fold数>-fold × <seed数> seed avg
+   ```
+
+   **不公正比較のパターン（禁止）:**
+   - × 最適化済み LGB（40 実験分の HP + FE）vs デフォルト HP の RealMLP（Stage 1 FE）
+   - × 「既存モデルに特化した特徴量セット」で新モデルを評価
+   - × 特徴量を絞って「軽量版」で比較（アーキテクチャ差と FE 差が混在）
+
+   > **教訓 (s6e6 事例)**: RealMLP を「FE 削減版 + デフォルト HP」で評価し「LGB より劣る」と誤判断。
+   > 後に公正条件（同一 FE + 作業用 HP）で評価したところ RealMLP が主軸として有効と判明した。
+
 19. **Final 2 候補プールの拡張ルール（Public Top + OOF Top の和集合）**
    → Public LB Top-N だけのスクリーニングは Public 過適合候補を優先しがち
    → 候補プール構築: **Public LB Top-10 ∪ OOF Top-10**（重複除去で 10-15 個）
@@ -399,6 +457,77 @@ experiments/runs/
 - 特徴量名: snake_case・スペースなし
 - `src/` 配下に型ヒントを付ける
 
+### Kaggle Notebook 環境サポート
+
+このテンプレートはローカル環境と Kaggle Notebook 環境の両方で動作するよう設計されている。
+`src/config.py` が自動的に環境を検出し、パスを切り替える。
+
+**環境検出の仕組み:**
+
+```python
+from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
+
+# ローカル環境: IS_KAGGLE = False
+#   RAW_DATA_DIR = <project_root>/data/raw/
+#   OOF_DIR      = <project_root>/data/output/oof/
+
+# Kaggle Notebook 環境: IS_KAGGLE = True
+#   RAW_DATA_DIR = /kaggle/input/   ← コンペデータが自動マウント
+#   OOF_DIR      = /kaggle/working/data/output/oof/
+```
+
+**Kaggle Notebook でのセットアップ手順:**
+
+1. このリポジトリを Kaggle Dataset として登録する（または `kaggle datasets create`）
+2. Notebook に Dataset を追加すると `/kaggle/input/<dataset-name>/` にマウントされる
+3. Notebook の最初のセルで以下を実行する:
+
+```python
+# セル1: リポジトリをパスに追加
+import sys
+sys.path.insert(0, "/kaggle/input/<dataset-name>")
+
+# セル2: 設定確認
+from src.config import IS_KAGGLE, RAW_DATA_DIR, COMPETITIONS
+print(f"IS_KAGGLE={IS_KAGGLE}")  # → True
+print(f"RAW_DATA_DIR={RAW_DATA_DIR}")  # → /kaggle/input/
+```
+
+**Kaggle Notebook での実験スクリプト実行:**
+
+```python
+# Notebook セルから実験スクリプトを実行
+import subprocess
+result = subprocess.run(
+    ["python", "/kaggle/input/<dataset-name>/experiments/runs/exp001_s1_lgb_baseline.py"],
+    capture_output=True, text=True
+)
+print(result.stdout)
+```
+
+**注意点:**
+
+- Kaggle Notebook は `/kaggle/working/` のみ書き込み可能（`/kaggle/input/` は読み取り専用）
+- GPU 利用時は `device = "cuda"` を config で設定する（LightGBM は `device = "gpu"`）
+- セッションをまたぐ場合、`/kaggle/working/` 以下の成果物は消えることがある（Dataset に保存して持ち出す）
+- `submission_path()` が生成する CSV は `/kaggle/working/data/output/submissions/` に保存される
+
+**Kaggle Notebook でのデータ読み込みパターン:**
+
+```python
+import pandas as pd
+from pathlib import Path
+from src.config import RAW_DATA_DIR, IS_KAGGLE
+
+if IS_KAGGLE:
+    # コンペ名に対応するサブディレクトリを指定
+    train = pd.read_csv(RAW_DATA_DIR / "competition-name" / "train.csv")
+    test  = pd.read_csv(RAW_DATA_DIR / "competition-name" / "test.csv")
+else:
+    train = pd.read_csv(RAW_DATA_DIR / "train.csv")
+    test  = pd.read_csv(RAW_DATA_DIR / "test.csv")
+```
+
 ### 提出ファイルの命名規約
 
 提出CSVは必ず `submission_path()` ヘルパーで生成する:
@@ -437,11 +566,50 @@ sub.to_csv(sub_path, index=False)
 |---|---|---|---|
 | **0. Kickoff** | データの文脈理解 | `COMPETITION.md` にデータ種別・外部データ有無・評価指標特性・CV設計の初期判断を記録済み | `/kickoff` |
 | **1. 最小ベースライン** | CV/LB相関の確立 | 前処理不要な数値カラムのみ・デフォルトHPでモデルを学習し、LBに提出してCV/LB相関を確認済み。以降すべての改善はこの基準点からのΔで判断する | `/new-experiment` + `/kaggle-submit` |
+| **1.5. 早期アーキテクチャサーベイ** | 主軸アーキテクチャの決定 | 候補アーキテクチャ（Tree/NN/Linear等）を最小特徴量セット + 作業用HPで評価し、OOFとpub_oof_gapを記録。「主軸アーキテクチャ」を1つ決定済み。後述「早期アーキテクチャサーベイの手順」に従い実施 | `/new-experiment` |
 | **2. EDA** | 問いとFE仮説の種を獲得 | `/eda-visual` で「問い→発見→FE仮説の種」の対話完了。合成データの場合は元データとの分布比較も含む | `/eda-visual` |
 | **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔAUC計測のノイズ低減 | Optuna（軽量） |
-| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ `scripts/feature_study.py` で投入**してΔAUC と feature importance (gain) を計測済み。合成データの場合は外部シグナルFEを先に検証済み。**AV 診断**（adversarial validation）で train/test 分布シフトの有無を確認済み | `/fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
+| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ `scripts/feature_study.py` で投入**してΔAUC と feature importance (gain) を計測済み。合成データの場合は外部シグナルFEを先に検証済み。**AV 診断**（adversarial validation）で train/test 分布シフトの有無を確認済み。**FE確定後、全候補アーキテクチャに同一FEを移植して再評価済み** | `/fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
 | **5. 本格HP最適化** | 確定特徴量での性能最大化 | Stage4の特徴量セットが確定した状態でOptuna 100試行以上を実施済み。ΔAUCの改善が±0.0002以内で収束していること。**FE変更時の HP retune ルール**: Stage 4 以降に FE が ±20% 以上変動した場合、または domain-specific 新特徴量を追加した場合、HP retune を再実行する（FE変更で HP 最適点は確実に変動。過去事例では HP retune で +1σ OOF 改善を実証） | Optuna（フルサーチ） |
 | **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。下記「アンサンブル探索手順」に従い実施済み | `src/utils/ensemble.py` |
+
+**早期アーキテクチャサーベイの手順（Stage 1.5）:**
+
+Stage 1（最小ベースライン）完了直後に実施する。FE探索を始める前に「主軸アーキテクチャ」を決定する。
+
+```
+目的: 「このデータに最も合うアーキテクチャ」を最小コストで特定する
+実施タイミング: Stage 1 完了後・Stage 2（EDA）開始前
+```
+
+**実施手順:**
+
+1. **候補アーキテクチャの選定**: 最低3種を評価する（例: LightGBM / CatBoost / RealMLP / TabNet）
+2. **共通評価条件（公正比較のための必須条件）**:
+   - 同一の特徴量セット（Stage 1 と同じ最小特徴量）
+   - 同一の CV 戦略（fold 数・シード）
+   - 作業用 HP（Optuna 20-30 試行、または文献推奨デフォルト）
+3. **記録項目**: 各アーキテクチャについて `OOF` と `pub_oof_gap` を記録する
+
+   | アーキテクチャ | OOF | pub_oof_gap | 処理時間 | 採否 |
+   |---|---|---|---|---|
+   | LightGBM | 0.XXXX | -0.000XX | X min | 主軸候補 |
+   | RealMLP | 0.XXXX | -0.000XX | X min | 副軸候補 |
+   | … | … | … | … | … |
+
+4. **主軸の決定**: OOF が最高 かつ pub_oof_gap が最小 のアーキテクチャを主軸とする。両者が競合する場合は **OOF を優先**（AI 指針 #21）
+5. **副軸の保持**: 主軸と 10% 以内の OOF 差のアーキテクチャは「Stage 6 アンサンブル候補」として記録しておく
+
+**公正比較の注意点（過去事例の教訓）:**
+
+- ❌ 「最適化済み LGB vs デフォルト HP の RealMLP」は **不公正比較**。新アーキテクチャは必ず作業用 HP を揃えてから比較する
+- ❌ 特徴量セットを変えての比較は NG（アーキテクチャ差と FE 差が混在する）
+- ✅ 「Stage 1 特徴量 × 作業用 HP × 同一 CV」の条件を揃える
+- ✅ FE が完成した後に **再評価**する（Stage 4 完了後に全候補アーキテクチャへ同一 FE を移植）
+
+> **教訓 (s6e6 事例)**: LGB 主軸のまま 40+ 実験を費やし、RealMLP を試したのがコンペ終盤だった。
+> 早期サーベイで RealMLP の優位性（提出効率 50x）を特定できていれば、探索効率が大幅に改善した。
+> Phase 効率分析: LGB FE 探索（31 提出）= +0.000007 LB/提出、RealMLP 移行（8 提出）= +0.000343 LB/提出
 
 **AV 診断（Adversarial Validation）の標準実施手順:**
 
@@ -694,6 +862,34 @@ STEP 8【Blend of Blends - 構造的に異なる blend の consensus】
 | マイナス | — | ❌ 棄却: ノイズ追加 |
 
 > **「ΔOOF < 0.0003 → 即棄却」は誤り。importance が中位以上なら既存列の代替候補として記録する。**
+
+**FE の有効性はアーキテクチャに依存する（LGB 棄却 ≠ 全アーキテクチャで棄却）:**
+
+あるアーキテクチャで ΔOOF < 閾値だった特徴量が、別アーキテクチャでは有効なケースがある。
+これは特徴量の表現力（線形 vs 非線形）とアーキテクチャの相性による。
+
+```
+棄却の意味を正しく解釈する:
+  × 「この特徴量は無効」      ← 誤り
+  ○ 「主軸アーキテクチャ（LGB等）ではこの FE が効かなかった」
+```
+
+**Stage 4 棄却記録への追記義務:**
+
+FE_HYPOTHESES.md の棄却エントリには「棄却したアーキテクチャ」を必ず明記する:
+```
+- 棄却: LGB で ΔOOF=+0.00010（閾値未満）
+- 未評価: RealMLP, CatBoost（別アーキテクチャでの効果は不明）
+- 再試行条件: Stage 1.5 で RealMLP が主軸になった場合は再評価する
+```
+
+**Stage 4 → Stage 6 移行時のアーキテクチャ間 FE 移植:**
+
+FE 確定後、Stage 1.5 で「副軸候補」にリストされた全アーキテクチャへ同一 FE セットを移植して再評価する。
+LGB で棄却された FE でも、副軸アーキテクチャ（例: RealMLP）に対しては効果が異なる場合がある。
+
+> **教訓 (s6e6 事例)**: LGB で棄却した複数の特徴量が RealMLP では有効だったが、
+> 「LGB 棄却 = 不採用」と判断して移植せずに提出してしまった。アーキテクチャ乗り換え時は FE の棄却リストを再検討する。
 
 **FE 仮説の棄却記録には「再試行条件」を必ず書く:**
 
