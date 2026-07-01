@@ -101,6 +101,18 @@ from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR
 
 → 完了後は学習サイクルへ。`/new-experiment` で最小ベースライン実験を開始する。
 
+### （参考）スキルを使わない手動フロー
+
+```bash
+git clone https://github.com/nonbuto/ds_template.git my-competition
+cd my-competition
+git checkout -b comp/<slug>
+uv sync                                                  # .python-version=3.12 で構築される
+# src/config.py の COMPETITION だけ設定（残りは /kickoff が埋める）
+uv run kaggle competitions download -c <slug> -p data/raw/
+# Claude Code を起動して /kickoff
+```
+
 ---
 
 ## Kaggle Notebook 環境での使い方
