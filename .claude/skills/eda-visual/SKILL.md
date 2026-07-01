@@ -212,7 +212,7 @@ plt.close(fig)
 保存後、Claudeは `Read` ツールで画像を読み込み、グラフを見ながらSTEP Bの問いかけを行う。
 
 **命名規約**: `data/output/plots/eda_{変数名}_{テーマ}.png`
-- 例: `eda_tenure_target_dist.png`、`eda_contract_target_rate.png`、`eda_train_test_monthly.png`
+- 例: `eda_age_target_dist.png`、`eda_category_target_rate.png`、`eda_train_test_col1.png`
 
 **ループ終了後（フェーズ4〜5が完了した後）、総括画像セットを保存する:**
 
