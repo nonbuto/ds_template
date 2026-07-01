@@ -58,16 +58,28 @@ import subprocess
 from pathlib import Path
 
 # --- ds_template をパスに追加 ---
-DATASET_NAME = "{dataset_name}"  # Kaggle Dataset 名（変更する場合はここを編集）
-TEMPLATE_DIR = Path(f"/kaggle/input/{{DATASET_NAME}}")
+# API push実行: /kaggle/input/datasets/<user>/<name>/
+# UIノートブック: /kaggle/input/<name>/
+DATASET_NAME = "{dataset_name}"
+DATASET_USER = "{dataset_user}"
+_api_path = Path(f"/kaggle/input/datasets/{{DATASET_USER}}/{{DATASET_NAME}}")
+_ui_path  = Path(f"/kaggle/input/{{DATASET_NAME}}")
+TEMPLATE_DIR = _api_path if _api_path.exists() else _ui_path
 if TEMPLATE_DIR.exists():
     sys.path.insert(0, str(TEMPLATE_DIR))
 else:
     raise FileNotFoundError(
         f"Dataset '{{DATASET_NAME}}' が見つかりません。\\n"
-        f"Kaggle Notebook に ds_template Dataset を追加してください。\\n"
-        f"  → 右パネル: Add Data > Your Datasets > {{DATASET_NAME}}"
+        f"確認したパス: {{_api_path}}, {{_ui_path}}\\n"
+        f"Kaggle Notebook に ds_template Dataset を追加してください。"
     )
+
+# --- コンペ設定を注入（Datasetのconfig.pyのプレースホルダーを上書き）---
+import src.config as _cfg
+_cfg.COMPETITION = "{competition}"
+_cfg.TARGET_COL  = "{target_col}"
+_cfg.RAW_DATA_DIR = _cfg._KAGGLE_COMP_ROOT / "{competition}"
+_cfg.EXPERIMENT_NAME = f"{{_cfg.COMPETITION}}_baseline"
 
 # --- 設定確認 ---
 from src.config import IS_KAGGLE, RAW_DATA_DIR, OOF_DIR, SUBMISSIONS_DIR, COMPETITION
@@ -139,7 +151,9 @@ def build_ipynb_from_script(
     py_path: Path,
     out_path: Path,
     dataset_name: str,
+    dataset_user: str,
     competition: str,
+    target_col: str,
     submission_mode: bool,
 ) -> None:
     """通常の.pyスクリプトからKaggle実行用.ipynbを生成する。"""
@@ -151,16 +165,16 @@ def build_ipynb_from_script(
 
     code = py_path.read_text(encoding="utf-8")
 
-    # セットアップセル（コンペ名を埋め込む）
+    # セットアップセル（コンペ名・ユーザー名・ターゲット列を埋め込む）
     setup_code = SETUP_CELL_TEMPLATE.format(
         dataset_name=dataset_name,
+        dataset_user=dataset_user,
         competition=competition,
+        target_col=target_col,
     )
 
-    # 実験コードセル
-    # sys.path.insert の行を削除（セットアップセルで処理済み）
-    # __file__ を明示的パスに置換してKaggle上でも動くようにする
-    cleaned_code = _clean_script_for_kaggle(code, py_path, dataset_name)
+    # 実験コードセル: sys.path.insert を除去し、from src.config import 後に設定値を注入
+    cleaned_code = _clean_script_for_kaggle(code, py_path, dataset_name, competition, target_col)
 
     cells = [
         nbformat.v4.new_markdown_cell(
@@ -190,14 +204,17 @@ def build_ipynb_from_script(
         nbformat.write(nb, f)
 
 
-def _clean_script_for_kaggle(code: str, py_path: Path, dataset_name: str) -> str:
-    """実験スクリプトをKaggle環境向けにクリーニングする。"""
+def _clean_script_for_kaggle(
+    code: str, py_path: Path, dataset_name: str, competition: str, target_col: str
+) -> str:
+    """実験スクリプトをKaggle環境向けにクリーニングし、設定値を注入する。"""
     lines = code.splitlines()
     cleaned = []
+    in_src_config_import = False
+    injected = False
 
     for line in lines:
         # sys.path.insert でローカルパスを追加している行を除去
-        # (セットアップセルで /kaggle/input/<dataset>/ を追加済み)
         if "sys.path.insert" in line and ("__file__" in line or "parent" in line):
             cleaned.append(f"# [Kaggle対応済み] {line}")
             continue
@@ -205,7 +222,22 @@ def _clean_script_for_kaggle(code: str, py_path: Path, dataset_name: str) -> str
         if "__file__" in line:
             kaggle_path = f"/kaggle/input/{dataset_name}/{py_path.relative_to(Path(__file__).resolve().parent.parent)}"
             line = line.replace("__file__", f'"{kaggle_path}"')
+
+        # src.config の import ブロック検出
+        if "from src.config import" in line:
+            in_src_config_import = True
         cleaned.append(line)
+
+        # import ブロック終了後に TARGET_COL / RAW_DATA_DIR を注入
+        if in_src_config_import and not injected:
+            is_block_end = ")" in line or ("from src.config import" in line and "(" not in line)
+            if is_block_end:
+                in_src_config_import = False
+                injected = True
+                cleaned.append(f'# [Kaggle注入] コンペ固有の設定値を上書き')
+                cleaned.append(f'from pathlib import Path as _KagglePath')
+                cleaned.append(f'TARGET_COL = "{target_col}"')
+                cleaned.append(f'RAW_DATA_DIR = _KagglePath("/kaggle/input/competitions/{competition}")')
 
     return "\n".join(cleaned)
 
@@ -244,12 +276,13 @@ def generate_kernel_metadata(
     out_dir: Path,
     competition: str,
     dataset_name: str,
+    dataset_user: str,
     enable_gpu: bool,
 ) -> None:
     """kaggle kernels push 用の kernel-metadata.json を生成する。"""
     slug = py_path.stem.replace("_", "-").lower()
     metadata = {
-        "id": f"{{username}}/{slug}",  # ユーザー名は kaggle push 時に自動設定
+        "id": f"{dataset_user}/{slug}",
         "title": py_path.stem,
         "code_file": f"{py_path.stem}.ipynb",
         "language": "python",
@@ -258,7 +291,7 @@ def generate_kernel_metadata(
         "enable_gpu": enable_gpu,
         "enable_tpu": False,
         "enable_internet": True,
-        "dataset_sources": [f"{{username}}/{dataset_name}"],
+        "dataset_sources": [f"{dataset_user}/{dataset_name}"],
         "competition_sources": [competition],
         "kernel_sources": [],
     }
@@ -283,6 +316,8 @@ def main():
                         help="コンペスラッグ（デフォルト: src/config.py の COMPETITION）")
     parser.add_argument("--submission-mode", action="store_true",
                         help="Notebook提出コンペ用: submission.csv を /kaggle/working/ に保存するセルを追加")
+    parser.add_argument("--target-col", default="",
+                        help="ターゲット列名（デフォルト: src/config.py の TARGET_COL）")
     gpu_group = parser.add_mutually_exclusive_group()
     gpu_group.add_argument("--gpu", action="store_true", default=None,
                            help="GPU を強制的に有効化する")
@@ -299,6 +334,21 @@ def main():
 
     dataset_name = args.dataset_name or f"ds-template-{args.competition}"
     out_path = Path(args.output) if args.output else ROOT / "kaggle_nb" / f"{py_path.stem}.ipynb"
+
+    # ターゲット列: 引数 > config.py の値
+    from src.config import TARGET_COL as _default_target
+    target_col = args.target_col or _default_target
+
+    # Kaggle ユーザー名を kaggle config から自動取得
+    try:
+        _cfg_out = subprocess.run(["kaggle", "config", "view"], capture_output=True, text=True)
+        dataset_user = next(
+            (l.split(":")[1].strip() for l in _cfg_out.stdout.splitlines() if "username" in l), ""
+        )
+    except Exception:
+        dataset_user = ""
+    if not dataset_user:
+        dataset_user = input("Kaggle ユーザー名を入力してください: ").strip()
 
     # GPU 判定（自動 → 確認 → 上書き可能）
     gpu_recommended, gpu_reason = detect_gpu_need(py_path)
@@ -320,8 +370,9 @@ def main():
         gpu_decision = f"{'有効' if enable_gpu else '無効'}（自動判定{'→変更' if answer == 'y' else ''}）"
 
     print(f"\n変換: {py_path.relative_to(ROOT)} → {out_path.relative_to(ROOT)}")
-    print(f"  Dataset    : {dataset_name}")
+    print(f"  Dataset    : {dataset_user}/{dataset_name}")
     print(f"  Competition: {args.competition}")
+    print(f"  Target col : {target_col}")
     print(f"  GPU        : {gpu_decision}")
     print(f"  Submission mode: {args.submission_mode}")
 
@@ -332,18 +383,18 @@ def main():
         if not success:
             print("⚠️  marimo export 失敗。通常変換にフォールバックします。")
             build_ipynb_from_script(
-                py_path, out_path, dataset_name, args.competition, args.submission_mode
+                py_path, out_path, dataset_name, dataset_user, args.competition, target_col, args.submission_mode
             )
     else:
         print("  形式: 通常スクリプト → nbformat で変換")
         build_ipynb_from_script(
-            py_path, out_path, dataset_name, args.competition, args.submission_mode
+            py_path, out_path, dataset_name, dataset_user, args.competition, target_col, args.submission_mode
         )
 
     print(f"\n✅ 変換完了: {out_path}")
 
     # kernel-metadata.json の生成
-    generate_kernel_metadata(py_path, out_path.parent, args.competition, dataset_name, enable_gpu)
+    generate_kernel_metadata(py_path, out_path.parent, args.competition, dataset_name, dataset_user, enable_gpu)
 
     # 必要に応じて kaggle kernels push
     if args.push:

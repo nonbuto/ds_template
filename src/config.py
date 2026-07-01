@@ -6,6 +6,14 @@ import os
 _KAGGLE_INPUT = Path("/kaggle/input")
 IS_KAGGLE = _KAGGLE_INPUT.exists()
 
+# kaggle kernels push 経由の実行時、データパスが通常のUIと異なる
+# UIノートブック:  /kaggle/input/<competition>/
+# API push実行:   /kaggle/input/competitions/<competition>/
+_KAGGLE_COMP_ROOT = (
+    _KAGGLE_INPUT / "competitions" if (_KAGGLE_INPUT / "competitions").exists()
+    else _KAGGLE_INPUT
+)
+
 # プロジェクトのルートディレクトリ
 if IS_KAGGLE:
     ROOT_DIR = Path("/kaggle/working")
@@ -24,11 +32,12 @@ N_SPLITS = 5
 # ===== データディレクトリ =====
 if IS_KAGGLE:
     # Kaggle Notebook:
-    #   - コンペデータ:    /kaggle/input/<competition>/  (read-only, 自動マウント)
-    #   - DatasetデータL   /kaggle/input/<dataset-name>/ (read-only)
-    #   - 書き込み:        /kaggle/working/              (セッション終了で消える)
+    #   UIノートブック:  /kaggle/input/<competition>/train.csv
+    #   API push実行:   /kaggle/input/competitions/<competition>/train.csv
+    #   Dataset:        /kaggle/input/datasets/<user>/<dataset-name>/
+    #   書き込み:        /kaggle/working/ (セッション終了で消える)
     DATA_DIR         = ROOT_DIR / "data"
-    RAW_DATA_DIR     = _KAGGLE_INPUT / COMPETITION   # /kaggle/input/<competition>/
+    RAW_DATA_DIR     = _KAGGLE_COMP_ROOT / COMPETITION
     PROCESSED_DATA_DIR = DATA_DIR / "processed"
     OUTPUT_DIR       = DATA_DIR / "output"
     EXPERIMENTS_DIR  = ROOT_DIR / "experiments"

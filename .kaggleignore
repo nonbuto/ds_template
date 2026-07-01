@@ -1,0 +1,9 @@
+data/raw/
+data/processed/
+data/output/
+kaggle_nb/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.DS_Store
