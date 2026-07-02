@@ -20,8 +20,8 @@ if IS_KAGGLE:
 else:
     ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# ===== コンペティション設定（/kickoff スキルが更新する） =====
-# TODO: /kickoff 実行時にここを更新する
+# ===== コンペティション設定（/ds-kickoff スキルが更新する） =====
+# TODO: /ds-kickoff 実行時にここを更新する
 COMPETITION = "your-competition-name"
 TARGET_COL = "target"
 PROBLEM_TYPE = "binary_classification"   # "regression" | "binary_classification" | "multiclass"

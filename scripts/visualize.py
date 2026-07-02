@@ -1,7 +1,7 @@
 """
 EDA可視化スクリプト
 
-/eda-visual スキルから呼び出す。画像を data/output/plots/ に保存し、
+/ds-eda-visual スキルから呼び出す。画像を data/output/plots/ に保存し、
 Claude が Read ツールで読み込んで対話に使う。
 
 使い方:

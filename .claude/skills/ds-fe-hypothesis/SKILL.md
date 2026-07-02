@@ -1,10 +1,10 @@
 ---
-name: fe-hypothesis
+name: ds-fe-hypothesis
 description: 新しい特徴量アイデアが浮かんだとき・FE仮説の検証結果を記録するとき・棄却の学びを整理するときに呼ぶ。特徴量を実装する前に「なぜ効くか」の因果を言語化することを強制し、FE_HYPOTHESES.md で採否と棄却パターンを管理する。「この特徴量を試してみましょう」と言う前に必ず起動すること。
 argument-hint: "[仮説タイトル | update H-NNN | list]"
 ---
 
-# /fe-hypothesis スキル
+# /ds-fe-hypothesis スキル
 
 ## このスキルの役割
 
@@ -12,9 +12,9 @@ argument-hint: "[仮説タイトル | update H-NNN | list]"
 採用・棄却どちらの結果も、次の仮説をより賢くするための情報として構造化して残す。
 
 **3つのモード:**
-- `/fe-hypothesis <仮説タイトル>` — 新規仮説の立案・記録
-- `/fe-hypothesis update H-NNN` — 検証結果の記録と学びの構造化
-- `/fe-hypothesis list` — 仮説一覧の表示と次の候補レコメンド
+- `/ds-fe-hypothesis <仮説タイトル>` — 新規仮説の立案・記録
+- `/ds-fe-hypothesis update H-NNN` — 検証結果の記録と学びの構造化
+- `/ds-fe-hypothesis list` — 仮説一覧の表示と次の候補レコメンド
 
 ---
 
@@ -153,7 +153,7 @@ STEP B【ターゲット別分布の確認】
   → 「仮説で想定したパターンと一致していますか？」とユーザーに問いかける
 
 STEP C【ユーザーとの対話】
-  可視化を見せてから問いかける（eda-visual と同じプロトコル）:
+  可視化を見せてから問いかける（ds-eda-visual と同じプロトコル）:
   「この特徴量の分布、想定通りに見えますか？」
   「仮説で予想していたターゲットとの関係が見えていますか？」
 
@@ -171,11 +171,11 @@ STEP E【確認結果の記録】
   「分布: <状態>、ターゲット別パターン: <仮説と一致/不一致>、冗長性: <なし/要確認>」
 ```
 
-可視化確認が完了したら `scripts/feature_study.py` でΔOOFを計測し、結果を `/fe-hypothesis update H-NNN` で記録する。
+可視化確認が完了したら `scripts/feature_study.py` でΔOOFを計測し、結果を `/ds-fe-hypothesis update H-NNN` で記録する。
 
 ---
 
-## モード2: 検証結果の記録（`/fe-hypothesis update H-NNN`）
+## モード2: 検証結果の記録（`/ds-fe-hypothesis update H-NNN`）
 
 ### フェーズ1: 結果の確認
 
@@ -241,9 +241,9 @@ update 完了後に必ず以下を提示する:
 ✅ H-NNN を採用記録しました。
 
 次のアクション:
-  A) さらに仮説を検証する → /fe-hypothesis list（次の候補を確認）
+  A) さらに仮説を検証する → /ds-fe-hypothesis list（次の候補を確認）
   B) 特徴量セットが十分なら本格HP最適化へ → scripts/optimize_hp.py --n-trials 150 --tag full
-  C) 新しい実験として実行記録する → /new-experiment <実験名>
+  C) 新しい実験として実行記録する → /ds-new-experiment <実験名>
 ```
 
 **棄却の場合:**
@@ -251,16 +251,16 @@ update 完了後に必ず以下を提示する:
 ❌ H-NNN を棄却記録しました。
 
 次のアクション:
-  A) 次の仮説を確認・選択する → /fe-hypothesis list
-  B) 棄却の示唆から新しい仮説を立てる → /fe-hypothesis <新仮説タイトル>
-  C) FEが十分に探索済みなら次のステージへ → /new-experiment <実験名>
+  A) 次の仮説を確認・選択する → /ds-fe-hypothesis list
+  B) 棄却の示唆から新しい仮説を立てる → /ds-fe-hypothesis <新仮説タイトル>
+  C) FEが十分に探索済みなら次のステージへ → /ds-new-experiment <実験名>
 ```
 
 SESSION.md の「次にやること」を更新する（採用なら特徴量数・OOF を、棄却なら次の候補仮説 ID を記録）。
 
 ---
 
-## モード3: 仮説一覧の表示（`/fe-hypothesis list`）
+## モード3: 仮説一覧の表示（`/ds-fe-hypothesis list`）
 
 1. ステータス別に整理して表示する
 2. **確認済みパターンのサマリーを表示する:**

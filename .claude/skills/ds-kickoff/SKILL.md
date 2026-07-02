@@ -1,10 +1,10 @@
 ---
-name: kickoff
+name: ds-kickoff
 description: コンペ参加直後に1回だけ呼ぶ。データを見る前に「そのデータが何者か」を理解するためのスキル。評価指標・データ種別（合成/実データ）・外部データ有無・CV設計の初期判断を COMPETITION.md と src/config.py に記録する。EDA や最初の実験を始める前に必ず実施すること。
 argument-hint: "<コンペ名 or URL>"
 ---
 
-# /kickoff スキル
+# /ds-kickoff スキル
 
 ## このスキルの役割
 
@@ -235,7 +235,7 @@ sample_submission.csv のヘッダー: id,<col>
 - **重視する軸**: <スコア最大化 / 自前モデルの限界追求 / 新手法の習得 / その他>
 - **具体的な意味**: <例: 外部公開予測のブレンドは Final 2 に含めない、等>
 
-> Final 2 選定時に必ずこのセクションを再掲する（`/kaggle-submit` フェーズ5 Step 0）。
+> Final 2 選定時に必ずこのセクションを再掲する（`/ds-kaggle-submit` フェーズ5 Step 0）。
 > コンペ途中で軸が変わったら更新してよい（変更履歴を1行残す）。
 ```
 
@@ -243,12 +243,12 @@ sample_submission.csv のヘッダー: id,<col>
 
 ### フェーズ3: src/config.py のコンペ設定を自動補完（実行層）
 
-**ユーザーが手で入力するのは `COMPETITION` だけ**（`/kaggle-setup` が設定済み）。
+**ユーザーが手で入力するのは `COMPETITION` だけ**（`/ds-kaggle-setup` が設定済み）。
 残りの項目は以下の情報源から **自動で決定** し、`src/config.py` の TODO セクションを上書きする:
 
 ```python
-# ===== コンペティション設定（/kickoff スキルが更新する） =====
-COMPETITION = "<slug>"             # /kaggle-setup が設定済み（変更不要）
+# ===== コンペティション設定（/ds-kickoff スキルが更新する） =====
+COMPETITION = "<slug>"             # /ds-kaggle-setup が設定済み（変更不要）
 TARGET_COL  = "<col>"              # ← sample_submission.csv の 2 列目（Q3 で検出）
 PROBLEM_TYPE = "<type>"            # ← 評価指標 + ターゲット列の値域から推定
 EVAL_METRIC  = "<metric>"          # ← Kaggle メタデータから取得
@@ -288,9 +288,9 @@ config を以下で自動補完します（COMPETITION は設定済み）:
 
 - `現在のステージ`: Stage 0 — Kickoff 完了
 - `次にやること`:
-  1. `/new-experiment` で最小ベースライン実験を開始（Stage 1）
+  1. `/ds-new-experiment` で最小ベースライン実験を開始（Stage 1）
   2. ベースラインをLBに提出してCV/LB相関を確立
-  3. CV/LB相関が確認できたら `/eda-visual` へ（Stage 2）
+  3. CV/LB相関が確認できたら `/ds-eda-visual` へ（Stage 2）
 - `今サイクルで決めた重要な方針`: FE方針・CV設計の初期判断を転記
 
 記録後、以下を提示して完了:
@@ -312,13 +312,13 @@ src/config.py を更新しました:
 SESSION.md を初期化しました。
 
 次のステップ:
-  Stage 1: /new-experiment で最小ベースライン実験を開始する
+  Stage 1: /ds-new-experiment で最小ベースライン実験を開始する
     → 前処理不要な数値カラムのみ・デフォルトHPで学習
     → scripts/train.py の FEATURES に数値カラムのみを設定
     → LBに提出してCV/LB相関を確立する
 
 ※ 合成データかつ元データが入手可能な場合は、
-  ベースライン確立後の /eda-visual で Q4（元データ vs コンペデータ比較）を必ず実施。
+  ベースライン確立後の /ds-eda-visual で Q4（元データ vs コンペデータ比較）を必ず実施。
 ```
 
 ---

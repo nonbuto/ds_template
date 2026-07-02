@@ -1,10 +1,10 @@
 ---
-name: kaggle-research
+name: ds-kaggle-research
 description: コンペ序盤（Stage 1.5 の主軸アーキテクチャ決定前）に上位解法のアーキテクチャ分布を調べるとき・FE棄却が3連続したとき・Stage 6 で外部公開予測を row-level voting に活用したいとき・「自分が思いつかない角度を探したい」ときに呼ぶ。Kaggle Discussion・上位カーネル・公開データセットを CLI で系統的に調査して競合アプローチを自前実験の仮説に接続する。「飽和した」と言う前に必ずこのスキルを実行すること。
 disable-model-invocation: true
 ---
 
-# /kaggle-research スキル
+# /ds-kaggle-research スキル
 
 ## このスキルの役割
 
