@@ -1,6 +1,6 @@
 # セッション現在地（SESSION.md）
 
-> このファイルは `/new-experiment` と `/kaggle-submit` が自動更新する。
+> このファイルは `/ds-new-experiment` と `/ds-kaggle-submit` が自動更新する。
 > 新しいセッションを開始したら、まず `/resume` を実行してください。
 
 ---
@@ -15,7 +15,7 @@
 
 ## 最後に完了したこと
 
-<!-- /new-experiment または /kaggle-submit が記録 -->
+<!-- /ds-new-experiment または /ds-kaggle-submit が記録 -->
 - **日時**: （例: 2026-03-31 23:47）
 - **実験 ID**: （例: 042）
 - **内容**: （例: tenure×MonthlyCharges 交互作用特徴量を追加）
@@ -29,7 +29,7 @@
 <!-- セッション終了時に「次のアクション」を書いておく -->
 1. （例: H-019 の run_feature_study.py 実行）
 2. （例: OOFが+0.0002以上なら採用・FE_HYPOTHESES.md 更新）
-3. （例: 採用なら /new-experiment で次の仮説へ）
+3. （例: 採用なら /ds-new-experiment で次の仮説へ）
 
 ---
 
@@ -66,7 +66,7 @@
 | ファイル | 内容 | 最終更新 |
 |---|---|---|
 | `experiments/log.csv` | 全実験の詳細記録 | 自動 |
-| `FE_HYPOTHESES.md` | 仮説の状態（採用/棄却/未検証） | `/fe-hypothesis` |
-| `EDA_SUMMARY.md` | EDAで得た発見と問い | `/eda-visual` |
-| `COMPETITION.md` | コンペ概要・CV設計の初期判断 | `/kickoff` |
-| `TODO_TEMPLATE.md` | テンプレート改善項目 | `/template-update` |
+| `FE_HYPOTHESES.md` | 仮説の状態（採用/棄却/未検証） | `/ds-fe-hypothesis` |
+| `EDA_SUMMARY.md` | EDAで得た発見と問い | `/ds-eda-visual` |
+| `COMPETITION.md` | コンペ概要・CV設計の初期判断 | `/ds-kickoff` |
+| `TODO_TEMPLATE.md` | テンプレート改善項目 | `/ds-template-update` |

@@ -1,6 +1,6 @@
 # Competition Notes: <competition-name>
 
-> このファイルは `/kickoff` スキルが初期化し、以降手動で更新する。
+> このファイルは `/ds-kickoff` スキルが初期化し、以降手動で更新する。
 > コンペ固有の設定・観察・方針をここに集約する。
 
 ---

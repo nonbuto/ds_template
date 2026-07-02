@@ -1,10 +1,10 @@
 ---
-name: kickoff
+name: ds-kickoff
 description: コンペ参加直後に1回だけ呼ぶ。データを見る前に「そのデータが何者か」を理解するためのスキル。評価指標・データ種別（合成/実データ）・外部データ有無・CV設計の初期判断を COMPETITION.md と src/config.py に記録する。EDA や最初の実験を始める前に必ず実施すること。
 argument-hint: "<コンペ名 or URL>"
 ---
 
-# /kickoff スキル
+# /ds-kickoff スキル
 
 ## このスキルの役割
 
@@ -57,6 +57,26 @@ ls data/raw/ 2>/dev/null
 
 > `COMPETITION` がまだプレースホルダー（`your-competition-name`）の場合は、
 > 先にユーザーへコンペスラッグを確認してから `src/config.py` を更新する。
+
+**ハードウェア確認（長時間実験の実行環境計画に使う）:**
+
+```bash
+uv run python -c "
+import platform
+print(platform.machine(), platform.system())
+try:
+    import torch
+    print('cuda:', torch.cuda.is_available(),
+          '/ mps:', hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())
+except ImportError:
+    print('torch 未導入（NN系を使う段階で確認）')
+"
+```
+
+→ 結果（CUDA/MPS/CPU・GPU有無）を `COMPETITION.md` の「実行環境」に記録する
+→ ローカルGPUが無い・弱い場合、NN 系や multi-fold × multi-seed の重い学習は
+  **Kaggle Notebook GPU**（`PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ`）を主実行環境として計画する
+→ 以降、**推定30分超の実験は毎回「ローカル vs Kaggle GPU」の選択肢を提示する**（CLAUDE.md 環境・ツール参照）
 
 ---
 
@@ -156,6 +176,22 @@ sample_submission.csv のヘッダー: id,<col>
 
 → 判定結果を `COMPETITION.md` の「外部データインベントリ」セクションに表形式で記録する
 
+**Q7: このコンペで何を重視しますか？（コンペ戦略軸）**
+
+順位・スコアの最大化だけがコンペの目的ではない。ユーザーの戦略軸を最初に言語化しておくことで、
+終盤（特に Final 2 選定）の議論が「スコア期待値のみ」に偏ることを防ぐ。
+
+例（複数選択・自由記述可）:
+- **スコア最大化**: 使える手段は全て使う（外部公開予測・公開カーネルの知見も積極活用）
+- **自前モデルの限界追求**: 外部知見のブレンドより自前パイプラインの完成度を優先する
+- **新手法の習得**: 特定アーキテクチャ・手法の実戦練習を優先する
+- **プロセス検証**: テンプレート・ワークフローの改善検証を優先する
+
+→ 回答を `COMPETITION.md` の「コンペ戦略軸」セクションに記録する
+→ **AI はこの戦略軸を終盤まで保持する義務がある**: Final 2 選定時に必ず再掲し、
+  スコア期待値と戦略軸が対立する場合は「スコア軸では A、戦略軸では B」と両論併記して
+  ユーザーの判断を仰ぐ（AI が一方の軸だけで推奨を組み立てない）
+
 ---
 
 ### フェーズ2: キックオフサマリーの記録（実行層）
@@ -168,6 +204,7 @@ sample_submission.csv のヘッダー: id,<col>
 - **データ種別**: <実データ / 合成データ（元データ: XXX, 公開: Yes/No）/ 半合成>
 - **評価指標**: <指標名> — <特性と注意点>
 - **データ規模**: train=X行 × Y列 / test=Z行
+- **実行環境**: <ローカル: CUDA/MPS/CPU、GPU名> — 30分超の実験は Kaggle GPU を都度検討
 - **Discussion 初期調査**:
   - <先行例や注意点を箇条書き>
 - **FE方針の初期判断**:
@@ -193,18 +230,25 @@ sample_submission.csv のヘッダー: id,<col>
 
 > **「後で見る」は許可されない。** 全ファイルを 3 択分類。
 > 保留ファイルは Stage 4 終了までに必ず再評価する。
+
+### コンペ戦略軸 (Q7 回答)
+- **重視する軸**: <スコア最大化 / 自前モデルの限界追求 / 新手法の習得 / その他>
+- **具体的な意味**: <例: 外部公開予測のブレンドは Final 2 に含めない、等>
+
+> Final 2 選定時に必ずこのセクションを再掲する（`/ds-kaggle-submit` フェーズ5 Step 0）。
+> コンペ途中で軸が変わったら更新してよい（変更履歴を1行残す）。
 ```
 
 ---
 
 ### フェーズ3: src/config.py のコンペ設定を自動補完（実行層）
 
-**ユーザーが手で入力するのは `COMPETITION` だけ**（`/kaggle-setup` が設定済み）。
+**ユーザーが手で入力するのは `COMPETITION` だけ**（`/ds-kaggle-setup` が設定済み）。
 残りの項目は以下の情報源から **自動で決定** し、`src/config.py` の TODO セクションを上書きする:
 
 ```python
-# ===== コンペティション設定（/kickoff スキルが更新する） =====
-COMPETITION = "<slug>"             # /kaggle-setup が設定済み（変更不要）
+# ===== コンペティション設定（/ds-kickoff スキルが更新する） =====
+COMPETITION = "<slug>"             # /ds-kaggle-setup が設定済み（変更不要）
 TARGET_COL  = "<col>"              # ← sample_submission.csv の 2 列目（Q3 で検出）
 PROBLEM_TYPE = "<type>"            # ← 評価指標 + ターゲット列の値域から推定
 EVAL_METRIC  = "<metric>"          # ← Kaggle メタデータから取得
@@ -244,9 +288,9 @@ config を以下で自動補完します（COMPETITION は設定済み）:
 
 - `現在のステージ`: Stage 0 — Kickoff 完了
 - `次にやること`:
-  1. `/new-experiment` で最小ベースライン実験を開始（Stage 1）
+  1. `/ds-new-experiment` で最小ベースライン実験を開始（Stage 1）
   2. ベースラインをLBに提出してCV/LB相関を確立
-  3. CV/LB相関が確認できたら `/eda-visual` へ（Stage 2）
+  3. CV/LB相関が確認できたら `/ds-eda-visual` へ（Stage 2）
 - `今サイクルで決めた重要な方針`: FE方針・CV設計の初期判断を転記
 
 記録後、以下を提示して完了:
@@ -268,13 +312,13 @@ src/config.py を更新しました:
 SESSION.md を初期化しました。
 
 次のステップ:
-  Stage 1: /new-experiment で最小ベースライン実験を開始する
+  Stage 1: /ds-new-experiment で最小ベースライン実験を開始する
     → 前処理不要な数値カラムのみ・デフォルトHPで学習
     → scripts/train.py の FEATURES に数値カラムのみを設定
     → LBに提出してCV/LB相関を確立する
 
 ※ 合成データかつ元データが入手可能な場合は、
-  ベースライン確立後の /eda-visual で Q4（元データ vs コンペデータ比較）を必ず実施。
+  ベースライン確立後の /ds-eda-visual で Q4（元データ vs コンペデータ比較）を必ず実施。
 ```
 
 ---
@@ -285,3 +329,4 @@ SESSION.md を初期化しました。
 - **外部データの早期発見**: 合成データコンペでは元データの存在がコンペ概要に明記されていることが多い。見落とさないための構造化された確認ステップ
 - **Discussion の活用**: 先行 Notebook のベースライン LB を把握しておくことで、自分のスコアの位置づけが即座に判断できる
 - **CV設計の初期判断**: データの性質（時系列/グループ/クラス不均衡）によって CV 戦略が変わる。この判断を後回しにすると CV/LB 乖離の原因になる
+- **コンペ戦略軸の事前言語化 (Q7)**: 「何を重視するか」はユーザーの領分。序盤に明文化しておかないと、終盤の Final 2 議論が AI のスコア期待値軸に偏り、ユーザーの意図（例: 自前モデル重視）との擦り合わせに提出枠を浪費する

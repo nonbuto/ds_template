@@ -46,7 +46,7 @@ tracker.end_run(
 ## log.csvへの記録
 
 `tracker.end_run()` が自動で `experiments/log.csv` に追記する。
-`submit_score` と `lb_rank` は `/kaggle-submit` スキル実行後に自動追記される。
+`submit_score` と `lb_rank` は `/ds-kaggle-submit` スキル実行後に自動追記される。
 
 ## experiments/runs/ スクリプトでの記録
 

@@ -1,1 +1,1 @@
-timestamp,experiment_id,experiment_name,description,model,features,cv_train_mean,cv_train_std,cv_val_mean,cv_val_std,oof_score,submit_score,lb_rank,n_folds,n_features,git_hash,notes,experiment_question,success_criteria,abort_criteria,learning,is_best,commit_hash
+timestamp,experiment_id,experiment_name,description,model,features,cv_train_mean,cv_train_std,cv_val_mean,cv_val_std,oof_score,submit_score,lb_rank,n_folds,n_features,git_hash,git_branch,notes,experiment_question,success_criteria,abort_criteria,learning,oof_lb_gap

@@ -47,12 +47,14 @@ LOG_CSV_COLUMNS = [
     "git_hash",
     "git_branch",
     "notes",
-    # 実験サイクル列（/new-experiment と /kaggle-submit スキルが記録）
-    "experiment_question",  # この実験で何を明らかにしたいか（/new-experiment が記録）
-    "success_criteria",     # どんな結果なら成功か（/new-experiment が記録）
-    "abort_criteria",       # どんな結果なら中止するか（/new-experiment が記録）
-    "learning",             # 実験から何を学んだか（/kaggle-submit が記録）
+    # 実験サイクル列（/ds-new-experiment と /ds-kaggle-submit スキルが記録）
+    "experiment_question",  # この実験で何を明らかにしたいか（/ds-new-experiment が記録）
+    "success_criteria",     # どんな結果なら成功か（/ds-new-experiment が記録）
+    "abort_criteria",       # どんな結果なら中止するか（/ds-new-experiment が記録）
+    "learning",             # 実験から何を学んだか（/ds-kaggle-submit が記録）
+    "oof_lb_gap",           # oof_score − submit_score（/ds-kaggle-submit が記録）
 ]
+# 注: ベスト実験の管理は SESSION.md のスコアテーブルで一元化する（is_best 列は持たない）
 
 
 def _get_git_hash() -> str:
@@ -202,7 +204,7 @@ class ExperimentTracker:
             f"  平均絶対誤差: {abs_err:.4f}\n"
             f"  高信頼度FP (prob>0.8, label=0): {fp_high:,}件\n"
             f"  高信頼度FN (prob<0.2, label=1): {fn_high:,}件\n"
-            f"  ※ /eda-visual でセグメント別残差を可視化できます"
+            f"  ※ /ds-eda-visual でセグメント別残差を可視化できます"
         )
 
         if output_dir is not None:
@@ -248,17 +250,17 @@ class ExperimentTracker:
             "cv_val_mean": f"{val_mean:.5f}",
             "cv_val_std": f"{val_std:.5f}",
             "oof_score": f"{oof_score:.5f}" if oof_score is not None else "",
-            "submit_score": "",          # /kaggle-submit スキルが追記
-            "lb_rank": "",               # /kaggle-submit スキルが追記
+            "submit_score": "",          # /ds-kaggle-submit スキルが追記
+            "lb_rank": "",               # /ds-kaggle-submit スキルが追記
             "n_folds": len(self._fold_val_scores),
             "n_features": n_features,
             "git_hash": _get_git_hash(),
             "git_branch": _get_git_branch(),
             "notes": self.notes,
-            "experiment_question": "",   # /new-experiment スキルが記録
-            "success_criteria": "",      # /new-experiment スキルが記録
-            "abort_criteria": "",        # /new-experiment スキルが記録
-            "learning": "",              # /kaggle-submit スキルが記録
+            "experiment_question": "",   # /ds-new-experiment スキルが記録
+            "success_criteria": "",      # /ds-new-experiment スキルが記録
+            "abort_criteria": "",        # /ds-new-experiment スキルが記録
+            "learning": "",              # /ds-kaggle-submit スキルが記録
         }
         with open(LOG_CSV_PATH, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)

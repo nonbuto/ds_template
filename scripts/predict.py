@@ -77,7 +77,7 @@ def main():
  予測値    : {test_preds.min():.4f} 〜 {test_preds.max():.4f}
  平均      : {test_preds.mean():.4f}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-次のステップ: /kaggle-submit で提出してください
+次のステップ: /ds-kaggle-submit で提出してください
 """)
 
 

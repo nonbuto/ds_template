@@ -63,6 +63,22 @@
   ```
 - 元データが小規模（数千件）でも有効。合成データが数十万件あっても外部シグナルは機能する
 
+**外部シグナルFE × アーキテクチャの相性（重要）:**
+
+外部シグナルFEの効果はモデルの帰納バイアスに依存する。**主軸アーキテクチャ1つの結果だけで採否を確定しない**:
+
+| アーキテクチャ | 外部シグナルFEとの相性 | 理由 |
+|---|---|---|
+| Tree系（LGB/XGB/CB） | 付加価値が薄れやすい | 非線形変換・分割を自力再現できるため、連続値シグナルの寄与が既存分割と重複しやすい |
+| NN系（MLP系等） | 真価を発揮しやすい | 「良い座標系」（連続値の外部シグナル）が精度に直結する |
+
+- Tree系で ΔOOF が閾値未満でも、**NN系が候補にあるなら同一FEを移植評価してから棄却を確定する**
+- Tree系での外部シグナルFEは「OOF過小評価・LB浮上」の挙動を示すことがある（判断は CLAUDE.md 指針 #21 の二軸評価に従う）
+
+> **教訓 (過去事例)**: 元データのクラス条件付き percentile 特徴量が Tree系では微小改善に留まったが、
+> 同一特徴量を NN系に移植したところコンペ最大の LB 跳躍を生んだ。
+> Tree系単独の結果で棄却していたらこの跳躍は生まれなかった。
+
 ---
 
 ## Kaggle Notebook 環境サポート
@@ -95,19 +111,19 @@ GPU を使う重い学習をKaggle Notebook で実行し、成果物（OOF .npy,
 ```bash
 # ⚠️ --dir-mode zip は .kaggleignore を無視する。rsync で除外ファイルを管理すること
 
-# 同期先の一時ディレクトリを準備
+# 同期先の一時ディレクトリを準備（<slug> はコンペスラッグに置換）
 rsync -a --delete \
   --exclude='.git' --exclude='.venv' --exclude='data/' \
   --exclude='kaggle_nb/' --exclude='__pycache__' --exclude='*.pyc' \
-  --exclude='.DS_Store' --exclude='kaggle_nb/' \
-  . /tmp/kaggle_dataset_s6e6/
-cp dataset-metadata.json /tmp/kaggle_dataset_s6e6/
+  --exclude='.DS_Store' \
+  . /tmp/kaggle_dataset_<slug>/
+cp dataset-metadata.json /tmp/kaggle_dataset_<slug>/
 
 # 初回: Dataset を作成
-kaggle datasets create -p /tmp/kaggle_dataset_s6e6 --dir-mode zip
+kaggle datasets create -p /tmp/kaggle_dataset_<slug> --dir-mode zip
 
 # 2回目以降: 変更を新バージョンとして push
-kaggle datasets version -p /tmp/kaggle_dataset_s6e6 -m "exp{NNN} 追加" --dir-mode zip
+kaggle datasets version -p /tmp/kaggle_dataset_<slug> -m "exp{NNN} 追加" --dir-mode zip
 ```
 
 Dataset 名: `{your-username}/ds-template-{competition}` として登録される。
@@ -245,7 +261,7 @@ train = pd.read_csv(raw_data_path("train.csv"))
 
 **実施手順:**
 
-0. **上位解法のアーキテクチャ調査（前提入力）**: Stage 1.5 に入る前に `/kaggle-research` のフェーズ0を実施し、上位カーネルの主軸アーキテクチャ分布を把握する。自前の思い込みで候補を絞らず、**上位で頻出するアーキテクチャを候補に必ず含める**。
+0. **上位解法のアーキテクチャ調査（前提入力）**: Stage 1.5 に入る前に `/ds-kaggle-research` のフェーズ0を実施し、上位カーネルの主軸アーキテクチャ分布を把握する。自前の思い込みで候補を絞らず、**上位で頻出するアーキテクチャを候補に必ず含める**。
    > **教訓 (過去事例)**: 上位で主流だったアーキテクチャを序盤に調べず、自前 GBDT に固執。終盤にようやく乗り換えて大きく改善したが、探索効率を損ねた。序盤調査があれば主軸を早期に正しく選べた。
 
 1. **候補アーキテクチャの選定**: 最低3種を評価する（例: LightGBM / CatBoost / RealMLP / TabNet）。**上記の上位解法調査で頻出したアーキテクチャを優先的に含める**
@@ -581,11 +597,35 @@ FE_HYPOTHESES.md の棄却エントリには以下を記録する:
 改良版を実装する前に、「棄却理由」が「再試行条件」で本当に解決されるかを確認してから着手する。
 （例: 硬確率→棄却理由「0/1ノイズ」→再試行条件「ソフトな連続値に変換」→改良案「leaf_id + TargetEncoder」）
 
+**同一観察への複数表現バリエーションの事前枝刈り:**
+
+同一の観察（例: 「特定セグメントに誤分類が集中」）に対して複数の数学的表現
+（percentile / z-score / interaction / flag 等）を順番に試す場合、
+**1つ目の棄却時点で以下を実施してから2つ目に着手する**:
+
+1. **「既存特徴量がどう同じ情報を表現しているか」を具体的に特定する**
+   → 新列と既存列の相関・importance の重複度を計測し、「どの既存列が同じシグナルを持つか」を1文で書く
+2. 特定できた場合: 表現を変えても同じ天井に当たる可能性が高い。
+   **2つ目以降を実装する前に**「情報源が同じなので表現替えでは突破できない見込みです」とユーザーへ提示する
+3. それでも試す場合は「表現によって情報の取り出され方が変わる根拠」（アーキテクチャの帰納バイアス差等）を
+   言語化してから着手する
+
+> **教訓 (過去事例)**: 同一観察に percentile → z-score → interaction の3表現を順に実装したが、
+> 全て同じ棄却理由（既存特徴量で汲み尽くされている）に到達し、CV 実行3回分（各1時間超）を消費した。
+> 1つ目の棄却時に情報源の重複を特定していれば、2つ目以降は実装前に予見できた。
+
 ---
 
 ## Final 2 候補プールとPersona 投票
 
 > **参照元**: CLAUDE.md「提出枠の管理方針 — 最終選択の2本ルール」「AI指針 #18・#19・#20」。最終日に読む。
+
+**Step 0: コンペ戦略軸の再確認（最初に実施）:**
+
+`COMPETITION.md` の「コンペ戦略軸」（`/ds-kickoff` Q7 で記録）を再掲する。
+スコア期待値と戦略軸が対立する場合（例: 外部知見系が Public 最高だが戦略軸は「自前モデルの限界追求」）は
+「スコア軸の推奨」と「戦略軸に沿った推奨」を両論併記し、**ユーザーが決定する**。
+AI がスコア期待値だけで推奨を一本化しない。
 
 **候補プール構築（Persona 投票の前に必須実施 - AI 指針 #19）:**
 

@@ -2,7 +2,7 @@
 1列ΔCV計測スクリプト（Stage 4: 段階的FE用）
 
 ベースとなる特徴量セットに1列を追加し、OOFスコアの変化（ΔOOF）を計測する。
-/fe-hypothesis で仮説を立案した後、このスクリプトで効果を測定する。
+/ds-fe-hypothesis で仮説を立案した後、このスクリプトで効果を測定する。
 
 使い方:
     uv run python scripts/feature_study.py --new-feature tenure_monthly_ratio
@@ -137,7 +137,7 @@ def main():
  ΔOOF      : {delta:+.5f}
  判定      : {verdict}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-次のステップ: /fe-hypothesis update H-NNN で結果を記録し、
+次のステップ: /ds-fe-hypothesis update H-NNN で結果を記録し、
              FEATURE_REPORT.md を更新してください。
 """)
 
