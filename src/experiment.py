@@ -52,7 +52,9 @@ LOG_CSV_COLUMNS = [
     "success_criteria",     # どんな結果なら成功か（/new-experiment が記録）
     "abort_criteria",       # どんな結果なら中止するか（/new-experiment が記録）
     "learning",             # 実験から何を学んだか（/kaggle-submit が記録）
+    "oof_lb_gap",           # oof_score − submit_score（/kaggle-submit が記録）
 ]
+# 注: ベスト実験の管理は SESSION.md のスコアテーブルで一元化する（is_best 列は持たない）
 
 
 def _get_git_hash() -> str:
