@@ -95,19 +95,19 @@ GPU を使う重い学習をKaggle Notebook で実行し、成果物（OOF .npy,
 ```bash
 # ⚠️ --dir-mode zip は .kaggleignore を無視する。rsync で除外ファイルを管理すること
 
-# 同期先の一時ディレクトリを準備
+# 同期先の一時ディレクトリを準備（<slug> はコンペスラッグに置換）
 rsync -a --delete \
   --exclude='.git' --exclude='.venv' --exclude='data/' \
   --exclude='kaggle_nb/' --exclude='__pycache__' --exclude='*.pyc' \
-  --exclude='.DS_Store' --exclude='kaggle_nb/' \
-  . /tmp/kaggle_dataset_s6e6/
-cp dataset-metadata.json /tmp/kaggle_dataset_s6e6/
+  --exclude='.DS_Store' \
+  . /tmp/kaggle_dataset_<slug>/
+cp dataset-metadata.json /tmp/kaggle_dataset_<slug>/
 
 # 初回: Dataset を作成
-kaggle datasets create -p /tmp/kaggle_dataset_s6e6 --dir-mode zip
+kaggle datasets create -p /tmp/kaggle_dataset_<slug> --dir-mode zip
 
 # 2回目以降: 変更を新バージョンとして push
-kaggle datasets version -p /tmp/kaggle_dataset_s6e6 -m "exp{NNN} 追加" --dir-mode zip
+kaggle datasets version -p /tmp/kaggle_dataset_<slug> -m "exp{NNN} 追加" --dir-mode zip
 ```
 
 Dataset 名: `{your-username}/ds-template-{competition}` として登録される。

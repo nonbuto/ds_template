@@ -40,13 +40,13 @@ Stage 1.5 ──────── 早期アーキテクチャサーベイ（同
     ↓ OOFとpub_oof_gapを記録し「主軸アーキテクチャ」を1つ決定する
 /eda-visual ───── 「何を知りたいか」を先に言語化する（kickoff と基準点を持ち込む）
     ↓ 仮説の種を /fe-hypothesis に登録しながら進む
-Optuna 軽量 ──── 作業用HP調整（20〜30試行）。FEのΔAUC計測ノイズを低減する目的
+Optuna 軽量 ──── 作業用HP調整（20〜30試行）。FEのΔOOF計測ノイズを低減する目的
     ↓ 作業用HPが確定したら
 /fe-hypothesis ── 「なぜ効くか」の因果連鎖を言語化してから実装する
-    ↓ 必ず1列ずつ scripts/feature_study.py で投入・ΔAUCを計測。複数列の一括追加は禁止
-    ↓ ΔAUC が閾値以下でも feature importance (gain) も確認してから棄却判断する（後述）
+    ↓ 必ず1列ずつ scripts/feature_study.py で投入・ΔOOFを計測。複数列の一括追加は禁止
+    ↓ ΔOOF が閾値以下でも feature importance (gain) も確認してから棄却判断する（後述）
 /new-experiment ─ 「何を明らかにしたいか・成功基準・撤退基準」を先に記録する
-    ↓ FEが収束したら（追加特徴量のΔAUC < ±0.0003 かつ importance が BASE最下位未満 が続いたら）
+    ↓ FEが収束したら（追加特徴量のΔOOFがノイズ床未満〔指針#17の指標別閾値。AUCなら±0.0003〕かつ importance が BASE最下位未満 が続いたら）
 Optuna フル ───── 本格HP最適化（100試行以上）。確定した特徴量セットで実施
     ↓
 /kaggle-submit ── 「OOF/LBのギャップ」を解釈し「学び」を言語化する
@@ -516,9 +516,9 @@ sub.to_csv(sub_path, index=False)
 | **1. 最小ベースライン** | CV/LB相関の確立 | 前処理不要な数値カラムのみ・デフォルトHPでモデルを学習し、LBに提出してCV/LB相関を確認済み。以降すべての改善はこの基準点からのΔで判断する | `/new-experiment` + `/kaggle-submit` |
 | **1.5. 早期アーキテクチャサーベイ** | 主軸アーキテクチャの決定 | 候補アーキテクチャ（Tree/NN/Linear等）を最小特徴量セット + 作業用HPで評価し、OOFとpub_oof_gapを記録。「主軸アーキテクチャ」を1つ決定済み。手順は `PLAYBOOK.md#早期アーキテクチャサーベイの手順stage-15` に従い実施 | `/new-experiment` |
 | **2. EDA** | 問いとFE仮説の種を獲得 | `/eda-visual` で「問い→発見→FE仮説の種」の対話完了。合成データの場合は元データとの分布比較も含む | `/eda-visual` |
-| **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔAUC計測のノイズ低減 | Optuna（軽量） |
-| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ `scripts/feature_study.py` で投入**してΔAUC と feature importance (gain) を計測済み。合成データの場合は外部シグナルFEを先に検証済み。**AV 診断**（adversarial validation）で train/test 分布シフトの有無を確認済み。**FE確定後、全候補アーキテクチャに同一FEを移植して再評価済み** | `/fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
-| **5. 本格HP最適化** | 確定特徴量での性能最大化 | Stage4の特徴量セットが確定した状態でOptuna 100試行以上を実施済み。ΔAUCの改善が±0.0002以内で収束していること。**FE変更時の HP retune ルール**: Stage 4 以降に FE が ±20% 以上変動した場合、または domain-specific 新特徴量を追加した場合、HP retune を再実行する（FE変更で HP 最適点は確実に変動。過去事例では HP retune で +1σ OOF 改善を実証） | Optuna（フルサーチ） |
+| **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減 | Optuna（軽量） |
+| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ `scripts/feature_study.py` で投入**してΔOOF と feature importance (gain) を計測済み。合成データの場合は外部シグナルFEを先に検証済み。**AV 診断**（adversarial validation）で train/test 分布シフトの有無を確認済み。**FE確定後、全候補アーキテクチャに同一FEを移植して再評価済み** | `/fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
+| **5. 本格HP最適化** | 確定特徴量での性能最大化 | Stage4の特徴量セットが確定した状態でOptuna 100試行以上を実施済み。ΔOOFの改善がノイズ床以内（指針#17の指標別閾値）で収束していること。**FE変更時の HP retune ルール**: Stage 4 以降に FE が ±20% 以上変動した場合、または domain-specific 新特徴量を追加した場合、HP retune を再実行する（FE変更で HP 最適点は確実に変動。過去事例では HP retune で +1σ OOF 改善を実証） | Optuna（フルサーチ） |
 | **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
 
 **各 Stage の実行手順は PLAYBOOK.md に集約:**
@@ -541,7 +541,7 @@ sub.to_csv(sub_path, index=False)
 
 > **ステージを飛ばさない。**
 > - Stage 1 を省くと CV/LB乖離に気づくのが遅れる
-> - Stage 3 を省くと Stage 4 のΔAUC計測がノイズに埋もれる
+> - Stage 3 を省くと Stage 4 のΔOOF計測がノイズに埋もれる
 > - Stage 4 で `scripts/feature_study.py` を使わず複数列を一度に追加すると、どの特徴量が効いたか分からなくなる
 > - Stage 5 は Stage 4 完了後でないと最適HPが変わるため意味が薄い
 > - Stage 6 の STEP 1（相関確認）を省くと、実装・学習コストをかけてから「重みゼロ」と判明する
