@@ -1,7 +1,7 @@
-# DS Template v4.1 — Kaggle Competition Workspace
+# DS Template v4.2 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
-「実験の目的を先に言語化する」「1列ずつΔAUCを計測する」「学びをサイクルとして蓄積する」という
+「実験の目的を先に言語化する」「1列ずつΔOOFを計測する」「学びをサイクルとして蓄積する」という
 3つの原則を、スキルとスクリプトで仕組みとして強制します。
 
 **ローカル環境と Kaggle Notebook 環境の両方に対応しています。**
@@ -10,7 +10,47 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 - v1: s6e3（Churn Prediction）
 - v2: s6e4（Irrigation Need Prediction, rank 293/4316）
 - v3: s6e5 (Predicting F1 Pit Stops)
-- v4 / **v4.1: s6e6 (SDSS Star Classification)** で開発・改良
+- v4 / v4.1: s6e6 (SDSS Star Classification) で開発・改良
+- **v4.2**: s6e6 振り返りの完全反映 + 汎用DSテンプレートへの純化
+
+---
+
+## v4.2 で追加された主な改善
+
+s6e6 振り返りで未反映だった教訓を消化し、「特定コンペへの最適化」ではなく「汎用DSプロセス」として純化した。
+
+### ① 全スキル名を `ds-` プリフィクスに統一
+
+Claude Code 標準スキルとの衝突防止（`resume` が標準 `/resume` と衝突した前例）。
+`/ds-` + Tab でテンプレートスキルのみを一覧できる。
+「テンプレートのスキルは必ず `ds-` で始まる」を規約化（例外なし）。
+
+### ② 評価指標の汎用化
+
+ΔAUC 表現を ΔOOF に統一し、採否閾値は AI 指針 #17（Public LB ノイズ床）/ #20（OOF 改善閾値）の
+指標別テーブルへ接続。AUC 以外（RMSE / Logloss / Accuracy）のコンペでもそのまま機能する。
+
+### ③ コンペ戦略軸の事前言語化（`/ds-kickoff` Q7）
+
+「スコア最大化 / 自前モデルの限界追求 / 新手法の習得」等の重視軸を序盤に COMPETITION.md へ記録し、
+Final 2 選定時に必ず再掲。スコア期待値と戦略軸が対立する場合は AI が両論併記し、**ユーザーが決定する**。
+
+### ④ プロセス実効性の強制力化
+
+- **可視化の必須発動条件**: LBベスト更新時・oof_lb_gap 大変動時・5実験連続可視化ゼロ時（努力目標→実施義務）
+- **「1実験スクリプト = 1つの問い」**: 複数仮説の混在禁止。AI の効率化目的の設計変更は実行前確認
+- **逐次記録チェック**: `/ds-resume` が未コミット実験を検出・警告。`is_best` 列を廃止し SESSION.md 一元管理
+- **知識移転の確認**: FE のメカニズムを平易な言葉で説明し理解確認を取ってから実装（記録 ≠ 知識移転）
+
+### ⑤ 運用の正確性
+
+- **提出枠は UTC 基準**: 自己申告カウント廃止、`kaggle competitions submissions` の実結果から逆算
+- **30分ルール**: 推定30分超の実験は毎回「ローカル vs Kaggle Notebook GPU」を提示（`/ds-kickoff` でHW確認）
+
+### ⑥ FE 探索効率
+
+- **表現バリエーションの事前枝刈り**: 同一観察への複数表現（percentile/z-score/interaction）は、1つ目棄却時に既存特徴量との情報源重複を特定してから次へ
+- **外部シグナルFE × アーキテクチャ相性**: Tree系で棄却でも NN系で評価してから確定（帰納バイアス差）
 
 ---
 
@@ -218,9 +258,9 @@ Stage 1.5 ──────── 早期アーキテクチャサーベイ（LGB
     ↓ OOFとpub_oof_gapを記録。主軸1つ・副軸候補を保持
 /ds-eda-visual ───── 「何を知りたいか」を先に言語化してから可視化
     ↓ FE仮説の種を /ds-fe-hypothesis に登録しながら進む
-Optuna 軽量 ──── 作業用HP（20〜30試行）。ΔAUCのノイズを低減する目的
+Optuna 軽量 ──── 作業用HP（20〜30試行）。ΔOOFのノイズを低減する目的
     ↓
-/ds-fe-hypothesis ── 「なぜ効くか」の因果を言語化 → 実装 → 可視化確認 → ΔAUCを計測
+/ds-fe-hypothesis ── 「なぜ効くか」の因果を言語化 → 実装 → 可視化確認 → ΔOOFを計測
     ↓ 必ず1列ずつ feature_study.py で投入。複数列の一括追加は禁止
     ↓ FE確定後、全候補アーキテクチャに同一FEを移植して再評価
 Optuna フル ───── 確定した特徴量セットで100試行以上
@@ -243,7 +283,7 @@ uv run python scripts/visualize.py
 # Stage 1・4: CV学習
 uv run python scripts/train.py --model lgb
 
-# Stage 3: 作業用HP（FE中のΔAUCノイズ低減）
+# Stage 3: 作業用HP（FE中のΔOOFノイズ低減）
 uv run python scripts/optimize_hp.py --model lgb --n-trials 25 --tag working
 
 # Stage 4: 1列ΔCV計測（FE仮説の効果測定）
@@ -340,7 +380,7 @@ uv run python scripts/feature_report.py
 | 判断 | 理由 |
 |---|---|
 | **可視化は画像ファイルで保存** | Claude Code は marimo のレンダリングを認識できない。`data/output/plots/` に `.png` を保存し、Read ツールで読んで対話する |
-| **FEは1列ずつ計測** | 複数列を一度に追加すると「どれが効いたか」が分からなくなる。`feature_study.py` で1列ずつΔAUCを計測する |
+| **FEは1列ずつ計測** | 複数列を一度に追加すると「どれが効いたか」が分からなくなる。`feature_study.py` で1列ずつΔOOFを計測する |
 | **実験の目的を先に記録** | 結果が出てから目的を決めると合理化が起きる。`/ds-new-experiment` で「何を明らかにするか」を先に log.csv に記録する |
 | **SESSION.md は上書き原則** | 履歴を追記すると80行を超えて読めなくなる。各セクションは常に最新1件だけ上書きし、詳細は git log で追跡する |
 | **OOF最大化を第一目標・pub_oof_gap最小化を第二目標** | OOF→Private 相関が極めて高い（r≈0.998）。gap最大化は Private で逆効果（r≈−0.51）と実証済み |
