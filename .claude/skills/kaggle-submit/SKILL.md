@@ -29,18 +29,23 @@ disable-model-invocation: true
 1. `git status --short` 確認
    - working treeが汚れている場合: 「未コミットの変更があります。コミット後に提出してください。」と表示して停止
 
-2. **提出枠の状況を確認して提示する**
+2. **提出枠の状況を確認して提示する（UTC 基準・実結果からの逆算）**
+
+   > **提出枠のリセットは UTC 00:00（JST 09:00）**。ローカル日付でカウントすると実態とズレる。
+   > 自己申告カウント（SESSION.md の記録）に頼らず、必ず `kaggle competitions submissions` の実結果から逆算する。
+
    ```bash
-   # 当日の提出回数を確認
-   kaggle competitions submissions -c <COMPETITION> | grep $(date +%Y-%m-%d) | wc -l
+   # 当日（UTC日付）の提出回数を実結果から逆算
+   kaggle competitions submissions -c <COMPETITION> | grep $(date -u +%Y-%m-%d) | wc -l
    # コンペの締め切りを確認
    kaggle competitions list --search <COMPETITION>
    ```
-   以下の形式で現状を提示する:
+   以下の形式で現状を提示する（タイムゾーンを必ず明記）:
    ```
    ── 提出枠の状況 ──────────────────────
-   本日使用済み: X / 5 回  （残り Y 回）
-   コンペ締め切り: YYYY-MM-DD HH:MM (JST)
+   本日使用済み: X / 5 回  （残り Y 回、UTC日付基準・実結果から逆算）
+   枠リセット: UTC 00:00（JST 09:00）
+   コンペ締め切り: YYYY-MM-DD HH:MM UTC（JST: MM-DD HH:MM）
    残り日数: N 日
    推定残り総提出枠: Y + (N-1) × 5 = Z 回
    ──────────────────────────────────────

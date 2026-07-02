@@ -425,6 +425,12 @@ SESSION.md のオーバーフロー検知:
 - **可視化 EDA では使わない** — Claude は marimo のレンダリング結果を認識できない。可視化はスクリプトから `data/output/plots/` に画像保存し、Claude が Read で読んで対話する
 - **`.ipynb` 変換に使う** — `scripts/to_kaggle_nb.py` が marimo 形式スクリプトを `marimo export ipynb` で変換する。Kaggle Notebook 実行用の `.ipynb` 生成に使う
 
+**実行環境の選択ルール（30分ルール）:**
+- ユーザーのハードウェア（CUDA/MPS/CPU）は `/kickoff` フェーズ0 で確認し COMPETITION.md に記録する
+- **推定実行時間が30分を超える実験を計画するときは、毎回「ローカル実行 vs Kaggle Notebook GPU」の選択肢を提示する**（黙ってローカルで回し続けない。ユーザーPCの占有・発熱もコスト）
+- Kaggle GPU 実行の手順は `PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ`
+- **教訓 (過去事例)**: 1時間超の multi-fold × multi-seed 学習が常態化してもローカル実行が既定のまま続き、クラウド実行の選択肢が一度も検討されなかった
+
 ### ディレクトリ規約
 
 | ディレクトリ | 用途 |
@@ -602,8 +608,12 @@ sub.to_csv(sub_path, index=False)
 
 **基本方針: 残り枠は使い切る。未使用の提出枠はゼロ価値。**
 
+**提出枠カウントは UTC 基準（Kaggle の枠リセットは UTC 00:00 = JST 09:00）。**
+自己申告カウントに頼らず `kaggle competitions submissions` の実結果から逆算する。
+SESSION.md・log.csv に日時を書くときはタイムゾーンを明記する（UTC/JST 混在が過去にカウントずれを生んだ）。
+
 `/kaggle-submit` 実行のたびに以下を確認・提示する:
-- 本日の使用済み回数 / 上限（通常5回）
+- 本日（UTC日付）の使用済み回数 / 上限（通常5回）
 - コンペ締め切りまでの残り日数
 - 推定残り総提出枠（本日の残り + 残り日数 × 日次上限）
 - `data/output/submissions/` 内の未提出候補ファイル一覧

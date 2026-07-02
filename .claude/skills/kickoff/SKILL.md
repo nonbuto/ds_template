@@ -58,6 +58,26 @@ ls data/raw/ 2>/dev/null
 > `COMPETITION` がまだプレースホルダー（`your-competition-name`）の場合は、
 > 先にユーザーへコンペスラッグを確認してから `src/config.py` を更新する。
 
+**ハードウェア確認（長時間実験の実行環境計画に使う）:**
+
+```bash
+uv run python -c "
+import platform
+print(platform.machine(), platform.system())
+try:
+    import torch
+    print('cuda:', torch.cuda.is_available(),
+          '/ mps:', hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())
+except ImportError:
+    print('torch 未導入（NN系を使う段階で確認）')
+"
+```
+
+→ 結果（CUDA/MPS/CPU・GPU有無）を `COMPETITION.md` の「実行環境」に記録する
+→ ローカルGPUが無い・弱い場合、NN 系や multi-fold × multi-seed の重い学習は
+  **Kaggle Notebook GPU**（`PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ`）を主実行環境として計画する
+→ 以降、**推定30分超の実験は毎回「ローカル vs Kaggle GPU」の選択肢を提示する**（CLAUDE.md 環境・ツール参照）
+
 ---
 
 ### フェーズ1: コンペ概要の精読（思考層）
@@ -184,6 +204,7 @@ sample_submission.csv のヘッダー: id,<col>
 - **データ種別**: <実データ / 合成データ（元データ: XXX, 公開: Yes/No）/ 半合成>
 - **評価指標**: <指標名> — <特性と注意点>
 - **データ規模**: train=X行 × Y列 / test=Z行
+- **実行環境**: <ローカル: CUDA/MPS/CPU、GPU名> — 30分超の実験は Kaggle GPU を都度検討
 - **Discussion 初期調査**:
   - <先行例や注意点を箇条書き>
 - **FE方針の初期判断**:
