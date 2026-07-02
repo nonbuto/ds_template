@@ -1,4 +1,4 @@
-# DS Template v4 — Kaggle Competition Workspace
+# DS Template v4.1 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
 「実験の目的を先に言語化する」「1列ずつΔAUCを計測する」「学びをサイクルとして蓄積する」という
@@ -10,7 +10,44 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 - v1: s6e3（Churn Prediction）
 - v2: s6e4（Irrigation Need Prediction, rank 293/4316）
 - v3: s6e5 (Predicting F1 Pit Stops)
-- **v4: s6e6 (SDSS Star Classification)** で開発・改良
+- v4 / **v4.1: s6e6 (SDSS Star Classification)** で開発・改良
+
+---
+
+## v4.1 で追加された主な改善
+
+s6e6 の全実験（104本）を振り返り、「スコア上昇」と「user との共創」の観点でテンプレートを精査。
+原則を1つも削らずに、探索効率と認知負荷を改善した。
+
+### ① 外部知見調査をワークフロー前段に配置
+
+`/kaggle-research` を「行き詰まりの応急処置」から「主軸アーキテクチャ決定の前提入力」へ格上げ。
+
+- **フェーズ0（序盤アーキテクチャ調査）** を新設。Stage 1.5 の直前に上位カーネルのアーキテクチャ分布を調べ、サーベイ候補に反映する
+- Playground Series は上位解法のアーキテクチャがスコアを最も動かす。それを終盤ではなく序盤の方向づけに使う
+
+### ② CLAUDE.md の2層分離（Core + PLAYBOOK）
+
+CLAUDE.md 1246行 → 734行（-41%）。実行レシピを `PLAYBOOK.md`（650行）へ分離。
+
+- **CLAUDE.md** = 毎ターン守る「原則・判断基準（精神）」。AI指針 #1-22 は全文保持
+- **PLAYBOOK.md** = その局面で読む「実行レシピ（手順・コード・コマンド）」
+- 判断に必要な情報だけで意思決定でき、実行時に該当セクションを参照する。認知負荷を下げてルール形骸化を防止
+
+### ③ FE 仮説にドメイン実体を引き出す Q0 を追加
+
+`/fe-hypothesis` の因果メカニズム掘り下げに **Q0（ドメイン実体の確認）** を新設。
+
+- AI が因果を推測する前に、user のドメイン知識から変数の実体（物理的/業務的な意味）を引き出す
+- 「相関がありそう」から「この物理量がこう振る舞うからターゲットが決まる」という鋭い仮説へ
+- 「共創の原則」を Kickoff だけでなく FE サイクル全体へ展開
+
+### ④ 提出のたびに「伸びしろの所在」を可視化
+
+`/kaggle-submit` に LBトップとの差分＋その差を埋める最有力候補（アーキテクチャ/情報次元/多様性）を毎回提示。
+
+- 局所改善（+ノイズ床の FE）に没入して最大の伸びしろ（別アーキテクチャ等）を見落とすことを防ぐ
+- 埋めるべきは「構造的な伸びしろ」であって Public LB スコアそのものではない（AI指針 #17/#18/#21 と整合）
 
 ---
 
@@ -175,6 +212,8 @@ subprocess.run([
     ↓
 /kaggle-submit ── CV/LB相関を確立する（以降の改善判断の基準点）
     ↓
+/kaggle-research ─ 上位解法のアーキテクチャ分布を調べる（フェーズ0・序盤調査）
+    ↓ 「上位が何のアーキテクチャで勝っているか」を主軸決定の前提入力にする
 Stage 1.5 ──────── 早期アーキテクチャサーベイ（LGB/RealMLP等を公正比較 → 主軸を決定）
     ↓ OOFとpub_oof_gapを記録。主軸1つ・副軸候補を保持
 /eda-visual ───── 「何を知りたいか」を先に言語化してから可視化
@@ -238,7 +277,7 @@ uv run python scripts/feature_report.py
 | `/kaggle-submit` | 提出前後 | 提出前確認 → LBスコア取得 → OOF/LB乖離分析 → 学びを log.csv に記録 |
 | `/eda-visual` | Stage 2 | 「問い→可視化→発見→FE仮説の種」の対話型EDA |
 | `/fe-hypothesis` | Stage 4 | FE仮説の立案・実装後可視化確認・検証・棄却理由の構造化 |
-| `/kaggle-research` | FE棄却3連続後・Stage 6 外部予測活用時 | Kaggle Discussion / Dataset / Kernel を CLI で系統的に調査 |
+| `/kaggle-research` | **Stage 1.5 の前（序盤調査）**・FE棄却3連続後・Stage 6 外部予測活用時 | 上位解法のアーキテクチャ分布調査（フェーズ0）／ Kaggle Discussion / Dataset / Kernel を CLI で系統的に調査 |
 | `/template-update` | 随時 | テンプレート改善アイデアを TODO_TEMPLATE.md に記録 |
 
 ---
@@ -246,7 +285,8 @@ uv run python scripts/feature_report.py
 ## ディレクトリ構成
 
 ```
-├── CLAUDE.md              # Claude Code プロジェクト設定（AI の行動ルール・ステージ定義）
+├── CLAUDE.md              # Claude Code プロジェクト設定（原則・AI行動ルール・ステージ定義）※毎ターン参照
+├── PLAYBOOK.md            # 実行レシピ集（アンサンブル手順・GPUワークフロー・Final 2 等）※局面参照
 ├── COMPETITION.md         # コンペ固有メモ（/kickoff が生成・更新）
 ├── FE_HYPOTHESES.md       # FE仮説の立案・検証・棄却記録（/fe-hypothesis が管理）
 ├── FEATURE_REPORT.md      # 特徴量の生きたレポート（EDA・FE段階を通じて記入）
