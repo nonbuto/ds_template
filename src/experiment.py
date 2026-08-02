@@ -132,6 +132,53 @@ def _check_visualization_guard(window: int = VIZ_GUARD_WINDOW) -> Optional[str]:
     )
 
 
+DIAG_GUARD_WINDOW = 10   # 直近N実験の診断列の記録率を見る
+DIAG_GUARD_MIN_RATE = 0.7
+
+
+def _check_diagnostic_recording_guard(window: int = DIAG_GUARD_WINDOW) -> Optional[str]:
+    """CV 内部診断（cv_train_mean / cv_val_std）が実際に記録されているかを判定する。
+
+    CLAUDE.md `G-DIAG` は「OOF と必ず併記する」と定めるが、log.csv に列があっても
+    使い捨てスクリプトが ExperimentTracker を経由しないと空欄のまま積み上がる。
+    過去コンペでは記入率が cv_train_mean 28% / cv_val_std 21% まで落ち、
+    「記録されない診断は存在しないのと同じ」状態になった。
+
+    「規約を読んだか」は観測できないが「診断が記録されたか」は観測できる。
+    導線（CONVENTIONS.md への参照）が機能しているかを、結果側から測るガード。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+
+    # スコアが入っている＝完了した実験だけを母数にする（予約行は除外）
+    done = [r for r in rows if (r.get("oof_score") or "").strip()][-window:]
+    if len(done) < window:
+        return None
+
+    filled = sum(
+        1 for r in done
+        if (r.get("cv_train_mean") or "").strip() and (r.get("cv_val_std") or "").strip()
+    )
+    rate = filled / len(done)
+    if rate >= DIAG_GUARD_MIN_RATE:
+        return None
+
+    return (
+        f"\n⚠️  診断記録ガード発動: 直近{len(done)}実験のうち CV 内部診断"
+        f"（cv_train_mean / cv_val_std）が揃っているのは {filled} 件（{rate:.0%}）です。\n"
+        f"   ExperimentTracker を経由しない使い捨てスクリプトが原因である可能性が高いです。\n"
+        f"   `G-DIAG` の 3 診断軸が機能せず、ΔOOF が fold 間 std より小さいかを判定できません。\n"
+        f"   → CONVENTIONS.md#experimenttracker-の使い方 を確認し、\n"
+        f"     学習ループ内で tracker.log_fold_scores(fold, tr, val) を呼んでください。\n"
+        f"   （この警告は AI の自己申告ではなく log.csv の記入率による機械判定です）"
+    )
+
+
 def _previous_experiment_scores() -> Optional[float]:
     """log.csv の最新行（＝直前の実験）の oof_score を返す。無ければ None。
 
@@ -443,7 +490,12 @@ class ExperimentTracker:
             f"  ↑ git add -p してから git commit -m '<上記>' で記録してください"
         )
 
-        # 可視化ガード（機械判定。CLAUDE.md 指針#9 / TODO_TEMPLATE 2026-08-01 CRITICAL）
+        # 可視化ガード（機械判定。CLAUDE.md `G-MECH`）
         viz_warning = _check_visualization_guard()
         if viz_warning:
             print(viz_warning)
+
+        # 診断記録ガード（機械判定。CLAUDE.md `G-DIAG` が実際に機能しているか）
+        diag_warning = _check_diagnostic_recording_guard()
+        if diag_warning:
+            print(diag_warning)

@@ -185,6 +185,30 @@ def check(results: list[tuple[str, str, str]]) -> None:
     results.append(("WARNING" if fences else "OK", "C9 コードフェンス",
                     f"CLAUDE.md 内に {fences} ブロック（L0 は 0 が目標）"))
 
+    # ── C10: 孤立節の検知（オンデマンド層への導線が存在するか）──
+    # L1/L2 は自動ロードされない。どこからも参照されない節は「誰も読まない場所」であり、
+    # 移設したのに導線を張り忘れた状態を意味する（v6 で実際に起きた実装漏れ）。
+    ORPHAN_EXEMPT = {"目次"}   # 自ファイル内ナビゲーション。参照されなくて正常
+    orphans = []
+    for owner in ("CONVENTIONS.md", "PLAYBOOK.md"):
+        if owner not in docs:
+            continue
+        others = "\n".join(t for rel, t in docs.items() if rel != owner)
+        for m in re.finditer(r"^##\s+(.+)$", docs[owner], re.M):
+            title, anchor = m.group(1).strip(), _slug(m.group(1))
+            if title in ORPHAN_EXEMPT:
+                continue
+            if f"{owner}#{anchor}" in others.replace(" ", ""):
+                continue
+            # アンカー無しの素の言及（「CONVENTIONS.md の ExperimentTracker」等）も導線として認める
+            key = re.sub(r"[（(].*?[）)]", "", title).strip()
+            if key and key in others:
+                continue
+            orphans.append(f"{owner}#{title}")
+    results.append(("WARNING" if orphans else "OK", "C10 孤立節",
+                    f"どこからも参照されない節 {len(orphans)} 件"
+                    + ("\n      " + "\n      ".join(orphans) if orphans else "")))
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
