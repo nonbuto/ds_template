@@ -94,7 +94,7 @@ disable-model-invocation: true
   現在ベストLB: Z
 ```
 
-**⚠️ CV内部診断（OOF↔LB の2軸だけで判断しない。CLAUDE.md 指針#31）**
+**⚠️ CV内部診断（OOF↔LB の2軸だけで判断しない。CLAUDE.md `G-DIAG`）**
 
 `experiments/log.csv` の `cv_train_mean` / `cv_val_mean` / `cv_val_std` を読み取り、
 **ユーザーが指摘する前に AI 側から**以下を併記する:
@@ -156,7 +156,7 @@ LBトップ:      <トップ値>
 2. **未試行の情報次元**: 自前がまだ触れていないシグナル（外部データ・ドメイン特化指標）があるなら次点
 3. **アンサンブル余地**: 上記2つが飽和し、多様なモデルが揃っているならブレンド
 
-> **重要（Public LB追従との区別 — AI指針 #17・#18・#21）**: ここで埋めるべきは
+> **重要（Public LB追従との区別 — `G-NOISE` / `G-OOF` / `G-TWOAXIS`）**: ここで埋めるべきは
 > 「構造的な伸びしろ（アーキテクチャ・情報次元・多様性）」であって Public LB スコアそのものではない。
 > 「最有力の埋め方」は必ず上記3カテゴリの**構造的改善**を指す。Public LB を +ノイズ床だけ
 > 上げる局所FEは「埋め方」に含めない。差を埋めた結果は **OOF でも改善していること**を確認する
@@ -167,7 +167,7 @@ LBトップ:      <トップ値>
 > 差分が大きい（例: AUC で +0.005 以上）のに局所FEを繰り返している場合、
 > 「今の角度では差は埋まりません。<最有力候補>に着手しませんか？」と能動的に提案する。
 
-**pub_oof_gap 監視（CLAUDE.md 指針 #21）:**
+**pub_oof_gap 監視（CLAUDE.md `G-TWOAXIS`）:**
 
 `experiments/log.csv` の全提出の pub_oof_gap 中央値（基準線）と比較する:
 - 基準線 + 0.0005 を超えた場合: 「⚠️ Public 過剰浮上警告: pub_oof_gap が基準線を超えています。OOFを犠牲にした gap 拡大でないか確認してください」と SESSION.md に記録する
@@ -274,7 +274,7 @@ LBトップ:      <トップ値>
 - どちらを取るかは **ユーザーの決定**。AI がスコア期待値だけで推奨を一本化しない
 - 最終決定と「どの軸を優先したか」を SESSION.md の「Final 2 確定」記録に含める
 
-**Step 1: 候補プール拡張（CLAUDE.md AI 指針 #19）**
+**Step 1: 候補プール拡張（CLAUDE.md `G-CEILING`）**
 
 Persona 投票の前に、候補プールを以下のルールで構築:
 
@@ -302,7 +302,7 @@ print(candidates[["experiment_id", "oof_score", "submit_score", "oof_rank", "pub
 | **Public only Top** | Public 過適合の可能性 | ⚠️ hedge を必ず付ける |
 | Public LB +1σ 微改善 | ノイズ床近辺 (#17) | ⚠️ 「突破」と呼ばない、保留扱い |
 
-**Step 2: AI 指針 #17-20 の適用チェック:**
+**Step 2: `G-NOISE` / `G-OOF` / `G-CEILING` / `G-OVERFIT` の適用チェック:**
 - #17: 各候補の Public LB 改善が評価指標別ノイズ床（AUC ±0.0001 等）を超えているか
 - #18: OOF と Public LB が乖離している候補を見落としていないか
 - #19: 候補プールが Public Top と OOF Top の和集合になっているか
