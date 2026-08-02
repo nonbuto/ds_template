@@ -133,9 +133,8 @@ argument-hint: <実験名>
 中止条件: <Q3の回答>
 
 【コミットのタイミング】
-  学習完了・OOFスコア確認直後にコミットしてください。
-  形式: feat(expNNN): <実験の目的>
-        OOF=<score>  model=<model>  features=<feature_set>
+  学習完了・OOFスコア確認直後（5分以内）にコミットしてください。
+  メッセージ形式は CONVENTIONS.md#コミット規約 を参照。
   ※ tracker.end_run() がコミットメッセージ案を自動出力します
 
 SESSION.md を更新しました。次のセッションで /ds-resume を実行すると

@@ -108,28 +108,9 @@ disable-model-invocation: true
      ※ 下回る場合、その差は「測れていない」（順位はfoldの引き直しで入れ替わる）
 ```
 
-**乖離パターンによる原因の切り分け:**
-
-| train−val 乖離 | val−LB 乖離 | 疑うべき原因 | 打ち手 |
-|---|---|---|---|
-| 小 | **大** | CV 設計の問題 | fold 数・seed・層化変数・グループリークを見直す |
-| **大** | **大** | 過学習 **or 校正不足** | 正則化に飛びつく前に、多クラス/不均衡なら**校正**（class_weight・β・閾値）を先に疑う |
-| **大** | 小 | 通常の過学習 | 正則化・early stopping の調整 |
-
-**多クラス + argmax + クラス不均衡の場合は追加で:**
-
-```python
-import numpy as np
-print(np.unique(oof.argmax(1), return_counts=True))   # 予測クラス分布
-print(train[TARGET_COL].value_counts())               # 実際のクラス分布
-```
-→ 少数クラスの**過小予測**なら校正不足を疑う。ただし balanced 系指標では
-　 少数クラスの**過剰予測が正しい挙動**である点に注意（指標の性質を先に確認する）。
-
-> **この診断が決定打になった実例**: 初回ベースラインで train=0.46598 / val=0.44485 / LB=0.43832。
-> OOF↔LB の2軸だけなら「LB乖離 0.0065」で終わっていたが、**train/val 乖離 0.0211** に気づいたことで
-> 「多クラス分類での校正不足」という仮説に到達し、`class_weight="balanced"` 導入で
-> **OOF 0.44485→0.81189 / LB 0.43832→0.81185** というコンペ最大の跳躍につながった。
+**乖離パターンから原因を切り分ける** → 判定表と多クラス時の追加チェック（予測クラス分布 vs 実分布）は
+`CLAUDE.md` の `G-DIAG` に従う。この診断が `class_weight="balanced"` の発見につながった実例は
+`PLAYBOOK.md#教訓アーカイブ実測値つき` の L-01。
 
 **伸びしろの所在の提示（毎回、スコア提示と同時に実施）:**
 
@@ -274,69 +255,44 @@ LBトップ:      <トップ値>
 - どちらを取るかは **ユーザーの決定**。AI がスコア期待値だけで推奨を一本化しない
 - 最終決定と「どの軸を優先したか」を SESSION.md の「Final 2 確定」記録に含める
 
-**Step 1: 候補プール拡張（CLAUDE.md `G-CEILING`）**
+**Step 1: 候補プールを拡張する（`G-CEILING`）**
 
-Persona 投票の前に、候補プールを以下のルールで構築:
+プール構築ルールは `CLAUDE.md` の `G-CEILING`（和集合方式）に従う。Public ベースのみのスクリーニングは禁止。
+`experiments/log.csv` の `submit_score` / `oof_score` をそれぞれ rank 化し、どちらかが Top-10 の行を抽出して
+`experiment_id / oof_score / submit_score / oof_rank / public_rank` を一覧提示する。
 
-- **Public LB Top-10 と OOF Top-10 の和集合** （重複除去で 10-15 個）
-- Public ベースのみのスクリーニングは Public 過適合候補を優先しがちなので禁止
-
-各候補について以下を併記して提示:
-
-```python
-# 候補テーブル生成例
-import pandas as pd
-log = pd.read_csv("experiments/log.csv")
-log["public_rank"] = log["submit_score"].rank(ascending=False)
-log["oof_rank"] = log["oof_score"].rank(ascending=False)
-candidates = log[(log["public_rank"] <= 10) | (log["oof_rank"] <= 10)]
-print(candidates[["experiment_id", "oof_score", "submit_score", "oof_rank", "public_rank"]])
-```
-
-**注目度の分類:**
+各候補を 4 プロファイルに分類して提示する:
 
 | プロファイル | 意味 | Final 2 での扱い |
 |---|---|---|
 | OOF Top + Public Top | 標準候補 | 1 本目候補 |
 | **OOF only Top** | Public sampling で過小評価 | ⭐ 必ず Persona 投票対象に |
 | **Public only Top** | Public 過適合の可能性 | ⚠️ hedge を必ず付ける |
-| Public LB +1σ 微改善 | ノイズ床近辺 (#17) | ⚠️ 「突破」と呼ばない、保留扱い |
+| Public LB +1σ 微改善 | ノイズ床近辺（`G-NOISE`） | ⚠️ 「突破」と呼ばない、保留扱い |
 
-**Step 2: `G-NOISE` / `G-OOF` / `G-CEILING` / `G-OVERFIT` の適用チェック:**
-- #17: 各候補の Public LB 改善が評価指標別ノイズ床（AUC ±0.0001 等）を超えているか
-- #18: OOF と Public LB が乖離している候補を見落としていないか
-- #19: 候補プールが Public Top と OOF Top の和集合になっているか
-- #20: 「Private 過適合候補」マーク済みの blend を Final 1 に置いていないか
+**Step 2: 原則の適用チェック（各候補について宣言する）**
 
-**Step 3: Persona 投票プロトコル（9 ペルソナ）:**
+- `G-NOISE`: Public LB 改善が評価指標別ノイズ床を超えているか
+- `G-OOF`: OOF と Public が乖離している候補を見落としていないか
+- `G-CEILING`: プールが和集合になっているか／**天井帯なら「単一最良の選定」ではなく集約（重み bagging・上位 N 平均）に切り替えたか**
+- `G-OVERFIT`: 「Private 過適合候補」マーク済みの blend を Final 1 に置いていないか
 
-拡張プールに対して 9 ペルソナそれぞれの視点で投票する。
-AI が各ペルソナの主張を簡潔にまとめ、ユーザーと一緒に投票結果を集計する。
+**Step 3: 2 本目の価値を先に計算する（Persona 投票の前）**
 
-| Persona | 視点 |
-|---|---|
-| **Kaggle Grandmaster** (経験派) | Public LB の微差はノイズと判断。OOF が安定したペアを選ぶ |
-| **Statistical Theorist** (理論派) | ±0.00005 以内は統計的区別不能。variance minimization で構造的に異なる 2 つ |
-| **Risk Management** (守り派) | 共倒れ防止が最優先。独立な 2 blend |
-| **Pragmatic Engineer** (実践派) | 実証された Public 最高を捨てるな |
-| **Newcomer** (素朴視点) | Blend of Blends は親の 50% 平均。親をそのまま使えばいい |
-| **Domain Expert** | ドメイン的に最適な model を必ず 1 本入れる |
-| **ML Researcher** | Bias 差が最大の異なる philosophy のペアを取る |
-| **External Reviewer** | Family が同じ 2 つは hedge にならない |
-| **Behavioral Economist** | Hindsight bias / Loss aversion を排除、データに基づけ |
+`E[max(A,B)] − E[A]` を計算し、**ノイズ床未満なら 2 本目の選定に時間をかけない**（`G-CEILING`）。
+→ 手順とコードは `PLAYBOOK.md#天井帯での意思決定ツールキット`
 
-**投票ルール:**
-- 各 Persona が候補ペアに 1 票
-- 多数派の候補ペアを採択
-- 同数の場合は **Risk Management の意見を優先**（shakedown 回避を最優先）
+**Step 4: 9-Persona 投票**
 
-**実装手順:**
+→ 9 ペルソナの主張一覧・投票ルール・典型 Final 2 構成パターン・BoB の罠は
+`PLAYBOOK.md#final-2-候補プールとpersona-投票` を Read して実施する。
 
-1. AI が Final 2 候補（3-5 個）を一覧化
-2. 各 Persona の主張を簡潔に提示（CLAUDE.md「最終選択」セクション参照）
-3. AI が投票を集計し、推奨ペアを提示
-4. ユーザーが最終決定（多数派と異なる場合は理由を明示）
-5. 結果を SESSION.md「Final 2 確定」セクションに記録
+進行:
+1. AI が Final 2 候補（3-5 個）を一覧化する
+2. 各 Persona の主張を簡潔に提示する
+3. AI が投票を集計し推奨ペアを提示する（同数なら Risk Management を優先）
+4. **ユーザーが最終決定する**（多数派と異なる場合は理由を明示）
+5. 結果と「どの軸を優先したか」を SESSION.md「Final 2 確定」に記録する
 
 > **目的**: 主観バイアスや hindsight bias を排除し、複数視点で robust な選定を行う。
 > Public LB 最高への執着で Private LB shakedown を起こすパターンを防ぐ。
