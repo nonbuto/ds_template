@@ -261,13 +261,20 @@ N_SPLITS     = 5
 | 項目 | 情報源 | 決定方法 |
 |---|---|---|
 | `TARGET_COL` | `sample_submission.csv` のヘッダー | 2 列目（ID 以外）。Q3 で検出・確認済み |
-| `EVAL_METRIC` | Kaggle メタデータ | `kaggle competitions view -c <slug>` の評価指標欄を参照（取得不可なら Q2 の回答から） |
+| `EVAL_METRIC` | Kaggle の Evaluation ページ | 下記コマンドで取得（取得不可なら Q2 の回答から） |
 | `PROBLEM_TYPE` | `EVAL_METRIC` + ターゲット値域 | auc/logloss→分類、rmse/mae→回帰、確率列が 3+→multiclass |
 | `CV_STRATEGY` | Q4 の CV 設計判断 | StratifiedKFold が既定。時系列→TimeSeriesSplit、グループ構造→GroupKFold |
 
 ```bash
 # 評価指標の取得（取得できれば EVAL_METRIC / PROBLEM_TYPE の根拠にする）
-kaggle competitions view -c <slug> 2>/dev/null
+# ⚠️ `kaggle competitions view` というサブコマンドは存在しない（2026-08 時点）
+kaggle competitions pages list -c <slug> --content --page-name Evaluation
+
+# 締切・参加チーム数・自分の順位などの概要
+kaggle competitions list -s <slug>
+
+# 利用可能なページ名の一覧（rules / Evaluation / Timeline / data-description 等）
+kaggle competitions pages list -c <slug>
 ```
 
 **推定結果は config に書き込む前に必ずユーザーへ提示して確認する:**
