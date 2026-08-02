@@ -379,6 +379,9 @@ uv run python scripts/feature_report.py
 | `/ds-kaggle-research` | **Stage 1.5 の前（序盤調査）**・FE棄却3連続後・Stage 6 外部予測活用時 | 上位解法のアーキテクチャ分布調査（フェーズ0）／ Kaggle Discussion / Dataset / Kernel を CLI で系統的に調査 |
 | `/ds-template-update` | 随時 | テンプレート改善アイデアを TODO_TEMPLATE.md に記録 |
 
+> `/ds-eda-report` は **v6 で削除**（廃止済みだったが description が毎セッションのシステムプロンプトを占有していたため）。
+> 機能は `/ds-eda-visual` と `FEATURE_REPORT.md` に統合済み。
+
 ---
 
 ## ディレクトリ構成

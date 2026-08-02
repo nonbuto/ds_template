@@ -392,7 +392,7 @@ STEP 5【Pseudo-labeling】
        → 3回目以降はラベルノイズ増幅で悪化するケースが多い
   注意: OOF-LB 乖離が拡大する閾値は LB 悪化リスクあり。乖離を記録すること
 
-  **Pseudo 源泉の品質とリーク診断:**
+### Pseudo 源泉の品質とリーク診断
   - pseudo 源泉の優先順位: train fold 内の高確信度サンプル > 自前 test 予測 > 外部公開予測
   - **外部予測を pseudo source に使う = モデル蒸留**（genuine pseudo-labeling ではない）
     → test 予測が外部予測と 99%+ 一致し、独立シグナルを失う。Highクラスのみなど部分的でも同様

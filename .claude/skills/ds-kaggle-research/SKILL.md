@@ -197,4 +197,4 @@ def vote3(row):
 - カーネルが参照している Dataset slug は `path` 変数や `pd.read_csv(...)` パスから確認できる
   - 例: `/kaggle/input/datasets/<user>/<slug>/` → `<user>/<slug>`
 - `kaggle datasets download` は zip で落ちる。`--unzip` フラグは古いバージョンでは使えないため Python の `zipfile` で解凍する
-- 公開予測を pseudo source に使うと自前モデルが蒸留になりうる（CLAUDE.md の「Pseudo 源泉の品質とリーク診断」を参照）
+- 公開予測を pseudo source に使うと自前モデルが蒸留になりうる（`PLAYBOOK.md#pseudo-源泉の品質とリーク診断` を参照）

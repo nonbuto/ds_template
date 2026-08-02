@@ -2,7 +2,7 @@
 
 > **このファイルと PLAYBOOK.md の2層構造**
 >
-> - **CLAUDE.md（このファイル）** = 毎ターン守る「原則・判断基準（精神）」。設計思想・AI指針#1-22・ステージ定義・規約。
+> - **CLAUDE.md（このファイル）** = 毎ターン守る「原則・判断基準（精神）」。設計思想・AI指針#1-31・ステージ定義・規約。
 > - **PLAYBOOK.md** = その局面に来たら読む「実行レシピ（手順・コード・コマンド）」。アンサンブルSTEP1-8・AV診断・GPUワークフロー・合成データ手法・Final 2 Persona 等。
 >
 > 判断に迷ったらこのファイル。手順を実行するなら該当セクションから `PLAYBOOK.md#…` を Read してから着手する。
@@ -51,7 +51,7 @@ Optuna 軽量 ──── 作業用HP調整（20〜30試行）。FEのΔOOF計�
     ↓ 必ず1列ずつ scripts/feature_study.py で投入・ΔOOFを計測。複数列の一括追加は禁止
     ↓ ΔOOF が閾値以下でも feature importance (gain) も確認してから棄却判断する（後述）
 /ds-new-experiment ─ 「何を明らかにしたいか・成功基準・撤退基準」を先に記録する
-    ↓ FEが収束したら（追加特徴量のΔOOFが指標別閾値未満〔指針#20参照。AUCなら+0.0003〕かつ importance が BASE最下位未満 が続いたら）
+    ↓ FEが収束したら（追加特徴量のΔOOFが指標別閾値未満〔指針#17（評価指標別のノイズ床）参照。AUCなら+0.0003〕かつ importance が BASE最下位未満 が続いたら）
 Optuna フル ───── 本格HP最適化（100試行以上）。確定した特徴量セットで実施
     ↓
 /ds-kaggle-submit ── 「OOF/LBのギャップ」を解釈し「学び」を言語化する
@@ -801,7 +801,9 @@ experiments/runs/
 
 **基本フロー**: スクリプト編集 → Dataset同期(rsync) → `to_kaggle_nb.py`で.ipynb変換 → `kaggle kernels push` → `kaggle kernels output`で回収 → commit → LB提出
 
-→ **Dataset同期(rsync)・.ipynb変換・push/回収コマンド・Notebook提出フロー・データ読み込みパターンの詳細は `PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ` 参照**
+→ Dataset同期・.ipynb変換・push/回収: `PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ`
+→ Notebook提出コンペ向けフロー: `PLAYBOOK.md#notebook提出コンペ向けフロー`
+→ 環境自動検出とデータ読み込み: `PLAYBOOK.md#kaggle-notebook-環境サポート` / `PLAYBOOK.md#データ読み込みパターン`
 
 ### 提出ファイルの命名規約
 
@@ -848,7 +850,7 @@ sub.to_csv(sub_path, index=False)
 | **2. EDA** | 問いとFE仮説の種を獲得 | `/ds-eda-visual` で「問い→発見→FE仮説の種」の対話完了。合成データの場合は元データとの分布比較も含む | `/ds-eda-visual` |
 | **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減 | Optuna（軽量） |
 | **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ `scripts/feature_study.py` で投入**してΔOOF と feature importance (gain) を計測済み（複数列の同時投入は `--allow-batch --batch-reason` の明示が必要。**一括はスクリーニングであり、採用・棄却の判断は必ず LOO 分解で各列の寄与を分離してから行う**）。合成データの場合は外部シグナルFEを先に検証済み。**AV 診断**（adversarial validation）で train/test 分布シフトの有無を確認済み。**FE確定後、全候補アーキテクチャに同一FEを移植して再評価済み** | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
-| **5. 本格HP最適化** | 確定特徴量での性能最大化 | Stage4の特徴量セットが確定した状態でOptuna 100試行以上を実施済み。ΔOOFの改善が指標別閾値以内（指針#20参照。AUCなら±0.0002目安）で収束していること。**FE変更時の HP retune ルール**: Stage 4 以降に FE が ±20% 以上変動した場合、または domain-specific 新特徴量を追加した場合、HP retune を再実行する（FE変更で HP 最適点は確実に変動。過去事例では HP retune で +1σ OOF 改善を実証） | Optuna（フルサーチ） |
+| **5. 本格HP最適化** | 確定特徴量での性能最大化 | Stage4の特徴量セットが確定した状態でOptuna 100試行以上を実施済み。ΔOOFの改善が指標別閾値以内（指針#17（評価指標別のノイズ床）参照。AUCなら±0.0002目安）で収束していること。**FE変更時の HP retune ルール**: Stage 4 以降に FE が ±20% 以上変動した場合、または domain-specific 新特徴量を追加した場合、HP retune を再実行する（FE変更で HP 最適点は確実に変動。過去事例では HP retune で +1σ OOF 改善を実証） | Optuna（フルサーチ） |
 | **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
 
 **各 Stage の実行手順は PLAYBOOK.md に集約:**
@@ -857,7 +859,7 @@ sub.to_csv(sub_path, index=False)
 |---|---|
 | Stage 1.5（早期アーキテクチャサーベイ） | `PLAYBOOK.md#早期アーキテクチャサーベイの手順stage-15` — 手順0で `/ds-kaggle-research` の上位解法調査を前提入力にする |
 | Stage 4（AV 診断） | `PLAYBOOK.md#av-診断adversarial-validation` — train/test 分布シフトの検出 |
-| Stage 4（FE 採用・棄却判断） | `PLAYBOOK.md#fe-の採用棄却判断詳細` — ΔOOF と importance の併用、アーキテクチャ依存性、再試行条件 |
+| Stage 4（FE 採用・棄却判断） | `PLAYBOOK.md#fe-の採用・棄却判断詳細` — ΔOOF と importance の併用、アーキテクチャ依存性、再試行条件 |
 | Stage 6（アンサンブル探索 STEP 1-8） | `PLAYBOOK.md#アンサンブル探索の手順stage-6` — 相関確認→Blend→Greedy HC→Stacking→Pseudo→EoS→外部voting→BoB |
 | Stage 6（棄却分析） | `PLAYBOOK.md#アンサンブル棄却分析` — 「効かなかった」で終わらせない次アクション表 |
 
