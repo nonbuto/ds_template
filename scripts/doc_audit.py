@@ -209,6 +209,32 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"どこからも参照されない節 {len(orphans)} 件"
                     + ("\n      " + "\n      ".join(orphans) if orphans else "")))
 
+    # ── C11: README の自己申告値 vs 実測 ──
+    # README は「テンプレートが何であるか」の対外的な宣言。実態からずれると、
+    # 次にこの repo を開いた人（未来の自分）が誤った前提で作業を始める。
+    readme_path = ROOT / "README.md"
+    drift = []
+    if readme_path.exists():
+        readme = readme_path.read_text()
+        actual_claude = len((ROOT / "CLAUDE.md").read_text().splitlines())
+        actual_skills = len(list(ROOT.glob(SKILL_GLOB)))
+        n_checks = len(results) + 1                     # 自分自身を含めた総チェック数
+        claims = [
+            (r"固定\s*(\d+)\s*個の数値", len(CRITICAL_NUMBERS), "C4 の実測値の個数"),
+            (r"\*\*(\d[\d,]*)\s*行（-\d+%）\*\*", actual_claude, "常時ロードの行数"),
+            (r"C1-C(\d+)", n_checks, "doc_audit のチェック数"),
+        ]
+        for pattern, actual, label in claims:
+            m = re.search(pattern, readme)
+            if m and int(m.group(1).replace(",", "")) != actual:
+                drift.append(f"{label}: README は {m.group(1)} / 実測 {actual}")
+        listed = len(re.findall(r"^\|\s*`/ds-[a-z-]+`\s*\|", readme, re.M))
+        if listed and listed != actual_skills:
+            drift.append(f"スキル一覧: README は {listed} 件 / 実測 {actual_skills} 件")
+    results.append(("WARNING" if drift else "OK", "C11 README の同期",
+                    f"実態とのズレ {len(drift)} 件"
+                    + ("\n      " + "\n      ".join(drift) if drift else "")))
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
