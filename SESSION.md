@@ -1,7 +1,7 @@
 # セッション現在地（SESSION.md）
 
 > このファイルは `/ds-new-experiment` と `/ds-kaggle-submit` が自動更新する。
-> 新しいセッションを開始したら、まず `/resume` を実行してください。
+> 新しいセッションを開始したら、まず `/ds-resume` を実行してください。
 
 ---
 

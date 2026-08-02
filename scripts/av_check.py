@@ -20,6 +20,7 @@ from scripts.train import FEATURES
 
 
 def main():
+    assert FEATURES, "FEATURES リストが空です。scripts/train.py の TODO を埋めてください。"
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     test = pd.read_pickle(PROCESSED_DATA_DIR / "test_features.pkl")
 
