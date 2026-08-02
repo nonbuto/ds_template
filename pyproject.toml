@@ -13,6 +13,10 @@ dependencies = [
     "marimo>=0.20.4",
     "matplotlib>=3.10.8",
     "nbformat>=5.10.4",
+    # numba は shap の推移的依存だが、uv のユニバーサル解決では x86_64 darwin 分岐の上限制約に
+    # 引きずられて numba==0.53.1 / llvmlite==0.36.0（Python 3.9 まで）が選ばれ uv sync が失敗する。
+    # 直接依存として下限を明示することで回避する（">=0.53.1" のような自明下限では効果がない）。
+    "numba>=0.60",
     "numpy>=2.4.2",
     "optuna>=4.0",
     "pandas>=3.0.1",

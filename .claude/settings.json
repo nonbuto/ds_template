@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=experiments/log.csv; [ -f \"$f\" ] || exit 0; m=$(stat -f %m \"$f\" 2>/dev/null || stat -c %Y \"$f\" 2>/dev/null); [ -n \"$m\" ] || exit 0; [ $(( $(date +%s) - m )) -lt 20 ] && uv run python -m scripts.viz_guard 2>/dev/null; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

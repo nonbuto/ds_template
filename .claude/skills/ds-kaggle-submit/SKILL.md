@@ -94,6 +94,43 @@ disable-model-invocation: true
   現在ベストLB: Z
 ```
 
+**⚠️ CV内部診断（OOF↔LB の2軸だけで判断しない。CLAUDE.md 指針#31）**
+
+`experiments/log.csv` の `cv_train_mean` / `cv_val_mean` / `cv_val_std` を読み取り、
+**ユーザーが指摘する前に AI 側から**以下を併記する:
+
+```
+── CV内部診断 ──────────────────────
+  train − val 乖離: <cv_train_mean − cv_val_mean>
+  val − LB   乖離: <cv_val_mean − submit_score>
+  fold間 val std  : <cv_val_std>
+  → ΔOOF(<前回比>) は val std を <上回る / 下回る>
+     ※ 下回る場合、その差は「測れていない」（順位はfoldの引き直しで入れ替わる）
+```
+
+**乖離パターンによる原因の切り分け:**
+
+| train−val 乖離 | val−LB 乖離 | 疑うべき原因 | 打ち手 |
+|---|---|---|---|
+| 小 | **大** | CV 設計の問題 | fold 数・seed・層化変数・グループリークを見直す |
+| **大** | **大** | 過学習 **or 校正不足** | 正則化に飛びつく前に、多クラス/不均衡なら**校正**（class_weight・β・閾値）を先に疑う |
+| **大** | 小 | 通常の過学習 | 正則化・early stopping の調整 |
+
+**多クラス + argmax + クラス不均衡の場合は追加で:**
+
+```python
+import numpy as np
+print(np.unique(oof.argmax(1), return_counts=True))   # 予測クラス分布
+print(train[TARGET_COL].value_counts())               # 実際のクラス分布
+```
+→ 少数クラスの**過小予測**なら校正不足を疑う。ただし balanced 系指標では
+　 少数クラスの**過剰予測が正しい挙動**である点に注意（指標の性質を先に確認する）。
+
+> **この診断が決定打になった実例**: 初回ベースラインで train=0.46598 / val=0.44485 / LB=0.43832。
+> OOF↔LB の2軸だけなら「LB乖離 0.0065」で終わっていたが、**train/val 乖離 0.0211** に気づいたことで
+> 「多クラス分類での校正不足」という仮説に到達し、`class_weight="balanced"` 導入で
+> **OOF 0.44485→0.81189 / LB 0.43832→0.81185** というコンペ最大の跳躍につながった。
+
 **伸びしろの所在の提示（毎回、スコア提示と同時に実施）:**
 
 自前ベストLBと「LBトップ」の差分を示し、その差を埋める最有力候補を1行で提示する。

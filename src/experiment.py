@@ -9,6 +9,7 @@ MLflowは必須ではありません。`uv add mlflow` で追加すると利用�
 """
 
 import csv
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,7 +18,7 @@ from typing import Optional
 
 import numpy as np
 
-from src.config import EXPERIMENTS_DIR, RANDOM_STATE
+from src.config import EXPERIMENTS_DIR, PLOTS_DIR, RANDOM_STATE
 
 # MLflowはオプション依存
 try:
@@ -81,13 +82,122 @@ def _get_git_branch() -> str:
         return "unknown"
 
 
+VIZ_GUARD_WINDOW = 5   # 直近N実験のあいだに1枚も可視化が無ければ警告する
+
+
+def _check_visualization_guard(window: int = VIZ_GUARD_WINDOW) -> Optional[str]:
+    """直近 `window` 件の実験期間中に可視化が生成されたかを機械的に判定する。
+
+    CLAUDE.md 指針#9 の「必須発動条件③（直近5実験で可視化ゼロ）」を、AI の自己申告ではなく
+    タイムスタンプ比較で判定する。log.csv の window 件前の実験時刻より新しい .png が
+    PLOTS_DIR に1枚も無ければ警告文字列を返す（無ければ None）。
+
+    背景: 「努力目標」→「発動条件の明示」の2世代とも実効性が無く、2コンペ連続で
+    「可視化が最初の数日に集中し以降ほぼゼロ」という同一の形で形骸化した。
+    AI の自己監査に依存しない機械的な検知が第3世代の対策（TODO_TEMPLATE 2026-08-01 CRITICAL）。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+    if len(rows) < window:
+        return None
+
+    # window 件前の実験のタイムスタンプ = 判定の基準時刻
+    try:
+        since = datetime.strptime(rows[-window]["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, KeyError):
+        return None
+
+    if not PLOTS_DIR.exists():
+        recent_plots = []
+    else:
+        recent_plots = [
+            p for p in PLOTS_DIR.glob("*.png")
+            if datetime.fromtimestamp(p.stat().st_mtime) >= since
+        ]
+    if recent_plots:
+        return None
+
+    return (
+        f"\n⚠️  可視化ガード発動: 直近{window}実験（{since:%Y-%m-%d %H:%M} 以降）で "
+        f"{PLOTS_DIR.name}/ に新規の可視化が1枚もありません。\n"
+        f"   CLAUDE.md 指針#9 の必須発動条件③に該当します。次の実験に進む前に実行してください:\n"
+        f"     uv run python scripts/feature_report.py     # importance / ΔOOF\n"
+        f"     uv run python scripts/visualize.py          # 分布・誤差分析\n"
+        f"   （この警告は AI の自己申告ではなくタイムスタンプ比較による機械判定です）"
+    )
+
+
+def _previous_experiment_scores() -> Optional[float]:
+    """log.csv の最新行（＝直前の実験）の oof_score を返す。無ければ None。
+
+    指針#31「ΔOOF が fold 間 std より小さいなら、その差は測れていない」の自動判定に使う。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+    for row in reversed(rows):
+        raw = (row.get("oof_score") or "").strip()
+        if not raw:
+            continue
+        m = re.search(r"[01]\.\d+", raw)     # "0.95092(anchor)" のような表記にも対応
+        if m:
+            try:
+                return float(m.group(0))
+            except ValueError:
+                continue
+    return None
+
+
+def _find_reserved_row() -> Optional[int]:
+    """`/ds-new-experiment` が予約した行（目的は記入済み・スコアは空欄）の行番号を返す。
+
+    予約行の条件: `experiment_question` が埋まっており、かつ `oof_score` と `cv_val_mean` が空。
+    見つからなければ None。末尾から探索するため、最新の予約行が優先される。
+
+    背景: 予約行を作る設計と `_get_next_experiment_id()`（最大ID+1 を採番）が噛み合わず、
+    目的・成功基準だけの行とスコアだけの行に情報が分裂する事故が起きていた。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+    for idx in range(len(rows) - 1, -1, -1):
+        r = rows[idx]
+        has_purpose = bool((r.get("experiment_question") or "").strip())
+        no_score = not (r.get("oof_score") or "").strip() and not (r.get("cv_val_mean") or "").strip()
+        if has_purpose and no_score:
+            return idx
+    return None
+
+
 def _get_next_experiment_id() -> str:
+    """次の experiment_id を採番する。**予約行があればその ID を再利用する**。"""
     if not LOG_CSV_PATH.exists():
         return "001"
     with open(LOG_CSV_PATH, newline="") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         return "001"
+
+    reserved = _find_reserved_row()
+    if reserved is not None:
+        rid = (rows[reserved].get("experiment_id") or "").strip()
+        if rid:
+            print(f"ℹ️  予約行を検出しました（experiment_id={rid}）。同じ行に結果を書き込みます")
+            return rid
+
     ids = [int(r["experiment_id"]) for r in rows if r.get("experiment_id", "").isdigit()]
     return str((max(ids) + 1) if ids else 1).zfill(3)
 
@@ -262,21 +372,66 @@ class ExperimentTracker:
             "abort_criteria": "",        # /ds-new-experiment スキルが記録
             "learning": "",              # /ds-kaggle-submit スキルが記録
         }
-        with open(LOG_CSV_PATH, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
-            writer.writerow(row)
+        # 予約行（/ds-new-experiment が作った目的だけの行）があれば、追記ではなく**上書き**する。
+        # 予約行の experiment_question / success_criteria / abort_criteria は保持する。
+        reserved = _find_reserved_row()
+        merged_into_reserved = False
+        if reserved is not None:
+            with open(LOG_CSV_PATH, newline="") as f:
+                rows = list(csv.DictReader(f))
+            if (rows[reserved].get("experiment_id") or "").strip() == row["experiment_id"]:
+                for key in ("experiment_question", "success_criteria", "abort_criteria"):
+                    row[key] = rows[reserved].get(key, "")
+                # 予約時に記入済みの description / notes は、空でなければ活かす
+                for key in ("description", "notes"):
+                    if not row[key] and rows[reserved].get(key):
+                        row[key] = rows[reserved][key]
+                rows[reserved] = row
+                with open(LOG_CSV_PATH, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                merged_into_reserved = True
+                print(f"✅ 予約行（experiment_id={row['experiment_id']}）に結果をマージしました（行の重複なし）")
+
+        if not merged_into_reserved:
+            with open(LOG_CSV_PATH, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+                writer.writerow(row)
 
         oof_str = f"{oof_score:.5f}" if oof_score is not None else "N/A"
         exp_id = self._experiment_id or "000"
         branch = _get_git_branch()
+        train_val_gap = train_mean - val_mean
+        gap_note = "  ⚠️ gapが大きい可能性（過学習/校正不足を確認）" if train_val_gap > 0.01 else ""
         print(
             f"\n📊 実験記録完了 (ID: {exp_id})\n"
             f"  CV Train: {train_mean:.5f} ± {train_std:.5f}\n"
             f"  CV Val  : {val_mean:.5f} ± {val_std:.5f}\n"
+            f"  Gap(train-val): {train_val_gap:.5f}{gap_note}\n"
             f"  OOF     : {oof_str}\n"
             f"  Branch  : {branch}\n"
             f"  log.csv : {LOG_CSV_PATH}"
         )
+
+        # CV 内部診断（CLAUDE.md 指針#31）。OOF/LB だけで判断させないための常設表示。
+        prev = _previous_experiment_scores()
+        if val_std > 0:
+            print(
+                f"\n🔍 CV内部診断（指針#31）\n"
+                f"  fold間 val std = {val_std:.5f}\n"
+                f"  → **前実験との OOF 差がこの std を下回るなら、その差は「測れていない」**"
+            )
+            if prev is not None and oof_score is not None:
+                d = oof_score - prev
+                verdict = ("判別不能（std 未満）" if abs(d) < val_std
+                           else "std を超える差")
+                print(f"     前実験 OOF={prev:.5f} → 今回 {oof_score:.5f}  ΔOOF={d:+.5f}  … {verdict}")
+        if train_val_gap > 0.01:
+            print(
+                "  ⚠️ train−val 乖離が大きい。正則化に飛びつく前に、"
+                "多クラス/不均衡タスクなら **校正不足**（class_weight・β・閾値）を先に疑うこと"
+            )
 
         # コミットメッセージの提案（OOFスコア入り）
         commit_title = f"feat(exp{exp_id}): {self.description}"
@@ -287,3 +442,8 @@ class ExperimentTracker:
             f"  {commit_body}\n"
             f"  ↑ git add -p してから git commit -m '<上記>' で記録してください"
         )
+
+        # 可視化ガード（機械判定。CLAUDE.md 指針#9 / TODO_TEMPLATE 2026-08-01 CRITICAL）
+        viz_warning = _check_visualization_guard()
+        if viz_warning:
+            print(viz_warning)
