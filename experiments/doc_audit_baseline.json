@@ -1,55 +1,47 @@
 {
   "CLAUDE.md": {
-    "lines": 1070,
-    "chars": 41981
+    "lines": 639,
+    "chars": 29648
+  },
+  "CONVENTIONS.md": {
+    "lines": 342,
+    "chars": 8674
   },
   "PLAYBOOK.md": {
-    "lines": 1028,
-    "chars": 34232
-  },
-  ".claude/skills/ds-eda-report/SKILL.md": {
-    "lines": 22,
-    "chars": 547
+    "lines": 1215,
+    "chars": 41314
   },
   ".claude/skills/ds-eda-visual/SKILL.md": {
-    "lines": 291,
-    "chars": 6302
+    "lines": 281,
+    "chars": 6119
   },
   ".claude/skills/ds-fe-hypothesis/SKILL.md": {
-    "lines": 317,
-    "chars": 7600
+    "lines": 321,
+    "chars": 7761
   },
   ".claude/skills/ds-kaggle-research/SKILL.md": {
     "lines": 200,
-    "chars": 5502
+    "chars": 5504
   },
   ".claude/skills/ds-kaggle-submit/SKILL.md": {
-    "lines": 352,
-    "chars": 10315
+    "lines": 308,
+    "chars": 8900
   },
   ".claude/skills/ds-kickoff/SKILL.md": {
     "lines": 339,
     "chars": 8858
   },
   ".claude/skills/ds-new-experiment/SKILL.md": {
-    "lines": 154,
-    "chars": 3924
+    "lines": 153,
+    "chars": 3883
   },
   ".claude/skills/ds-resume/SKILL.md": {
-    "lines": 120,
-    "chars": 2568
+    "lines": 121,
+    "chars": 2685
   },
   ".claude/skills/ds-template-update/SKILL.md": {
     "lines": 87,
     "chars": 1841
-  },
-  ".claude/rules/experiment-tracking.md": {
-    "lines": 66,
-    "chars": 1574
-  },
-  ".claude/rules/notebook-conventions.md": {
-    "lines": 87,
-    "chars": 1804
   },
   "_critical_numbers": [
     "0.95003",
