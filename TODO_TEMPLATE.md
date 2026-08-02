@@ -579,7 +579,7 @@
 - **状態**: [DONE]
 
 ## TODO: 不安定NN(TabM等)のHP調整はサブサンプル単一foldで信頼できない
-- 状態: TODO
+- 状態: [DONE] 20260802 v6.1で反映。CLAUDE.md `G-FULLCV` に「HP探索では消えるだけでなく壊れる」節（複数fold平均評価/gradient_clipping・lr上限の制約/発散foldへのペナルティ/軽量アーキで当たりを付けてから移植）を追加。Stage 3 のゲート条件に「不安定な大型アーキでは単一fold・サブサンプルでのHP選定を禁止」を明記。実測は PLAYBOOK.md#教訓アーカイブ実測値つき の L-18
 - 種別: 汎用プロセス(HP調整)
 - 文脈: s6e7でTabMの作業用HPをサブサンプル15万×単一foldOptunaで調整(exp272)→最良HP(n_blocks4/d_block512)がフル5-foldで1fold発散(val0.633)しdefault(0.95050)を大きく下回った(exp273 OOF0.896)
 - 教訓: 大型・不安定なNNアーキのHP調整は(a)単一val分割への過学習 (b)スケール時の学習発散 の二重リスク。サブサンプル単一foldでの選定は信頼できない

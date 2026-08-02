@@ -26,6 +26,8 @@ disable-model-invocation: true
 
 ### フェーズ2: 提出実行（実行層）
 
+> 提出ファイルは必ず `submission_path()` で生成する。命名規約は `CONVENTIONS.md#提出ファイルの命名規約`。
+
 1. `git status --short` 確認
    - working treeが汚れている場合: 「未コミットの変更があります。コミット後に提出してください。」と表示して停止
 

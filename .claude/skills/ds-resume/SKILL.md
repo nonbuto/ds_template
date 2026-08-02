@@ -30,6 +30,9 @@ description: 新しいセッションを開始するときは必ずこれを最�
 4. `COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
 5. `TODO_TEMPLATE.md` — HIGH優先度の未完了項目
 
+> **規約（パス・命名・log.csv 列・コミット形式・ExperimentTracker の使い方）は `CONVENTIONS.md` にある。**
+> 毎セッション自動ロードされないので、該当する作業に入るときに必ずその節を Read すること。
+
 **逐次記録の実効性チェック（必須）:**
 
 ```bash
