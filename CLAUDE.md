@@ -1,12 +1,24 @@
 # DS Template — Kaggle Competition Workspace
 
-> **このファイルと PLAYBOOK.md の2層構造**
+> **ドキュメントの 4 層構造**
 >
-> - **CLAUDE.md（このファイル）** = 毎ターン守る「原則・判断基準（精神）」。設計思想・AI指針#1-31・ステージ定義・規約。
-> - **PLAYBOOK.md** = その局面に来たら読む「実行レシピ（手順・コード・コマンド）」。アンサンブルSTEP1-8・AV診断・GPUワークフロー・合成データ手法・Final 2 Persona 等。
+> | 層 | ファイル | ロード | 役割 |
+> |---|---|---|---|
+> | **L0 原則** | **CLAUDE.md（このファイル）** | 毎セッション自動 | 毎ターン守る「判断の憲法」 |
+> | **L1 規約** | `CONVENTIONS.md` | 参照時 | 迷ったら引く「辞書」。決まりだけ、判断しない |
+> | **L2 手順+史料** | `PLAYBOOK.md` | 参照時 | 実行レシピと、原則を支える**教訓アーカイブ** |
+> | **L3 進行台本** | `.claude/skills/*` | 呼出時 | 対話のフェーズ進行と質問文面 |
 >
-> 判断に迷ったらこのファイル。手順を実行するなら該当セクションから `PLAYBOOK.md#…` を Read してから着手する。
-> **レシピは原則を上書きしない。** PLAYBOOK.md の手順も CLAUDE.md の原則に従う。
+> **SSoT（単一情報源）4 原則** — 同じ内容が複数箇所に散ると、更新時に必ず食い違う。
+> 1. **1 情報 = 1 ファイル。** 同じ文が 2 箇所に現れたら、**下の層を削り上の層への参照に置き換える**
+> 2. **参照の向きは常に「下 → 上」。** L0 が L2 を指すのは「入口リンク 1 行」のみ
+> 3. **教訓の例外**: 本文の SSoT は `PLAYBOOK.md#教訓アーカイブ`。L0 に置いてよいのは
+>    「結論 1 文 + 鍵の数値 最大 2 個 + リンク」の **1 行だけ**（指針あたり最大 2 本）。
+>    **数値は残す**（規範を「守るべきもの」に変える payload だから）。削るのは経緯・時系列・表
+> 4. **L0 にコードフェンスを書かない。** 手順を書きたくなったら、それは L2 に置くべきサイン
+>
+> 判断に迷ったらこのファイル。手順を実行するなら `PLAYBOOK.md#…` を Read してから着手する。
+> **レシピは原則を上書きしない。**
 
 ---
 
@@ -85,38 +97,12 @@ Optuna フル ───── 本格HP最適化（100試行以上）。確定し
 - `/ds-new-experiment` 実行時 → 実験開始・次のアクションを記録
 - `/ds-kaggle-submit` 実行時 → LBスコア・OOF-LB乖離・**本日の提出数（例: 3/10）**・学び・次の方向性を記録
 
-**SESSION.md の「現在の主要スコア」テーブルの形式:**
-
-| 指標 | OOF tuned | LB | OOF-LB乖離 | 実験ID |
-|---|---|---|---|---|
-| ベスト | 0.XXXXX | 0.XXXXX | ±0.XXXXX | expNNN |
-
-乖離列を常に記録することで「OOFは高いがLBで悪化」のパターンを早期に検知できる。
-
 **新しいセッション開始時は必ず `/ds-resume` を実行する。**
 
-**SESSION.md の設計原則（蓄積禁止・上書き原則）:**
-
 SESSION.md は「今どこにいるか」を1画面で示すライブダッシュボード。
-アペンド（追記）ではなく、各セクションを必ず **上書き更新** する。
+**アペンドではなく各セクションを上書き更新する**（蓄積禁止 — 古い記録は git history に残る）。
 
-禁止パターン（AIが絶対にやってはいけないこと）:
-- 「最後に完了したこと」セクションを複数回追記する（古いものは削除 → 1件だけ保持）
-- 複数のスコアテーブルを並存させる（常に最新ベストのみ1テーブルを保持）
-- 過去セッションの履歴を蓄積する（git history に残るので SESSION.md には不要）
-
-SESSION.md の固定構成（このセクション順序を守り、追加セクションを作らない）:
-1. **ファイルヘッダー** — 最終更新日時（`/ds-new-experiment` または `/ds-kaggle-submit` 実行のたびに更新）
-2. **現在のステージ** — 1〜2行で現状を説明。「次にやること」を1行目に書く
-3. **スコア状況** — ベストスコアのみ1テーブル。更新時は上書き（新テーブル追加禁止）
-4. **直近の実験** — 最大10件。11件目以降は最古から削除（git log で追跡可能）
-5. **次にやること** — 箇条書き最大5件
-6. **未解決の問い** — ブロッカー・疑問点のみ。解決済みは削除
-7. **重要な方針** — 実験を通じて確定した原則のみ
-
-SESSION.md のオーバーフロー検知:
-- **ファイルが 80 行を超えた場合**: 蓄積が起きているサイン。過去の完了済みエントリを削除して 80 行以内に収める
-- `/ds-resume` 実行時に行数を確認し、オーバーフローなら警告を出して整理する
+→ 固定構成7項目・上限（全体80行 / 直近の実験10件）・禁止パターンは `CONVENTIONS.md#sessionmd-の構成と上限`
 
 ### AIへの指針
 
@@ -742,59 +728,19 @@ SESSION.md のオーバーフロー検知:
 
 ### ディレクトリ規約
 
-| ディレクトリ | 用途 |
-|---|---|
-| `data/raw/` | 生データ（読み取り専用） |
-| `data/processed/` | 加工済みデータ（pickle形式） |
-| `data/output/submissions/` | 提出CSVのみ（`submission_path()` で生成） |
-| `data/output/oof/` | OOF・test予測の `.npy` ファイル |
-| `data/output/models/` | 学習済みモデルファイル |
-| `data/output/params/` | best_params JSON |
-| `data/output/plots/` | 可視化画像（`.png`）。Claudeが読んで対話に使う |
-| `experiments/` | log.csv + MLflowアーティファクト |
-| `scripts/` | 再利用可能なスクリプト（後述） |
-| `experiments/runs/` | 実験ごとの1回限りスクリプト |
+`data/output/` 直下にファイルを置かない。役割別サブディレクトリ（`submissions/` `oof/` `models/` `params/` `plots/`）を必ず使う。
 
-> `data/output/` 直下にファイルを置かない。役割別サブディレクトリを必ず使う。
-
+→ 全ディレクトリの用途は `CONVENTIONS.md#ディレクトリ規約`
 ### スクリプト構成
 
-**`scripts/`（テンプレート本体・再利用可能）**
+`scripts/` = テンプレート本体（再利用可能な骨格）。`experiments/runs/` = コンペ固有の1回限りスクリプト（`exp{NNN}_s{stage}_{内容}.py`）。
 
-| ファイル | Stage | 役割 |
-|---|---|---|
-| `scripts/train.py` | 1・4 | CV学習の汎用骨格（モデル・特徴量をconfigで切り替え） |
-| `scripts/feature_study.py` | 4 | 1列ΔCV計測（FE仮説の効果測定） |
-| `scripts/optimize_hp.py` | 3・5 | Optuna HP探索 |
-| `scripts/predict.py` | 全般 | OOF予測→提出ファイル生成 |
-| `scripts/blend.py` | 6 | アンサンブル・ブレンド |
-| `scripts/visualize.py` | 2 | EDA可視化→`data/output/plots/`に画像保存 |
-| `scripts/feature_report.py` | 随時 | 特徴量重要度・ΔOOF棒グラフを画像生成 |
-
-**`experiments/runs/`（コンペ固有・使い捨て）**
-
-命名規約: `exp{NNN}_s{stage}_{内容}.py`
-
-```
-experiments/runs/
-  exp001_s1_lgb_baseline.py       ← Stage 1: 最小ベースライン
-  exp003_s3_hp_lgb_optuna.py      ← Stage 3: 作業用HP調整
-  exp042_s4_fe_age_sq.py          ← Stage 4: 特徴量追加
-  exp099_s5_hp_lgb_full.py        ← Stage 5: 本格HP最適化
-  exp171_s6_lgb_cb_blend.py       ← Stage 6: アンサンブル
-```
-
-- `exp{NNN}`: `experiments/log.csv` の `experiment_id` と一致させる
-- `s{stage}`: どのステージの実験かが一目で分かる
-- `scripts/` のスクリプトを呼び出すラッパーとして書くことを推奨
-
+→ 各スクリプトの役割一覧・命名規約・標準構成は `CONVENTIONS.md#スクリプト構成`
 ### コーディング規約
 
-- パスは必ず `src.config` からインポート（ハードコード禁止）
-- 乱数シードは `RANDOM_STATE`（`src.config`から）
-- 特徴量名: snake_case・スペースなし
-- `src/` 配下に型ヒントを付ける
+パスは必ず `src.config` からインポート（ハードコード禁止）。乱数シードは `RANDOM_STATE`。
 
+→ 全項目は `CONVENTIONS.md#コーディング規約`
 ### Kaggle Notebook 環境・GPU ワークフロー
 
 このテンプレートはローカルと Kaggle Notebook の両環境で動作する（`src/config.py` が環境を自動検出しパスを切り替える）。GPU を使う重い学習は Kaggle Notebook で実行し、成果物（OOF .npy / submission.csv）をローカルに回収する。
@@ -807,39 +753,16 @@ experiments/runs/
 
 ### 提出ファイルの命名規約
 
-提出CSVは必ず `submission_path()` ヘルパーで生成する:
+提出 CSV は必ず `submission_path()` ヘルパーで生成する（手書き禁止）。
+ファイル名だけで「どの実験の・何を・どの品質で」出したかが分かる状態を保つ。
 
-```python
-from src.config import submission_path
-sub_path = submission_path(model="lgb_cb_blend", oof_score=0.91777, exp_id="171")
-# → data/output/submissions/sub_171_lgb_cb_blend_0.91777_20260331_2347.csv
-sub.to_csv(sub_path, index=False)
-```
-
-命名規約: `sub_{exp_id}_{model}_{oof_score:.5f}_{yyyymmdd_HHMM}.csv`
-
-- `exp_id`: `experiments/log.csv` の `experiment_id` と紐付ける（省略可）
-- `model`: ブレンド内容が分かる短い識別子（例: `lgb`, `lgb_cb_blend`, `greedy_ens`）
-- `oof_score`: ファイル名だけで品質が分かるようにする
-- タイムスタンプ: 同名ファイルの上書き防止と生成順の追跡
-
+→ 命名規則と呼び出し例は `CONVENTIONS.md#提出ファイルの命名規約`
 ### 実験管理（log.csv）
 
-`experiments/log.csv` の主要カラム:
+すべての実験を `experiments/log.csv` に記録する。**目的・成功基準・撤退基準は実験前に**、スコアは学習完了時に、LB と学びは提出後に記入する。
+**ベスト実験の管理は SESSION.md のスコアテーブルで一元化する**（log.csv にベストフラグ列を持たない — 過去コンペで 100 実験超のうちほぼ全行が未記入となり形骸化した）。
 
-| カラム | 記録タイミング | 説明 |
-|---|---|---|
-| `experiment_question` | `/ds-new-experiment` | この実験で何を明らかにしたいか |
-| `success_criteria` | `/ds-new-experiment` | どんな結果なら成功か |
-| `abort_criteria` | `/ds-new-experiment` | どんな結果なら中止するか |
-| `cv_val_mean` / `oof_score` | 学習完了時 | OOFスコア |
-| `submit_score` | `/ds-kaggle-submit` | LBスコア |
-| `oof_lb_gap` | `/ds-kaggle-submit` | OOF tuned − LB（正=OOF過大評価、負=OOF過小評価）。乖離が大きい実験は汎化リスクあり |
-| `learning` | `/ds-kaggle-submit` | この実験から何を学んだか |
-
-> **ベスト実験の管理は SESSION.md のスコアテーブルで一元化する。** log.csv にベストフラグ列（`is_best` 等）を持たない
-> — フラグ方式は過去コンペで 100 実験超のうちほぼ全行が未記入となり形骸化した。二重管理をやめ、SESSION.md の上書き更新に集約する。
-
+→ 全カラムの定義は `CONVENTIONS.md#実験管理logcsv`
 ### 作業ステージとゲート
 
 | Stage | 目的 | 完了条件 | スキル・ツール |
@@ -960,81 +883,16 @@ Public Top のみのスクリーニングは Public 過適合候補を優先し�
 
 ### ブランチ管理
 
-```
-main              ← テンプレート本体（コンペ固有コード禁止）
-comp/<competition> ← コンペ適用ブランチ（日々の実験コミットの置き場）
-exp/<実験名>      ← 大きな方向転換のみ（下記基準参照）
-template/fix-XXX  ← テンプレ改善ブランチ
-```
+`main`（テンプレート本体）/ `comp/<competition>`（日々の実験）/ `exp/<実験名>`（大きな方向転換のみ）/ `template/fix-XXX`。
+**FE 1列追加・HP調整・ブレンド重み調整では `exp/` を作らない**（`comp/` 上でコミットしてよい）。
 
-**`exp/` ブランチを作る基準（すべての実験には不要）:**
-
-| 作る | 作らない |
-|---|---|
-| 新しいアルゴリズムの追加（XGB, NN, RF など） | FEの1列追加 |
-| 特徴量セットの大幅再設計（列数 ±20% 以上） | HPチューニング（Optuna） |
-| CV戦略の変更（StratifiedKFold → GroupKFold など） | ブレンド重みの調整 |
-| アーキテクチャ変更（Stacking の試験的導入） | 既存スクリプトのバグ修正 |
-
-→ 上記に当てはまらない実験は `comp/<competition>` ブランチ上でコミットしてよい。
-
+→ 作成基準の判断表は `CONVENTIONS.md#ブランチ管理`
 ### コミット規約
 
-**コミットのタイミング（3つのルール + 並行実行ルール）:**
+**タイミング（3原則）**: ①学習完了直後（OOF 判明から **5 分以内**）に commit ②**1実験 = 1コミット**（まとめない） ③`/ds-kaggle-submit` 前に `git status` が clean であること。
+**並行実行時も例外なし** — 各実験の OOF 判明ごとに個別 commit する。log.csv 更新も同じタイミング（バッチ更新禁止）。
 
-1. **学習完了直後にコミットする** — OOFスコアが判明した直後 **5 分以内**。時間を置かない
-2. **1実験 = 1コミット** — 複数の変更を一度のコミットにまとめない。何が効いたか追跡できなくなる
-3. **`/ds-kaggle-submit` の前にコミット済みであること** — `git status` がcleanでなければ提出しない
-
-**並行実行時の特例ルール（バックグラウンド実行時も厳守）:**
-
-複数の実験をバックグラウンドで並行実行している場合でも、**各実験の OOF 判明ごとに個別 commit する**:
-
-```
-❌ NG パターン:
-  exp_A 完了 → 待機 → exp_B 完了 → 待機 → exp_C 完了 → まとめて 1 commit
-
-✅ OK パターン:
-  exp_A 完了 → commit_A → exp_B 完了 → commit_B → exp_C 完了 → commit_C
-```
-
-待ち時間の活用:
-- バックグラウンド実行中の「次の実験設計」は OK
-- しかし完了した実験の commit は **絶対に後回しにしない**
-- log.csv の更新も同じタイミングで（バッチ更新は禁止）
-
-> **教訓 (過去事例)**: 7 実験を 1 コミットにまとめ、log.csv 更新を最終日に一括実施した結果、後追いで「どの変更が効いたか」が追跡困難になった
-
-**実験番号の衝突防止:**
-
-新しい実験番号を決める前に、必ず以下で既存ファイルを確認する:
-```bash
-ls experiments/runs/ | grep "^exp" | sort | tail -5
-# log.csv の最大 experiment_id も確認
-tail -3 experiments/log.csv | cut -d',' -f2
-```
-未コミットの実験スクリプトが `experiments/runs/` に存在する場合（`git status` で `??` 表示）、
-それらの番号は使用済みとして扱い、それより大きい番号を使う。
-
-**コミットメッセージの形式:**
-
-```
-feat(expNNN): <実験の目的を1文で>
-
-OOF=<score>  model=<model>  features=<feature_set>
-```
-
-例:
-```
-feat(exp042): col_A×col_B の交互作用特徴量を追加
-
-OOF=0.91688  model=lgb  features=fe_v7_interaction
-```
-
-- `expNNN` は `experiments/log.csv` の `experiment_id` と一致させる
-- 本文行（2行目）は `tracker.end_run()` が自動提案する
-- `feat` / `fix` / `refactor` を使い分ける（FE追加=feat, バグ修正=fix, リファクタ=refactor）
-
+→ メッセージ形式・実験番号の衝突防止手順は `CONVENTIONS.md#コミット規約`
 ### テンプレート改善プロトコル
 
 コンペ作業中に改善点を発見したら `/ds-template-update <説明>` を実行する。
@@ -1042,11 +900,19 @@ OOF=0.91688  model=lgb  features=fe_v7_interaction
 スキルが「汎用プロセス / 技術インフラ / コンペ固有」を峻別して記録先を判断する。
 **コンペ固有の知見をそのままテンプレートに入れない**こと。
 
-**改善を CLAUDE.md と PLAYBOOK.md のどちらに入れるか（2層構造の維持）:**
-- **原則・判断基準・「なぜそうするか」の教訓** → CLAUDE.md（AI指針・設計思想・ステージ定義）
-- **実行手順・コードスニペット・コマンド列・詳細レシピ** → PLAYBOOK.md
-- 判断基準: 「毎ターン参照すべきか（=CLAUDE.md）」「その局面に来たら読めばよいか（=PLAYBOOK.md）」
-- PLAYBOOK.md に手順を足したら、CLAUDE.md の対応する判断ポイントから `PLAYBOOK.md#…` でリンクを張る（宙に浮かせない）
+**改善を 4 層のどこに入れるか（この振り分けを誤ると必ず重複が生まれる）:**
+
+| 内容の性質 | 行き先 | 例 |
+|---|---|---|
+| 規範・判断基準・閾値 | **L0 `CLAUDE.md`** | 「〜せよ」「〜は禁止」「相関 0.998 以上ならスキップ」 |
+| パス・命名・列定義・コマンド規約 | **L1 `CONVENTIONS.md`** | ディレクトリ、log.csv の列、コミット形式 |
+| 実行手順・コード・**教訓の本文** | **L2 `PLAYBOOK.md`** | STEP 1-8、ノイズ床の計算、`L-NN` の実測記録 |
+| 対話の進行・質問文面 | **L3 `.claude/skills/*`** | フェーズ構成、ユーザーへの問いかけ |
+
+- 判断基準: 「**毎ターン参照すべきか**（=L0）」「**引くだけか**（=L1）」「**その局面で読めばよいか**（=L2/L3）」
+- **教訓を L0 に書かない。** `PLAYBOOK.md#教訓アーカイブ` に `L-NN` として追記し、L0 からは 1 行で参照する（SSoT 原則 3）
+- L2 に手順を足したら、L0 の対応する判断ポイントから `PLAYBOOK.md#…` でリンクを張る（宙に浮かせない）
+- 追記後は **`uv run python -m scripts.doc_audit`** を実行し、重複・SSoT 違反・参照切れがないか確認する
 
 **TODO_TEMPLATE.md → CLAUDE.md 反映サイクル（重要）:**
 
