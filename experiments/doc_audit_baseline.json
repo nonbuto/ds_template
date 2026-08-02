@@ -1,0 +1,91 @@
+{
+  "CLAUDE.md": {
+    "lines": 1070,
+    "chars": 41981
+  },
+  "PLAYBOOK.md": {
+    "lines": 1028,
+    "chars": 34232
+  },
+  ".claude/skills/ds-eda-report/SKILL.md": {
+    "lines": 22,
+    "chars": 547
+  },
+  ".claude/skills/ds-eda-visual/SKILL.md": {
+    "lines": 291,
+    "chars": 6302
+  },
+  ".claude/skills/ds-fe-hypothesis/SKILL.md": {
+    "lines": 317,
+    "chars": 7600
+  },
+  ".claude/skills/ds-kaggle-research/SKILL.md": {
+    "lines": 200,
+    "chars": 5502
+  },
+  ".claude/skills/ds-kaggle-submit/SKILL.md": {
+    "lines": 352,
+    "chars": 10315
+  },
+  ".claude/skills/ds-kickoff/SKILL.md": {
+    "lines": 339,
+    "chars": 8858
+  },
+  ".claude/skills/ds-new-experiment/SKILL.md": {
+    "lines": 154,
+    "chars": 3924
+  },
+  ".claude/skills/ds-resume/SKILL.md": {
+    "lines": 120,
+    "chars": 2568
+  },
+  ".claude/skills/ds-template-update/SKILL.md": {
+    "lines": 87,
+    "chars": 1841
+  },
+  ".claude/rules/experiment-tracking.md": {
+    "lines": 66,
+    "chars": 1574
+  },
+  ".claude/rules/notebook-conventions.md": {
+    "lines": 87,
+    "chars": 1804
+  },
+  "_critical_numbers": [
+    "0.95003",
+    "0.95048",
+    "0.95060",
+    "0.95045",
+    "0.95043",
+    "0.95034",
+    "0.95013",
+    "0.95050",
+    "0.95101",
+    "0.46598",
+    "0.44485",
+    "0.43832",
+    "0.81189",
+    "0.81185",
+    "0.97169",
+    "0.97227",
+    "0.88603",
+    "0.88970",
+    "0.0000289",
+    "11,941",
+    "0.95084",
+    "0.95081",
+    "0.95047",
+    "0.000021",
+    "0.000052",
+    "0.998",
+    "0.853",
+    "0.819",
+    "339",
+    "169",
+    "496",
+    "35%",
+    "28%",
+    "21%",
+    "74%"
+  ]
+}

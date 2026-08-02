@@ -110,6 +110,10 @@ LGB（決定木系）とCB（Ordered Boosting）では特徴量の使い方が�
 - **学び**: —
 ```
 
+**仮説が 50 件を超えている場合は、`FE_HYPOTHESES.md` の「索引」テーブルにも 1 行追記する**
+（`| H-NNN | <1行要約> | 🔵 | — | — |`）。結果確定時にこの行を更新する。
+索引が無いと `/ds-resume` が全文 Read を強いられ、コンテキストを浪費する。
+
 FE_HYPOTHESES.md への記録後、`SESSION.md` を更新する:
 - `現在のステージ`: Stage 4 — 段階的FE（仮説 H-NNN を登録）
 - `次にやること`: 「H-NNN を実装 → scripts/visualize.py で可視化確認 → scripts/feature_study.py でΔOOF計測」

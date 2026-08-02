@@ -25,7 +25,8 @@ description: 新しいセッションを開始するときは必ずこれを最�
 
 1. `SESSION.md` — 現在地スナップショット（最優先）
 2. `experiments/log.csv` — 直近5件の実験記録
-3. `FE_HYPOTHESES.md` — 仮説のステータス集計
+3. `FE_HYPOTHESES.md` — **仮説 50 件超なら「索引」セクションのみ Read**（全文 Read 禁止。
+   ステータス集計は `grep -c '^| H-' FE_HYPOTHESES.md` と `grep -c '❌' FE_HYPOTHESES.md` で行う）
 4. `COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
 5. `TODO_TEMPLATE.md` — HIGH優先度の未完了項目
 

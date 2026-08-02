@@ -196,18 +196,8 @@ STEP E【FE仮説の即時登録】← スキップ禁止
 
 フェーズ3のループ内では、各変数について以下を実行する:
 
-```python
-# 例: scripts/visualize.py を使うか、インラインで記述
-import matplotlib
-matplotlib.use("Agg")  # 非インタラクティブモードで描画
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-fig, ax = plt.subplots(figsize=(10, 4))
-# ... 描画処理 ...
-fig.savefig("data/output/plots/eda_{変数名}_{テーマ}.png", dpi=120, bbox_inches="tight")
-plt.close(fig)
-```
+`scripts/visualize.py` を使うか、同じ作法でインライン記述する。
+**描画バックエンド・保存先・ファイル名規約は `CONVENTIONS.md#可視化の規約` に従う**（画像は `data/output/plots/` に保存し、直接表示しない）。
 
 保存後、Claudeは `Read` ツールで画像を読み込み、グラフを見ながらSTEP Bの問いかけを行う。
 
