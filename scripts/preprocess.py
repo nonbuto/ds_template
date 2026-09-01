@@ -16,7 +16,8 @@ train_features.pkl / test_features.pkl として保存する:
 
 import pandas as pd
 
-from src.config import RAW_DATA_DIR, PROCESSED_DATA_DIR
+from src.config import RAW_DATA_DIR, PROCESSED_DATA_DIR, TARGET_COL
+from src.validation import run_all_validations
 
 # TODO: コンペごとに埋める
 NUMERIC_COLS: list[str] = []
@@ -39,6 +40,14 @@ def main():
         test[col] = test[col].fillna("missing").astype(
             pd.CategoricalDtype(categories=categories)
         )
+
+    # 保存前にデータバリデーションを通す（スキーマ・リーク・欠損）。
+    # ここを通さないと `src/validation.py` は「書かれているが一度も走らないコード」になる。
+    # とくに no_leakage は、train/test に同一行が混入する事故を保存前に止める。
+    run_all_validations(
+        train_df=train, test_df=test, target_col=TARGET_COL,
+        expected_columns=list(train.columns), raise_on_failure=False,
+    )
 
     train.to_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     test.to_pickle(PROCESSED_DATA_DIR / "test_features.pkl")

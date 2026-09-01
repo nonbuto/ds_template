@@ -32,6 +32,7 @@
 
 | ファイル | Stage | 役割 |
 |---|---|---|
+| `scripts/preprocess.py` | 0 | 生データ → `train_features.pkl` / `test_features.pkl`（**パイプラインの最初の工程**。保存前に `src/validation.py` のスキーマ・リーク・欠損検証を通す）|
 | `scripts/train.py` | 1・4 | CV学習の汎用骨格（モデル・特徴量をconfigで切り替え） |
 | `scripts/feature_study.py` | 4 | 1列ΔCV計測（FE仮説の効果測定） |
 | `scripts/optimize_hp.py` | 3・5 | Optuna HP探索 |
@@ -50,6 +51,9 @@
 | `scripts/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
 | `scripts/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
 | `scripts/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
+
+**`src/`（コア）**: `config.py`（パス・コンペ設定）、`experiment.py`（`ExperimentTracker` と各ガード）、
+`hp_spaces.py`（Optuna 探索空間）、`validation.py`（スキーマ・リーク・欠損の検証。`preprocess.py` が呼ぶ）
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
