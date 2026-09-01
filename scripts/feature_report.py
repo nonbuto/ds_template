@@ -4,11 +4,11 @@
 FEATURE_REPORT.md の可視化セクションに対応する画像を生成する。
 Claude が Read ツールで読んで対話に使う。
 
-使い方:
-    uv run python scripts/feature_report.py
-    uv run python scripts/feature_report.py --theme importance  # 重要度のみ
-    uv run python scripts/feature_report.py --theme delta       # ΔOOF棒グラフのみ
-    uv run python scripts/feature_report.py --theme corr        # 相関ヒートマップのみ
+使い方（`src` を import するため -m 形式で起動する）:
+    uv run python -m scripts.feature_report
+    uv run python -m scripts.feature_report --theme importance  # 重要度のみ
+    uv run python -m scripts.feature_report --theme delta       # ΔOOF棒グラフのみ
+    uv run python -m scripts.feature_report --sync              # 「現在の特徴量セット」節を実測から再生成
 """
 
 import argparse
@@ -125,13 +125,89 @@ def plot_feature_correlation(train_path: Path, feature_cols: list[str], out: Pat
     return path
 
 
+SYNC_BEGIN = "<!-- BEGIN:feature-set (scripts/feature_report.py --sync が生成・手で編集しない) -->"
+SYNC_END = "<!-- END:feature-set -->"
+
+
+def _latest_feature_snapshot() -> dict | None:
+    """`params/features_*.json` のうち最新のものを読む（end_run が保存する）。"""
+    snaps = sorted(PARAMS_DIR.glob("features_*.json"))
+    if not snaps:
+        return None
+    try:
+        return json.loads(snaps[-1].read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _count_hypotheses(path: Path) -> tuple[int, int, int]:
+    """FE_HYPOTHESES.md から 採用 / 棄却 / 未検証 の件数を数える。"""
+    if not path.exists():
+        return (0, 0, 0)
+    text = path.read_text(encoding="utf-8")
+    return (text.count("✅"), text.count("❌"), text.count("🔵"))
+
+
+def sync_feature_set(report_md: Path) -> bool:
+    """FEATURE_REPORT.md の「現在の特徴量セット」節を機械生成で置き換える。
+
+    この節が手書きだったため、s6e8 では「今どの特徴量がベースか」を追えなくなった。
+    実験が保存した `features_{exp_id}.json` と FE_HYPOTHESES.md の集計から再生成する。
+    手書きの表（メカニズム・棄却理由）はマーカーの外にあるので影響を受けない。
+    """
+    snap = _latest_feature_snapshot()
+    if snap is None:
+        print("⚠ params/features_*.json がありません。"
+              "end_run(feature_names=...) を渡すと保存されます")
+        return False
+
+    adopted, rejected, untested = _count_hypotheses(Path("FE_HYPOTHESES.md"))
+    features = snap.get("features", [])
+    preview = "、".join(features[:12]) + ("…" if len(features) > 12 else "")
+    body = "\n".join([
+        SYNC_BEGIN,
+        f"- **総特徴量数**: {snap.get('n_features', len(features))} 列"
+        f"（実験 exp{snap.get('experiment_id', '?')} / model={snap.get('model', '?')}）",
+        f"- **この特徴量セットの OOF**: {snap.get('oof_score')}",
+        f"- **FE 仮説**: ✅ 採用 {adopted} 件 / ❌ 棄却 {rejected} 件 / 🔵 未検証 {untested} 件",
+        f"- **特徴量**: {preview}",
+        f"- **スナップショット保存**: {snap.get('saved_at', '—')}",
+        SYNC_END,
+    ])
+
+    text = report_md.read_text(encoding="utf-8")
+    if SYNC_BEGIN in text and SYNC_END in text:
+        head, rest = text.split(SYNC_BEGIN, 1)
+        _, tail = rest.split(SYNC_END, 1)
+        text = head + body + tail
+    else:
+        # 初回: 「現在の特徴量セット」節の本文（プレースホルダー）を置き換える
+        marker = "## 現在の特徴量セット"
+        if marker not in text:
+            print("⚠ FEATURE_REPORT.md に「現在の特徴量セット」節がありません")
+            return False
+        head, rest = text.split(marker, 1)
+        after = rest.split("\n---", 1)
+        text = head + marker + "\n\n" + body + "\n" + ("\n---" + after[1] if len(after) > 1 else "")
+    report_md.write_text(text, encoding="utf-8")
+    print(f"✅ FEATURE_REPORT.md の「現在の特徴量セット」を更新しました"
+          f"（exp{snap.get('experiment_id')} / {snap.get('n_features')} 列）")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="特徴量レポート画像を生成する")
     parser.add_argument("--theme", type=str, default="all",
                         choices=["all", "importance", "delta", "corr"])
     parser.add_argument("--importance-csv", type=str, default="",
                         help="特徴量重要度CSV（省略時は最新ファイルを自動検索）")
+    parser.add_argument("--sync", action="store_true",
+                        help="FEATURE_REPORT.md の「現在の特徴量セット」節を実測から再生成する")
     args = parser.parse_args()
+
+    if args.sync:
+        sync_feature_set(Path("FEATURE_REPORT.md"))
+        return
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     feature_report_md = Path("FEATURE_REPORT.md")

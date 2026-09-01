@@ -531,7 +531,6 @@ uv run python scripts/feature_report.py
 │   ├── experiment.py      # 実験トラッキング（log.csv 書き込み）
 │   ├── validation.py      # データバリデーション
 │   ├── hp_spaces.py       # Optuna サーチスペース定義
-│   ├── feature_registry.py # 特徴量レジストリ
 │   └── utils/
 │       ├── ensemble.py    # correlation_check / optimize_weights / greedy_ensemble
 │       └── logger.py      # ロガー

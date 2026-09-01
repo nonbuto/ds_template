@@ -39,7 +39,15 @@
 
 ## 現在の特徴量セット
 
-> `scripts/train.py` または `scripts/feature_study.py` 実行後に更新する。
+> **この節は機械生成する。** 実験が `end_run(feature_names=...)` で保存した
+> `data/output/params/features_{exp_id}.json` から再生成される:
+>
+> ```bash
+> uv run python -m scripts.feature_report --sync
+> ```
+>
+> 手書きで維持していたため、過去コンペでは試行が増えるにつれ
+> 「今どの特徴量がベースなのか」を追えなくなった。
 
 - **総特徴量数**: — 列
 - **生変数**: — 列（確認済み: — / 未確認: —）

@@ -9,6 +9,7 @@ MLflowは必須ではありません。`uv add mlflow` で追加すると利用�
 """
 
 import csv
+import json
 import os
 import re
 import subprocess
@@ -310,6 +311,23 @@ def _get_next_experiment_id() -> str:
     return str((max(ids) + 1) if ids else 1).zfill(3)
 
 
+def _save_feature_snapshot(exp_id: str, feature_names: list[str],
+                           model: str, oof_score: Optional[float]) -> None:
+    """この実験の特徴量セットを JSON で残す（「今のベース」を機械可読にする）。"""
+    from src.config import PARAMS_DIR
+
+    PARAMS_DIR.mkdir(parents=True, exist_ok=True)
+    path = PARAMS_DIR / f"features_{exp_id}.json"
+    path.write_text(json.dumps({
+        "experiment_id": exp_id,
+        "model": model,
+        "oof_score": oof_score,
+        "n_features": len(feature_names),
+        "features": list(feature_names),
+        "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 LONG_RUN_THRESHOLD_SEC = 30 * 60   # CLAUDE.md「30分ルール」の閾値
 
 
@@ -501,8 +519,18 @@ class ExperimentTracker:
         val_scores: Optional[list[float]] = None,
         oof_score: Optional[float] = None,
         n_features: int = 0,
+        feature_names: Optional[list[str]] = None,
     ) -> None:
-        """実験を終了し、experiments/log.csv に追記する。"""
+        """実験を終了し、experiments/log.csv に追記する。
+
+        Args:
+            feature_names: この実験で実際に使った特徴量リスト。渡すと
+                `params/features_{exp_id}.json` に保存され、「今どの特徴量がベースか」を
+                機械可読な形で追える（`scripts/feature_report.py --sync` が参照する）。
+                手書きの FEATURE_REPORT.md だけでは、試行が増えるとベースを見失う。
+        """
+        if feature_names is not None:
+            n_features = n_features or len(feature_names)
         if train_scores is not None:
             self._fold_train_scores = train_scores
         if val_scores is not None:
@@ -519,6 +547,10 @@ class ExperimentTracker:
             if oof_score is not None:
                 mlflow.log_metric("oof_score", oof_score)
             mlflow.end_run()
+
+        if feature_names is not None:
+            _save_feature_snapshot(self._experiment_id or "000", feature_names,
+                                   self.model, oof_score)
 
         _ensure_log_csv()
         duration = ((datetime.now() - self._started_at).total_seconds()
