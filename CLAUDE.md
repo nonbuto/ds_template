@@ -600,7 +600,7 @@ OOF だけで棄却して LB を見ないまま終わる実験が積み上がる
 4. **Shakedown 防御** — 両者が同じ family なら片方コケて共倒れ。親が独立な 2 blend を取る
 5. **9-Persona 投票** — 主観バイアスを排除するため複数視点で評価
 
-→ 候補プロファイル表・9 Persona チェックリスト・典型構成パターン・BoB の罠は `PLAYBOOK.md#final-2-候補プールとpersona-投票`
+→ 候補プロファイル表・9 Persona チェックリスト・典型構成パターン・BoB の罠は `PLAYBOOK.md#final-2-候補プールとpersona-投票`／**2 本目を育てる手順（結合方式を先に疑う）**は `PLAYBOOK.md#小規模アンサンブルfinal-2-の-2-本目-hedge-候補を育てる手順`
 
 > 実測 (L-11): 9-persona 投票で親ペアを選定し BoB を見送った結果、Public 1σ 改善を放棄したが Private shakedown を回避できた → `PLAYBOOK.md#教訓アーカイブ実測値つき`
 
