@@ -26,6 +26,8 @@ from src.config import (
     RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME,
 )
 from src.experiment import ExperimentTracker
+from src.utils.finalize import save_run_outputs
+from src.utils.foldcache import FoldCache
 
 # ──────────────────────────────────────────────
 # TODO: コンペごとにここを変更する
@@ -203,6 +205,8 @@ def main():
     parser.add_argument("--model", type=str, default="lgb", choices=["lgb", "lgb_balanced", "cb", "xgb"])
     parser.add_argument("--params", type=str, default="",
                         help="best_params JSON ファイルパス（省略時はデフォルトパラメータを使用）")
+    parser.add_argument("--resume", action="store_true",
+                        help="fold 単位のキャッシュを使い、中断した学習を途中から再開する")
     args = parser.parse_args()
 
     assert FEATURES, "FEATURES リストが空です。scripts/train.py の TODO を埋めてください。"
@@ -240,44 +244,62 @@ def main():
     importances = []
     train_scores, val_scores = [], []
 
+    # fold 単位のチェックポイント（--resume 時のみ有効）。
+    # 中断・クラッシュで既に終わった fold の計算が失われるのを防ぐ（CONVENTIONS の実行規約）。
+    cache = FoldCache(tag=f"{args.model}_{len(FEATURES)}f", seed=RANDOM_STATE,
+                      n_splits=N_SPLITS, enabled=args.resume)
+    if args.resume:
+        print(cache.report())
+
     for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
-        model, val_pred = TRAIN_FN[args.model](X_tr, y_tr, X_val, y_val, params)
-        oof_preds[val_idx] = val_pred
+        cached = cache.load(fold)
+        if cached is not None:
+            val_pred, fold_test_pred = cached
+            model = None
+        else:
+            model, val_pred = TRAIN_FN[args.model](X_tr, y_tr, X_val, y_val, params)
+            fold_test_pred = model.predict_proba(X_test)
+            cache.save(fold, val_pred, fold_test_pred)
 
-        # テスト予測（フォールド平均）
-        test_preds += model.predict_proba(X_test) / N_SPLITS
+        oof_preds[val_idx] = val_pred
+        test_preds += fold_test_pred / N_SPLITS   # テスト予測（フォールド平均）
 
         # スコア計算（balanced_accuracy: argmaxクラスで評価）
-        tr_score = balanced_accuracy_score(y_tr, model.predict(X_tr))
+        # キャッシュ再利用時は train スコアを再計算できないため val と同値を入れる
         val_score = balanced_accuracy_score(y_val, np.argmax(val_pred, axis=1))
+        tr_score = balanced_accuracy_score(y_tr, model.predict(X_tr)) if model else val_score
         train_scores.append(tr_score)
         val_scores.append(val_score)
         tracker.log_fold_scores(fold, tr_score, val_score)
 
         # 特徴量重要度
-        if hasattr(model, "feature_importances_"):
+        if model is not None and hasattr(model, "feature_importances_"):
             importances.append(model.feature_importances_)
 
-        print(f"Fold {fold}: train={tr_score:.5f}  val={val_score:.5f}")
+        mark = "（キャッシュ再利用）" if model is None else ""
+        print(f"Fold {fold}: train={tr_score:.5f}  val={val_score:.5f} {mark}")
 
     # OOFスコア
     oof_score = balanced_accuracy_score(y, np.argmax(oof_preds, axis=1))
 
-    # 保存
+    # 保存: 学習 → OOF + test 予測 → 提出ファイルを 1 回で出し切る（CLAUDE.md `G-STEPWISE`）。
+    # 学習だけして推論を省くと、提出したくなった時点で同じ学習をやり直すことになる。
     exp_id = tracker._experiment_id or "000"
-    np.save(OOF_DIR / f"oof_{exp_id}_{args.model}.npy", oof_preds)
-    np.save(OOF_DIR / f"test_{exp_id}_{args.model}.npy", test_preds)
+    save_run_outputs(exp_id=exp_id, model=args.model, oof=oof_preds,
+                     test=test_preds, oof_score=oof_score)
 
     if importances:
         imp_df = pd.DataFrame({"feature": FEATURES, "importance": np.mean(importances, axis=0)})
         imp_df = imp_df.sort_values("importance", ascending=False)
         imp_df.to_csv(PLOTS_DIR / f"feature_importance_{exp_id}.csv", index=False)
 
+    # feature_names を渡すと params/features_{exp_id}.json に特徴量セットが残り、
+    # 「今どれがベースか」を機械可読に追える（`feature_report --sync` が読む）
     tracker.end_run(train_scores=train_scores, val_scores=val_scores,
-                    oof_score=oof_score, n_features=len(FEATURES))
+                    oof_score=oof_score, feature_names=FEATURES)
 
 
 if __name__ == "__main__":

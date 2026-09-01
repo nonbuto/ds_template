@@ -84,8 +84,14 @@ def save_run_outputs(
     np.save(test_path, test)
 
     sub_path: Optional[Path] = None
+    sample_path = RAW_DATA_DIR / "sample_submission.csv"
+    if make_submission and not sample_path.exists():
+        # ここで例外を投げると、学習が終わっているのに成果物を失う。
+        # npy は保存済みなので、提出 CSV だけ諦めて続行する。
+        print(f"⚠️ {sample_path} が無いため提出 CSV は作りません（OOF / test は保存済み）")
+        make_submission = False
     if make_submission:
-        sample = pd.read_csv(RAW_DATA_DIR / "sample_submission.csv")
+        sample = pd.read_csv(sample_path)
         sub = pd.DataFrame({
             ID_COL: sample[ID_COL],
             TARGET_COL: _to_submission_values(test, submit),
