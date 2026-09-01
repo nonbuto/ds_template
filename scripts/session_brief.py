@@ -1,21 +1,25 @@
-"""セッション開始時の現在地ブリーフ（`.claude/settings.json` の SessionStart hook から呼ばれる）。
+"""現在地ブリーフ。`SessionStart` と `PostCompact` の 2 つの hook から呼ばれる。
 
-CLAUDE.md は「新しいセッション開始時は必ず `/ds-resume` を実行する」と定めるが、
-実行を保証する機構は無かった（AI が忘れれば文脈ゼロのまま作業が始まる）。
-このスクリプトは `/ds-resume` の**機械的な部分**（現在地の復元）を自動化する。
+**これは `/ds-resume` を強制するものではない。** `/ds-resume` はユーザーの儀式であり、
+その価値は「現在地を合意して次の一手を決める対話」にある。ここが担うのは**下限の保証**——
+儀式が挟まらない開始（本題から直接入る・`--continue`・**コンテキスト圧縮の直後**）でも、
+AI がゼロ文脈で走り出さないようにする。
 
-`/ds-resume` スキルは不要にならない。スキルの本体は「ユーザーと次の一手を合意する対話」であり、
-ここが担うのは対話の前提となる事実の提示だけ。
+とくに `PostCompact` が効く運用がある。夜間の長時間学習などでセッションを起動したまま
+使い続けると、新セッションは滅多に始まらない代わりに**圧縮が繰り返し起きる**。
+圧縮は数万トークンを要約へ潰すので、そこへ 15 行のブリーフを戻す費用は失うものの 1% 未満。
+`PreCompact`（`session_snapshot.py`）が SESSION.md へ書き、ここが圧縮後に読み直す。
 
-**30 行以内に収める。** SessionStart の出力は毎セッションのコンテキストを消費するため、
-CLAUDE.md（650 行）と併せた予算を守る。
+**`MAX_LINES` 行以内に収める。** 出力はそのままコンテキストを消費する。
 
 使い方（hook 経由。手動でも実行できる）:
     uv run python -m scripts.session_brief
+    uv run python -m scripts.session_brief --event PostCompact
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import sys
@@ -50,8 +54,8 @@ def _is_placeholder(line: str) -> bool:
     return (not stripped) or ("（例:" in stripped) or set(stripped) <= set("—-| ")
 
 
-def build_brief() -> str:
-    out: list[str] = ["━━━ セッション現在地（SessionStart hook · 機械生成）━━━"]
+def build_brief(event: str = "SessionStart") -> str:
+    out: list[str] = [f"━━━ セッション現在地（{event} hook · 機械生成）━━━"]
 
     session_md = ROOT / "SESSION.md"
     if session_md.exists():
@@ -87,6 +91,17 @@ def build_brief() -> str:
         else:
             out.append("【直近の実験】まだ記録がありません（Stage 1 の最小ベースラインから）")
 
+    # ── 実行中のジョブ（夜間の長時間学習から戻ったとき最初に知りたいこと）──
+    try:
+        from src.experiment import RUNNING_DIR
+        running = sorted(RUNNING_DIR.glob("*.json")) if RUNNING_DIR.exists() else []
+    except Exception:
+        running = []
+    if running:
+        ids = ", ".join(f"exp{p.stem}" for p in running)
+        out.append(f"【実行中のジョブ】{ids}"
+                   f" → `uv run python -m scripts.job_status`（生存・進捗・ETA）")
+
     # ── 規律監査（Stop hook と同じ判定を再利用）──
     try:
         from scripts.session_audit import build_report
@@ -105,13 +120,30 @@ def build_brief() -> str:
 
 
 def main() -> int:
-    brief = build_brief()
-    print(json.dumps({
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--event", default="SessionStart",
+                        choices=["SessionStart", "PostCompact"],
+                        help="呼び出し元の hook イベント名")
+    args = parser.parse_args()
+
+    brief = build_brief(args.event)
+    payload: dict = {
         "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
+            "hookEventName": args.event,
             "additionalContext": brief,
         }
-    }, ensure_ascii=False))
+    }
+    if args.event == "PostCompact":
+        brief = ("（コンテキスト圧縮が起きました。以下はファイルから読み直した現在地です）\n"
+                 + brief)
+        payload["hookSpecificOutput"]["additionalContext"] = brief
+        # additionalContext の注入が効かなかった場合に備え、ユーザーには必ず見える形で
+        # 退避先を知らせる（SESSION.md の恒久スナップショットは PreCompact が書いている）。
+        payload["systemMessage"] = (
+            "コンテキスト圧縮後に現在地を再注入しました"
+            "（復元できない場合は SESSION.md の自動スナップショットを参照）"
+        )
+    print(json.dumps(payload, ensure_ascii=False))
     return 0
 
 

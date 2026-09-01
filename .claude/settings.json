@@ -56,6 +56,17 @@
           }
         ]
       }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scripts.session_brief --event PostCompact 2>/dev/null; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

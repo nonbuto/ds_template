@@ -44,7 +44,7 @@
 | `scripts/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
 | `scripts/viz_guard.py` | 随時 | 可視化・診断記録・推論成果物の機械チェック |
 | `scripts/state_audit.py` | 随時 | 状態ファイルの停滞を検知（log.csv の実験時刻 vs mtime） |
-| `scripts/session_brief.py` | hook | SessionStart で現在地を提示 |
+| `scripts/session_brief.py` | hook | SessionStart / PostCompact で現在地を提示 |
 | `scripts/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
 | `scripts/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
 | `scripts/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
@@ -251,7 +251,7 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 
 ## hook とガードの一覧
 
-`.claude/settings.json` に 5 つの hook を登録している。規律は AI への指示ではなく
+`.claude/settings.json` に 6 つの hook を登録している。規律は AI への指示ではなく
 **観測可能な結果の側から**測る（CLAUDE.md `G-MECH`）。
 
 | hook | 実行するもの | 何をするか |
@@ -260,7 +260,8 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `PreToolUse` (Bash) | `scripts/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
 | `PostToolUse` (Bash) | `scripts/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
 | `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
-| `PreCompact` | `scripts/session_snapshot.py` | コンテキスト圧縮の直前に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
+| `PreCompact` | `scripts/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
+| `PostCompact` | `scripts/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
 
 **ガードの手動実行**:
 
@@ -282,6 +283,11 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
 - 提出コマンドの検知は **shlex でコマンド位置を判定**する。文字列として含むだけの
   Bash（ドキュメント編集・grep）を誤検知しない（導入時に実際に自分をブロックした）
 - hook が落ちても作業は止めない（入力が読めない・API 取得失敗時は素通しする）
+- **`PreCompact` と `PostCompact` は対で使う**。長時間セッション（夜間の学習を回し続ける等）では
+  新セッションが滅多に始まらない代わりに圧縮が繰り返し起きる。圧縮は数万トークンを要約へ潰すので、
+  直後にブリーフ十数行を戻す費用は失うものの 1% 未満——**「コンテキスト節約 vs 文脈欠如」は
+  釣り合っておらず、再注入する側が明確に得**。`PreCompact` が SESSION.md へ恒久記録し、
+  `PostCompact` が読み直す（注入が効かなかった場合の保険として SESSION.md 側が残る）
 
 ---
 
