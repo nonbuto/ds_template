@@ -154,6 +154,13 @@ PID が消えていれば異常終了、ハートビートが 15 分以上古け
 
 ---
 
+## marimo の用途
+
+- **可視化 EDA では使わない** — Claude は marimo のレンダリング結果を認識できない。可視化はスクリプトから `data/output/plots/` に画像保存し、Claude が Read で読んで対話する
+- **`.ipynb` 変換に使う** — `scripts/to_kaggle_nb.py` が marimo 形式スクリプトを `marimo export ipynb` で変換する。Kaggle Notebook 実行用の `.ipynb` 生成に使う
+
+---
+
 ## コーディング規約
 
 - パスは必ず `src.config` からインポート（ハードコード禁止）
@@ -204,6 +211,24 @@ matplotlib で日本語ラベルを描くと文字化け（tofu 表示）する�
 - 探索をやり直したい場合は tag を変える（例: `--tag full_v2`）か、該当 `.db` を削除する
 - `.db` は数十 KB〜数 MB。`best_params_*.json` は「最良の 1 点」しか残さないが、
   study を残せば **追加試行・fANOVA による寄与分析・探索履歴の監査**ができる
+
+---
+
+## 提出の手動チェックリスト
+
+`/ds-kaggle-submit` が使えないとき、AI がスキルのフローを代替するための手順。
+**チェックリストの省略は禁止**（規範は CLAUDE.md「Kaggle提出ルール」）。
+
+スキル経由が不可でも、以下のチェックリストを手動で実施してから CLI 提出する:
+
+1. `git status` が clean か確認する
+2. 提出ファイルは `submission_path()` 生成のものか確認する（→ `CONVENTIONS.md#提出ファイルの命名規約`）
+3. 提出後 `kaggle competitions submissions | head -3` で LB スコアを確認する
+4. log.csv の `submit_score` と `oof_lb_gap`（= `oof_score` − `submit_score`）を更新する
+5. SESSION.md のスコアテーブルを更新する（**OOF-LB 乖離列を必ず記入**）+ 本日の提出数を記録する
+6. `git commit` で LB 結果を記録する
+
+スキルが提供するフローをAIが代替する。チェックリストの省略は禁止。
 
 ---
 
@@ -304,6 +329,44 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
   直後にブリーフ十数行を戻す費用は失うものの 1% 未満——**「コンテキスト節約 vs 文脈欠如」は
   釣り合っておらず、再注入する側が明確に得**。`PreCompact` が SESSION.md へ恒久記録し、
   `PostCompact` が読み直す（注入が効かなかった場合の保険として SESSION.md 側が残る）
+
+---
+
+## 学習サイクルの 11 ステップ
+
+CLAUDE.md「学習サイクルの原則」の順序と移行条件。**規範は L0、ここは順序の一覧。**
+
+| # | ステップ | 移行の条件（次に進んでよい判断） |
+|---|---|---|
+| 1 | `/ds-resume` | **新セッション開始時は必ず呼ぶ。** SESSION.md + log.csv + FE_HYPOTHESES.md 索引で現在地を復元 |
+| 2 | `/ds-kickoff` | 「そのデータが何者か」を文脈から理解（参加直後に一度だけ）→ COMPETITION.md に記録 |
+| 3 | `/ds-new-experiment` | 最小ベースライン（前処理不要な数値カラムのみ・デフォルト HP） |
+| 4 | `/ds-kaggle-submit` | LB 提出で **CV/LB 相関を確立**。以降すべての改善はこの基準点からの Δ で判断する |
+| 5 | `/ds-kaggle-research` | 上位解法のアーキテクチャ分布を調べる（フェーズ0）。**主軸決定の前提入力にする** |
+| 6 | Stage 1.5 | 早期アーキテクチャサーベイ → OOF と pub_oof_gap を記録し**主軸を 1 つ決定** |
+| 7 | `/ds-eda-visual` | 「何を知りたいか」を先に言語化する（Kickoff の記録と基準点を持ち込む）|
+| 8 | Optuna 軽量 | 作業用 HP（20〜30 試行）。目的は最適化ではなく **ΔOOF 計測のノイズ低減** |
+| 9 | `/ds-fe-hypothesis` | 因果連鎖を言語化 → **必ず 1 列ずつ** `feature_study.py` で ΔOOF 計測（複数列の一括追加は禁止）。ΔOOF が閾値以下でも importance (gain) を確認してから棄却する |
+| 10 | Optuna フル | FE 収束後（追加 FE の ΔOOF が `G-NOISE` の閾値未満 かつ importance が BASE 最下位未満 が続いたら）100 試行以上 |
+| 11 | `/ds-kaggle-submit` | OOF/LB のギャップを解釈し「学び」を言語化 → 次サイクルの仮説を更新 |
+
+---
+
+## 作業ステージのゲート条件
+
+CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、ここは条件の一覧）。
+**次のステージへ進む前に、その行の完了条件を満たしているか確認する。**
+
+| Stage | 目的 | 完了条件 | スキル・ツール |
+|---|---|---|---|
+| **0. Kickoff** | データの文脈理解 | `COMPETITION.md` にデータ種別・外部データ有無・評価指標特性・CV設計の初期判断を記録済み | `/ds-kickoff` |
+| **1. 最小ベースライン** | CV/LB相関の確立 | 前処理不要な数値カラムのみ・デフォルトHPでモデルを学習し、LBに提出してCV/LB相関を確認済み。以降すべての改善はこの基準点からのΔで判断する | `/ds-new-experiment` + `/ds-kaggle-submit` |
+| **1.5. 早期アーキテクチャサーベイ** | 主軸アーキテクチャの決定 | 候補アーキテクチャ（Tree/NN/Linear等）を最小特徴量セット + 作業用HPで評価し、OOFとpub_oof_gapを記録。「主軸アーキテクチャ」を1つ決定済み。手順は `PLAYBOOK.md#早期アーキテクチャサーベイの手順stage-15` に従い実施 | `/ds-new-experiment` |
+| **2. EDA** | 問いとFE仮説の種を獲得 | `/ds-eda-visual` で「問い→発見→FE仮説の種」の対話完了。合成データの場合は元データとの分布比較も含む | `/ds-eda-visual` |
+| **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減。**不安定な大型アーキでは単一 fold・サブサンプルでの HP 選定を禁止**（→ `G-FULLCV`）。study は SQLite に永続化され同じ tag で追加試行できる（→ `CONVENTIONS.md#optuna-study-の永続化と命名`） | Optuna（軽量） |
+| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
+| **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
+| **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
 
 ---
 
@@ -433,6 +496,19 @@ SESSION.md は「今どこにいるか」を1画面で示すライブダッシ�
 
 **禁止パターン**: 「最後に完了したこと」を複数回追記する / 複数のスコアテーブルを並存させる /
 過去セッションの履歴を蓄積する（git history に残るため SESSION.md には不要）。
+
+---
+
+## 改善を 4 層のどこに入れるか
+
+CLAUDE.md「テンプレート改善プロトコル」の振り分け表。**判断基準は L0、ここは対応の一覧。**
+
+| 内容の性質 | 行き先 | 例 |
+|---|---|---|
+| 規範・判断基準・閾値 | **L0 `CLAUDE.md`** | 「〜せよ」「〜は禁止」「相関 0.998 以上ならスキップ」 |
+| パス・命名・列定義・コマンド規約 | **L1 `CONVENTIONS.md`** | ディレクトリ、log.csv の列、コミット形式 |
+| 実行手順・コード・**教訓の本文** | **L2 `PLAYBOOK.md`** | STEP 1-8、ノイズ床の計算、`L-NN` の実測記録 |
+| 対話の進行・質問文面 | **L3 `.claude/skills/*`** | フェーズ構成、ユーザーへの問いかけ |
 
 ---
 

@@ -663,6 +663,8 @@ CLAUDE.md の作業ステージ表は「何を満たせば次へ進めるか」�
 
 ### Stage 5（本格 HP 最適化）のゲート詳細
 
+- study は SQLite に永続化され、同じ tag なら試行を積み増せる
+  （→ `CONVENTIONS.md#optuna-study-の永続化と命名`。やり直すときは tag を変える）
 - 特徴量セットが確定した状態で Optuna 100 試行以上。ΔOOF の改善が指標別閾値以内
   （`G-NOISE`。AUC なら ±0.0002 目安）で収束していること
 - **FE 変更時の HP retune ルール**: Stage 4 以降に FE が **±20% 以上変動**した場合、または
