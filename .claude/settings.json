@@ -1,12 +1,47 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scripts.session_brief 2>/dev/null; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scripts.submit_gate",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "f=experiments/log.csv; [ -f \"$f\" ] || exit 0; m=$(stat -f %m \"$f\" 2>/dev/null || stat -c %Y \"$f\" 2>/dev/null); [ -n \"$m\" ] || exit 0; [ $(( $(date +%s) - m )) -lt 20 ] && uv run python -m scripts.viz_guard 2>/dev/null; exit 0"
+            "command": "f=experiments/log.csv; [ -f \"$f\" ] || exit 0; m=$(stat -f %m \"$f\" 2>/dev/null || stat -c %Y \"$f\" 2>/dev/null); [ -n \"$m\" ] || exit 0; [ $(( $(date +%s) - m )) -lt 20 ] && uv run python -m scripts.viz_guard 2>/dev/null; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scripts.session_audit 2>/dev/null; exit 0",
+            "timeout": 30
           }
         ]
       }

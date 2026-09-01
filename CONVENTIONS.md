@@ -220,6 +220,40 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 
 ---
 
+## hook とガードの一覧
+
+`.claude/settings.json` に 4 つの hook を登録している。規律は AI への指示ではなく
+**観測可能な結果の側から**測る（CLAUDE.md `G-MECH`）。
+
+| hook | 実行するもの | 何をするか |
+|---|---|---|
+| `SessionStart` | `scripts/session_brief.py` | 現在地（ステージ・次アクション・直近の実験・要対応）を提示。`/ds-resume` の機械部分。行数上限は同ファイルの `MAX_LINES`（毎セッションのコンテキストを消費するため） |
+| `PreToolUse` (Bash) | `scripts/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
+| `PostToolUse` (Bash) | `scripts/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
+| `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・3 ガードを監査（**ブロックしない**） |
+
+**ガードの手動実行**:
+
+```bash
+uv run python -m scripts.viz_guard        # 可視化・診断記録・推論成果物
+uv run python -m scripts.session_audit    # 上記 + コミット規律
+uv run python -m scripts.session_brief    # 現在地ブリーフ
+uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェック）
+```
+
+**設計上の約束**:
+
+- **ブロックしてよいのは 2 つだけ** — 可視化ガード（`start_run()` が `RuntimeError`）と
+  提出ゲート（不可逆な外部作用）。それ以外は警告に留める
+  （Stop hook でブロックすると停止と再開のループを招く）
+- 提出ゲートが検証するのは「人間が OK と言ったか」ではなく**「提示された数字が実測か」**。
+  過去コンペの事故はすべて「提示された数字が記憶であって実測でなかった」ことが原因だった
+- 提出コマンドの検知は **shlex でコマンド位置を判定**する。文字列として含むだけの
+  Bash（ドキュメント編集・grep）を誤検知しない（導入時に実際に自分をブロックした）
+- hook が落ちても作業は止めない（入力が読めない・API 取得失敗時は素通しする）
+
+---
+
 ## 実験管理（log.csv）
 
 `experiments/log.csv` の主要カラム:
