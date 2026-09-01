@@ -284,6 +284,13 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
 - 提出コマンドの検知は **shlex でコマンド位置を判定**する。文字列として含むだけの
   Bash（ドキュメント編集・grep）を誤検知しない（導入時に実際に自分をブロックした）
 - hook が落ちても作業は止めない（入力が読めない・API 取得失敗時は素通しする）
+- **ハーネスはブランチに閉じている。** `.claude/settings.json` も `scripts/*.py` も git 管理下なので、
+  **別ブランチに切り替えると hook 構成ごと入れ替わる**（コンペブランチには存在しないことがある）。
+  そのため各 hook は先頭で `[ -f scripts/<script>.py ] || exit 0` を通し、
+  **スクリプトが無いブランチでは黙って素通しする**（無いと PreToolUse が毎回の Bash でエラーを出す）。
+  スクリプトが在るのに落ちた場合はエラーを出す——存在しないことと壊れていることは区別する
+- **stdin を読む hook は TTY を検知して即終了する。** `json.load(sys.stdin)` は stdin が
+  閉じられないとブロックし続け、PreToolUse なら毎回の Bash を timeout 秒ハングさせる
 - **各 hook は先頭で発火時刻を `experiments/.hook_log` へ追記する。**
   「登録した hook が本当に発火しているか」は設定ファイルを見ても分からない——とくに
   ①走行中セッションに設定変更が反映されるか ②**自動圧縮**でも `PreCompact` / `PostCompact` が

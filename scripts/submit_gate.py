@@ -170,6 +170,15 @@ def build_brief(command: str) -> tuple[str, bool]:
 
 
 def main() -> int:
+    # 端末から起動された（＝hook 入力が来ない）場合は待たずに終わる。
+    # `json.load(sys.stdin)` は stdin が閉じられないとブロックし続けるため、
+    # PreToolUse hook が毎回の Bash を最大 timeout 秒ハングさせる事故になる。
+    if sys.stdin.isatty():
+        print("hook 入力（JSON）が stdin に無いため何もしません。"
+              "手動確認は次のように渡してください:\n"
+              '  echo \'{"tool_name":"Bash","tool_input":{"command":"..."}}\''
+              " | uv run python -m scripts.submit_gate", file=sys.stderr)
+        return 0
     try:
         payload = json.load(sys.stdin)
     except Exception:

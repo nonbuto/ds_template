@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 from src.experiment import LOG_CSV_PATH  # noqa: E402
 
 MAX_LINES = 30
+MAX_LINE_CHARS = 100   # 1 行あたりの上限。**費用は行数ではなく文字数（トークン）で決まる**
 RECENT_EXPERIMENTS = 3
 
 
@@ -46,6 +47,15 @@ def _section(text: str, heading: str) -> list[str]:
             if s and not s.startswith("<!--") and not s.startswith("---"):
                 lines.append(s)
     return lines
+
+
+def _clip(line: str) -> str:
+    """1 行を `MAX_LINE_CHARS` に丸める。
+
+    行数だけを見ていると、SESSION.md に長い 1 行（コンペ終了報告など 150 字超）が
+    あったときに予算を素通りする。コンテキストの費用は行数ではなく文字数で決まる。
+    """
+    return line if len(line) <= MAX_LINE_CHARS else line[:MAX_LINE_CHARS - 1] + "…"
 
 
 def _is_placeholder(line: str) -> bool:
@@ -64,11 +74,11 @@ def build_brief(event: str = "SessionStart") -> str:
         nxt = [l for l in _section(text, "次にやること") if not _is_placeholder(l)]
         blockers = [l for l in _section(text, "未解決の問い") if not _is_placeholder(l)]
         if stage:
-            out += ["【ステージ】"] + [f"  {l}" for l in stage[:2]]
+            out += ["【ステージ】"] + [f"  {_clip(l)}" for l in stage[:2]]
         if nxt:
-            out += ["【次にやること】"] + [f"  {l}" for l in nxt[:3]]
+            out += ["【次にやること】"] + [f"  {_clip(l)}" for l in nxt[:3]]
         if blockers:
-            out += ["【未解決の問い】"] + [f"  {l}" for l in blockers[:2]]
+            out += ["【未解決の問い】"] + [f"  {_clip(l)}" for l in blockers[:2]]
     else:
         out.append("SESSION.md がありません → /ds-kickoff から始めてください")
 
@@ -86,8 +96,8 @@ def build_brief(event: str = "SessionStart") -> str:
                 lb = (row.get("submit_score") or "—").strip() or "—"
                 dur = (row.get("duration_sec") or "").strip()
                 dur_s = f" {int(float(dur)) // 60}分" if dur else ""
-                out.append(f"  exp{row.get('experiment_id', '?')} {row.get('model', '')} "
-                           f"OOF={oof} LB={lb}{dur_s} — {(row.get('description') or '')[:40]}")
+                out.append(_clip(f"  exp{row.get('experiment_id', '?')} {row.get('model', '')} "
+                                 f"OOF={oof} LB={lb}{dur_s} — {(row.get('description') or '')[:40]}"))
         else:
             out.append("【直近の実験】まだ記録がありません（Stage 1 の最小ベースラインから）")
 
@@ -110,7 +120,7 @@ def build_brief(event: str = "SessionStart") -> str:
         report = None
     if report:
         out.append("【要対応】")
-        out += [f"  {l}" for l in report.splitlines()[2:] if l.strip()][:6]
+        out += [f"  {_clip(l)}" for l in report.splitlines()[2:] if l.strip()][:6]
 
     out.append("→ 対話の再開は /ds-resume（このブリーフは事実の提示のみ）")
 
