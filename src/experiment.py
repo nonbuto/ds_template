@@ -9,6 +9,7 @@ MLflowは必須ではありません。`uv add mlflow` で追加すると利用�
 """
 
 import csv
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -288,8 +289,30 @@ class ExperimentTracker:
         features: str = "",
         notes: str = "",
         tags: Optional[dict] = None,
+        skip_viz_check: bool = False,
     ) -> str:
-        """実験を開始する。実験IDを返す。"""
+        """実験を開始する。実験IDを返す。
+
+        Args:
+            skip_viz_check: 可視化ガードのブロックを明示的に無効化する（省略の意思表示）。
+                環境変数 `DS_SKIP_VIZ_CHECK=1` でも同じ効果。
+
+        Raises:
+            RuntimeError: 可視化ガードが発動中（直近N実験で可視化ゼロ）のまま
+                次の実験を開始しようとした場合。第4世代の対策として、警告の出力ではなく
+                **実行を止める**（過去3世代とも「警告は出ていたが対応されない」形で形骸化した。
+                特に締切直前ほど無視されやすい）。
+        """
+        if not (skip_viz_check or os.environ.get("DS_SKIP_VIZ_CHECK")):
+            blocking = _check_visualization_guard()
+            if blocking:
+                raise RuntimeError(
+                    f"{blocking}\n\n"
+                    f"   ⛔ 可視化を実施するまで次の実験を開始できません（第4世代の機械的ゲート）。\n"
+                    f"   意図的に省略する場合のみ、start_run(skip_viz_check=True) または\n"
+                    f"   環境変数 DS_SKIP_VIZ_CHECK=1 を明示してください。"
+                )
+
         if description:
             self.description = description
         if model:

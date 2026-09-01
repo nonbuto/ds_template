@@ -66,7 +66,7 @@ AIが担うのは「構造化・分析・記録」であり、ユーザーが担
 | 記録すべきもの | どこに | スキル |
 |---|---|---|
 | 「何を知りたいか」「ドメイン知識」 | EDA_SUMMARY.md | `/ds-eda-visual` |
-| 各変数の特性・ΔOOF・採否 | FEATURE_REPORT.md | `/ds-eda-visual` · `/ds-fe-hypothesis` が記入を促す |
+| 各変数の特性・ΔOOF・採否 | FEATURE_REPORT.md | `/ds-eda-visual` · `/ds-fe-hypothesis` が記入を促す（**スキルを経由しない自由形式の検証でも、採否が確定した時点で必ず手動更新する**。過去コンペでは 3 週間超の FE 成果が未反映のまま「今どれがベースか」を追えなくなった） |
 | 特徴量の仮説・因果・棄却理由 | FE_HYPOTHESES.md | `/ds-fe-hypothesis` |
 | 実験の目的・成功基準・撤退基準 | experiments/log.csv | `/ds-new-experiment` |
 | 実験から何を学んだか | experiments/log.csv | `/ds-kaggle-submit` |
