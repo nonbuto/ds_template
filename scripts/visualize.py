@@ -20,6 +20,9 @@ import pandas as pd
 import seaborn as sns
 
 from src.config import PROCESSED_DATA_DIR, PLOTS_DIR, TARGET_COL
+from src.utils.plot_style import setup_japanese_font
+
+setup_japanese_font()
 
 sns.set_theme(style="whitegrid", palette="Set2")
 

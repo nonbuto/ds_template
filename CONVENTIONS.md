@@ -39,6 +39,13 @@
 | `scripts/blend.py` | 6 | アンサンブル・ブレンド |
 | `scripts/visualize.py` | 2 | EDA可視化→`data/output/plots/`に画像保存 |
 | `scripts/feature_report.py` | 随時 | 特徴量重要度・ΔOOF棒グラフを画像生成 |
+| `scripts/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
+| `scripts/av_check.py` | 4 | AV診断（train/test 分布シフトの検出） |
+| `scripts/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
+| `scripts/viz_guard.py` | 随時 | 可視化の実施状況・診断記録率の機械チェック |
+
+**`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
+`logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）
 
 **`experiments/runs/`（コンペ固有・使い捨て）**
 
