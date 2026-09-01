@@ -271,7 +271,7 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 **ガードの手動実行**:
 
 ```bash
-uv run python -m scripts.viz_guard        # 可視化・診断記録・推論成果物
+uv run python -m scripts.viz_guard        # 可視化・診断記録・推論成果物・Public過剰浮上
 uv run python -m scripts.state_audit      # 状態ファイルの停滞（log.csv の実験時刻 vs mtime）
 uv run python -m scripts.session_audit    # 上記すべて + コミット規律
 uv run python -m scripts.session_brief    # 現在地ブリーフ

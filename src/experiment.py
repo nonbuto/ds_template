@@ -364,6 +364,57 @@ def _save_feature_snapshot(exp_id: str, feature_names: list[str],
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+PUB_OOF_GAP_WINDOW = 5        # 直近N実験を見る
+PUB_OOF_GAP_THRESHOLD = 0.0005   # 基準線（中央値）からの許容幅
+
+
+def _check_pub_oof_gap_guard(window: int = PUB_OOF_GAP_WINDOW) -> Optional[str]:
+    """Public が OOF より過剰に浮いた実験を検知する（`G-TWOAXIS` の監視ルール）。
+
+    CLAUDE.md は「全実験の pub_oof_gap 中央値を基準線として記録し、基準線 +0.0005 を
+    超えたら Public 過剰浮上警告を記録する」と数値つきで定めているが、機構が無かった。
+    数値つきの監視義務ほど、締切間際に自己申告では守られない（`G-MECH`）。
+
+    符号の定義に注意: log.csv の `oof_lb_gap` = OOF − LB。
+    `pub_oof_gap` = LB − OOF なので符号を反転して評価する。
+    正に大きいほど Public が浮いており、シェイクダウンのリスクが高い。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+
+    def gap(row) -> Optional[float]:
+        try:
+            oof, lb = float(row["oof_score"]), float(row["submit_score"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return lb - oof
+
+    scored = [(r.get("experiment_id", "?"), gap(r)) for r in rows]
+    values = [g for _, g in scored if g is not None]
+    if len(values) < window:
+        return None       # 基準線を引くだけの提出数がまだ無い
+
+    baseline = float(np.median(values))
+    limit = baseline + PUB_OOF_GAP_THRESHOLD
+    recent = [(i, g) for i, g in scored[-window:] if g is not None and g > limit]
+    if not recent:
+        return None
+
+    lines = ", ".join(f"exp{i}({g:+.5f})" for i, g in recent)
+    return (
+        f"\n⚠️  Public 過剰浮上警告（`G-TWOAXIS`）: pub_oof_gap が基準線 +{PUB_OOF_GAP_THRESHOLD} を超えました。\n"
+        f"   基準線（全 {len(values)} 提出の中央値）= {baseline:+.5f} / 閾値 = {limit:+.5f}\n"
+        f"   超過した実験: {lines}\n"
+        f"   → Public が OOF より浮いている＝シェイクダウンのリスク。SESSION.md に記録し、\n"
+        f"     Final 2 でこの系統に偏らせないこと（OOF を犠牲にして gap を操作しない）"
+    )
+
+
 LONG_RUN_THRESHOLD_SEC = 30 * 60   # CLAUDE.md「30分ルール」の閾値
 
 

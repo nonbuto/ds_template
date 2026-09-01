@@ -8,7 +8,7 @@ AI への指示ではなく**観測可能な結果の側から**測る（`G-MECH
   1. 未コミットの実験スクリプト（`experiments/runs/exp*.py`）
   2. log.csv に OOF が記録済みなのに、その実験 ID を含むコミットが存在しない
   3. 状態ファイルの停滞（`scripts/state_audit.py`）
-  4. 3 つの規律ガード（可視化・診断記録・推論成果物）
+  4. 4 つの規律ガード（可視化・診断記録・推論成果物・Public 過剰浮上）
 
 **ブロックはしない。** Stop hook でブロックすると停止と再開のループを招くため、
 `systemMessage` でユーザーに提示するだけにする。ブロックしてよいのは実績のある
@@ -33,6 +33,7 @@ from src.experiment import (  # noqa: E402
     LOG_CSV_PATH,
     _check_diagnostic_recording_guard,
     _check_inference_artifacts_window,
+    _check_pub_oof_gap_guard,
     _check_visualization_guard,
 )
 
@@ -110,7 +111,8 @@ def build_report() -> str | None:
 
     for warning in (_check_visualization_guard(),
                     _check_diagnostic_recording_guard(),
-                    _check_inference_artifacts_window()):
+                    _check_inference_artifacts_window(),
+                    _check_pub_oof_gap_guard()):
         if warning:
             sections.append(warning.strip())
 
