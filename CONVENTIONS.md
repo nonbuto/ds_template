@@ -49,6 +49,7 @@
 | `scripts/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
 | `scripts/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
 | `scripts/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
+| `scripts/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
@@ -283,6 +284,10 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
 - 提出コマンドの検知は **shlex でコマンド位置を判定**する。文字列として含むだけの
   Bash（ドキュメント編集・grep）を誤検知しない（導入時に実際に自分をブロックした）
 - hook が落ちても作業は止めない（入力が読めない・API 取得失敗時は素通しする）
+- **各 hook は先頭で発火時刻を `experiments/.hook_log` へ追記する。**
+  「登録した hook が本当に発火しているか」は設定ファイルを見ても分からない——とくに
+  ①走行中セッションに設定変更が反映されるか ②**自動圧縮**でも `PreCompact` / `PostCompact` が
+  呼ばれるか、の 2 点。推測で埋めず `uv run python -m scripts.hook_status` で実測を見る
 - **`PreCompact` と `PostCompact` は対で使う**。長時間セッション（夜間の学習を回し続ける等）では
   新セッションが滅多に始まらない代わりに圧縮が繰り返し起きる。圧縮は数万トークンを要約へ潰すので、
   直後にブリーフ十数行を戻す費用は失うものの 1% 未満——**「コンテキスト節約 vs 文脈欠如」は

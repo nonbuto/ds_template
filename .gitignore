@@ -50,3 +50,5 @@ data/output/params/optuna_studies/
 experiments/.running/
 # fold 単位チェックポイント（再開用の一時成果物）
 data/output/oof/_foldcache/
+# hook 発火の実測ログ（scripts/hook_status.py が読む）
+experiments/.hook_log
