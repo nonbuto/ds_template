@@ -45,3 +45,8 @@ experiments/mlflow/
 
 # Optuna study の永続化DB（再生成可能。最良HPは best_params_*.json に別途保存される）
 data/output/params/optuna_studies/
+
+# 実行中ジョブのハートビート（プロセス固有。共有しない）
+experiments/.running/
+# fold 単位チェックポイント（再開用の一時成果物）
+data/output/oof/_foldcache/

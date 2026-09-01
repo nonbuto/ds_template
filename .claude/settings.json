@@ -45,6 +45,17 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scripts.session_snapshot 2>/dev/null; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

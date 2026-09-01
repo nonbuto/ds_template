@@ -311,6 +311,42 @@ def _get_next_experiment_id() -> str:
     return str((max(ids) + 1) if ids else 1).zfill(3)
 
 
+RUNNING_DIR = EXPERIMENTS_DIR / ".running"
+
+
+def _heartbeat_path(exp_id: str) -> Path:
+    return RUNNING_DIR / f"{exp_id}.json"
+
+
+def _heartbeat_write(exp_id: str, **fields) -> None:
+    """実行中ジョブの状態を書く（存在＝実行中、更新時刻＝生存確認）。
+
+    「まだ動いていますか」「また止まってませんか」を人が尋ねずに済むようにする。
+    ハートビートが古ければハングまたはクラッシュと判定できる（`scripts/job_status.py`）。
+    """
+    try:
+        RUNNING_DIR.mkdir(parents=True, exist_ok=True)
+        path = _heartbeat_path(exp_id)
+        state = {}
+        if path.exists():
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                state = {}
+        state.update(fields)
+        state["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass   # ハートビートの失敗で学習を止めない
+
+
+def _heartbeat_clear(exp_id: str) -> None:
+    try:
+        _heartbeat_path(exp_id).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def _save_feature_snapshot(exp_id: str, feature_names: list[str],
                            model: str, oof_score: Optional[float]) -> None:
     """この実験の特徴量セットを JSON で残す（「今のベース」を機械可読にする）。"""
@@ -444,6 +480,10 @@ class ExperimentTracker:
 
         self._started_at = datetime.now()
         self._experiment_id = _get_next_experiment_id()
+        _heartbeat_write(self._experiment_id, experiment_name=self.experiment_name,
+                         model=self.model, description=self.description,
+                         started_at=self._started_at.strftime('%Y-%m-%d %H:%M:%S'),
+                         folds_done=0, pid=os.getpid())
 
         if _MLFLOW_AVAILABLE:
             from src.config import MLFLOW_TRACKING_URI
@@ -464,6 +504,9 @@ class ExperimentTracker:
         """各フォールドのスコアを記録する。"""
         self._fold_train_scores.append(train_score)
         self._fold_val_scores.append(val_score)
+        if self._experiment_id:
+            _heartbeat_write(self._experiment_id, folds_done=len(self._fold_val_scores),
+                             last_val_score=val_score)
         if _MLFLOW_AVAILABLE:
             mlflow.log_metric(f"fold_{fold}_train_score", train_score)
             mlflow.log_metric(f"fold_{fold}_val_score", val_score)
@@ -547,6 +590,8 @@ class ExperimentTracker:
             if oof_score is not None:
                 mlflow.log_metric("oof_score", oof_score)
             mlflow.end_run()
+
+        _heartbeat_clear(self._experiment_id or "000")
 
         if feature_names is not None:
             _save_feature_snapshot(self._experiment_id or "000", feature_names,

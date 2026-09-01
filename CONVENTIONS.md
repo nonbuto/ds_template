@@ -47,11 +47,14 @@
 | `scripts/session_brief.py` | hook | SessionStart で現在地を提示 |
 | `scripts/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
 | `scripts/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
+| `scripts/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
+| `scripts/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
 `finalize.py`（OOF + test 予測 + 提出 CSV を 1 回で保存）、
-`multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）
+`multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）、
+`foldcache.py`（fold 単位チェックポイント・中断した学習の再開）
 
 **`experiments/runs/`（コンペ固有・使い捨て）**
 
@@ -121,6 +124,28 @@ save_run_outputs(exp_id=exp_id, model="lgb_h012", oof=oof, test=test, oof_score=
 - **再利用の前提は「同じ特徴量セット・同じ HP」**。FE や HP を変えたら `tag` も変える
   （古い seed 結果が混ざると不公正比較になる → CLAUDE.md `G-FAIR`）
 - 既定 seed 列は `(RANDOM_STATE, 0, 1, 7, 2026)`。先頭が再利用対象になる
+
+### fold 単位チェックポイント（長時間の学習）
+
+`src/utils/foldcache.py` の `FoldCache` を fold ループに挟む。seed 単位では救えない
+**中断（kill・クラッシュ・見積もり外れによる打ち切り）から再開できる**ようにする。
+
+- 保存名は `val_{tag}_s{seed}_f{fold}.npy` / `test_{tag}_s{seed}_f{fold}.npy`
+- 保存先は `data/output/oof/_foldcache/`（`.gitignore` 済み。再開用の一時成果物）
+- **再利用の前提は multi-seed avg と同じ**（同じ特徴量セット・同じ HP。変えたら `tag` も変える）
+- `cache.report()` を学習開始時に print すると、何 fold をスキップしたかが記録に残る
+
+### 実行中ジョブの確認
+
+`start_run()` が `experiments/.running/{exp_id}.json` にハートビートを書き、
+`log_fold_scores()` が fold 進捗で更新、`end_run()` が削除する。
+
+```bash
+uv run python -m scripts.job_status   # 生存・fold 進捗・ETA・ハング検知
+```
+
+「まだ動いていますか」「また止まってませんか」を人が尋ねずに済ませるための機構。
+PID が消えていれば異常終了、ハートビートが 15 分以上古ければハングを疑う。
 
 ---
 
@@ -226,7 +251,7 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 
 ## hook とガードの一覧
 
-`.claude/settings.json` に 4 つの hook を登録している。規律は AI への指示ではなく
+`.claude/settings.json` に 5 つの hook を登録している。規律は AI への指示ではなく
 **観測可能な結果の側から**測る（CLAUDE.md `G-MECH`）。
 
 | hook | 実行するもの | 何をするか |
@@ -235,6 +260,7 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `PreToolUse` (Bash) | `scripts/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
 | `PostToolUse` (Bash) | `scripts/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
 | `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
+| `PreCompact` | `scripts/session_snapshot.py` | コンテキスト圧縮の直前に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
 
 **ガードの手動実行**:
 
@@ -354,6 +380,11 @@ SESSION.md は「今どこにいるか」を1画面で示すライブダッシ�
 **上限値の定義**: **ファイル全体は 80 行**、そのうち **「直近の実験」は最大 10 件**。
 この 2 つは別物であり両立する（v5 では別々のファイルに書かれ非同期だった）。
 `/ds-resume` が 80 行超過を検知したら、完了済みエントリを削除して収める。
+
+**例外**: `<!-- BEGIN:auto-snapshot -->` 〜 `<!-- END:auto-snapshot -->` のブロックは
+上限の対象外。PreCompact hook（`scripts/session_snapshot.py`）が**追記ではなく置換**するため
+蓄積せず、内容も直近の実験・実行中ジョブ・git 状態に限定され行数が構造的に有界だから。
+手で編集しない（次回の圧縮で上書きされる）。
 
 **禁止パターン**: 「最後に完了したこと」を複数回追記する / 複数のスコアテーブルを並存させる /
 過去セッションの履歴を蓄積する（git history に残るため SESSION.md には不要）。
