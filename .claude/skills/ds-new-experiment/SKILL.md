@@ -136,6 +136,14 @@ argument-hint: <実験名>
 成功基準: <Q2の回答>
 中止条件: <Q3の回答>
 
+【学習スクリプトの締め方】
+  学習した実験は同じ実行内で OOF・test 予測・提出 CSV を出し切ってください。
+    from src.utils.finalize import save_run_outputs
+    save_run_outputs(exp_id=exp_id, model="<model>", oof=oof, test=test, oof_score=oof_score)
+  multi-seed avg なら src.utils.multiseed.run_multiseed() を使う（基本 seed は再利用され学習が 1/5 削減）。
+  ※ ΔOOF スクリーニング専用の実験だけが例外。学習だけして推論を省くと、
+     提出したくなった時点で同じ学習をやり直すことになります（CLAUDE.md `G-STEPWISE` / PLAYBOOK L-24）。
+
 【コミットのタイミング】
   学習完了・OOFスコア確認直後（5分以内）にコミットしてください。
   メッセージ形式は CONVENTIONS.md#コミット規約 を参照。

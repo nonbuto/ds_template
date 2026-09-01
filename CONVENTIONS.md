@@ -45,7 +45,9 @@
 | `scripts/viz_guard.py` | 随時 | 可視化の実施状況・診断記録率の機械チェック |
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
-`logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）
+`logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
+`finalize.py`（OOF + test 予測 + 提出 CSV を 1 回で保存）、
+`multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）
 
 **`experiments/runs/`（コンペ固有・使い捨て）**
 
@@ -92,6 +94,29 @@ def main():
 if __name__ == "__main__":
     main()
 ```
+
+**学習スクリプトの終わり方（必須）**: 学習した実験は、同じ実行の中で
+**OOF・test 予測・提出 CSV の 3 点を出し切る**。`src/utils/finalize.py` の
+`save_run_outputs()` を最後に 1 回呼べば揃う。
+
+```python
+from src.utils.finalize import save_run_outputs
+save_run_outputs(exp_id=exp_id, model="lgb_h012", oof=oof, test=test, oof_score=oof_score)
+```
+
+- **例外は ΔOOF スクリーニング専用の実験だけ**（`scripts/feature_study.py` 等）。
+  提出候補になりうる実験で test 予測を省くと、提出時に同じ学習をやり直すことになる（CLAUDE.md `G-STEPWISE`）
+- `ExperimentTracker.end_run()` が「OOF はあるのに test が無い」実験を機械検知して警告する
+
+### multi-seed avg（avg5 等）の実行規約
+
+`src/utils/multiseed.py` の `run_multiseed()` を使う。**基本 seed（`RANDOM_STATE`）の結果が
+既にディスクにあれば再学習せず再利用し、残りの seed だけを回す**（avg5 なら学習時間が 1/5 削減される）。
+
+- seed ごとの予測は `oof_{tag}_s{seed}.npy` / `test_{tag}_s{seed}.npy` で保存する（次回の再利用のため）
+- **再利用の前提は「同じ特徴量セット・同じ HP」**。FE や HP を変えたら `tag` も変える
+  （古い seed 結果が混ざると不公正比較になる → CLAUDE.md `G-FAIR`）
+- 既定 seed 列は `(RANDOM_STATE, 0, 1, 7, 2026)`。先頭が再利用対象になる
 
 ---
 

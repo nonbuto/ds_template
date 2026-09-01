@@ -19,7 +19,7 @@ from typing import Optional
 
 import numpy as np
 
-from src.config import EXPERIMENTS_DIR, PLOTS_DIR, RANDOM_STATE
+from src.config import EXPERIMENTS_DIR, OOF_DIR, PLOTS_DIR, RANDOM_STATE
 
 # MLflowはオプション依存
 try:
@@ -177,6 +177,29 @@ def _check_diagnostic_recording_guard(window: int = DIAG_GUARD_WINDOW) -> Option
         f"   → CONVENTIONS.md#experimenttracker-の使い方 を確認し、\n"
         f"     学習ループ内で tracker.log_fold_scores(fold, tr, val) を呼んでください。\n"
         f"   （この警告は AI の自己申告ではなく log.csv の記入率による機械判定です）"
+    )
+
+
+def _check_inference_artifact_guard(exp_id: str) -> Optional[str]:
+    """OOF を保存したのに test 予測（＝提出ファイルの材料）が無い実験を検知する。
+
+    CLAUDE.md `G-STEPWISE` は「学習 → OOF + test 予測 → 提出ファイル」を 1 つの流れとして
+    完結させることを求める。学習だけして推論を省くと、後で「やっぱり提出したい」となった
+    ときに**同じ学習をもう一度回すことになる**（過去コンペで多発し、数時間規模を空費した）。
+    ここは自己申告では守られないので、成果物の有無から機械的に判定する（`G-MECH`）。
+    """
+    if not OOF_DIR.exists():
+        return None
+    has_oof = any(OOF_DIR.glob(f"oof_{exp_id}*.npy"))
+    has_test = any(OOF_DIR.glob(f"test_{exp_id}*.npy"))
+    if not has_oof or has_test:
+        return None
+    return (
+        f"\n⚠️ 推論成果物ガード: exp{exp_id} は OOF のみで test 予測が保存されていません。\n"
+        f"   → `test_{exp_id}_*.npy` を同じ実行内で保存してください"
+        f"（学習 → OOF + test → 提出ファイルは 1 つの流れ・`G-STEPWISE`）。\n"
+        f"   提出候補になりうる実験なら `submission_path()` で CSV まで作り切ること。\n"
+        f"   ΔOOF スクリーニング目的（feature_study 等）で意図的に省く場合はこの警告を無視してよい。"
     )
 
 
@@ -522,3 +545,8 @@ class ExperimentTracker:
         diag_warning = _check_diagnostic_recording_guard()
         if diag_warning:
             print(diag_warning)
+
+        # 推論成果物ガード（機械判定。学習だけして提出材料が無い実験を検知する）
+        infer_warning = _check_inference_artifact_guard(exp_id)
+        if infer_warning:
+            print(infer_warning)

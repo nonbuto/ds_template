@@ -1,0 +1,439 @@
+[{"stream_name":"stderr","time":7.382798531,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.382867761,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.382872321,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.382874908,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.051328243,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.051365852,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.051371512,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.051381789,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":11.991717381,"data":"detected GPU: 'Tesla P100-PCIE-16GB'\n"}
+,{"stream_name":"stdout","time":11.991779882,"data":"P100 detected -\u003e reinstalling torch cu118 build (retains Pascal/sm_60 support)\n"}
+,{"stream_name":"stdout","time":23.660531221,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 839.6/839.6 MB 1.9 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":23.863009207,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 839.6/839.6 MB 1.9 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.158514184,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 23.2/23.2 MB 79.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.330219055,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 875.6/875.6 kB 46.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.360818687,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 23.2/23.2 MB 79.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.360859733,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 875.6/875.6 kB 46.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.534983272,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.1/13.1 MB 97.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.737173605,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.1/13.1 MB 97.6 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":35.091286896,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 728.5/728.5 MB 2.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":35.294075713,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 728.5/728.5 MB 2.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":43.801557534,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 417.9/417.9 MB 2.9 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":44.005466081,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 417.9/417.9 MB 2.9 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":47.85724449,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 168.4/168.4 MB 5.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":48.060037046,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 168.4/168.4 MB 5.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":49.063135488,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 58.1/58.1 MB 32.0 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":49.265556693,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 58.1/58.1 MB 32.0 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":50.772641762,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 128.2/128.2 MB 14.1 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":50.974812441,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 128.2/128.2 MB 14.1 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":53.920897777,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 204.1/204.1 MB 6.0 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":54.123243265,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 204.1/204.1 MB 6.0 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":56.062293396,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 142.9/142.9 MB 12.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":56.264829625,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 142.9/142.9 MB 12.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":56.674950397,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 99.1/99.1 kB 6.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":56.877695244,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 99.1/99.1 kB 6.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stderr","time":137.806715617,"data":"ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\n"}
+,{"stream_name":"stderr","time":137.806757672,"data":"torchaudio 2.10.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":137.806763602,"data":"torchvision 0.25.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":138.010937834,"data":"ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\n"}
+,{"stream_name":"stderr","time":138.010976521,"data":"torchaudio 2.10.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":138.010981517,"data":"torchvision 0.25.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":138.010985292,"data":"\n"}
+,{"stream_name":"stderr","time":138.010988889,"data":"ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\n"}
+,{"stream_name":"stderr","time":138.011003067,"data":"torchaudio 2.10.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":138.011006202,"data":"torchvision 0.25.0+cu128 requires torch==2.10.0, but you have torch 2.3.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stdout","time":143.123769115,"data":"   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.5/44.5 kB 1.5 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":143.325724289,"data":"   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.5/44.5 kB 1.5 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":147.709589158,"data":"COMP_DIR = /kaggle/input/competitions/playground-series-s6e8\n"}
+,{"stream_name":"stdout","time":149.635582954,"data":"train: (691369, 14), test: (296302, 13)\n"}
+,{"stream_name":"stdout","time":149.635614268,"data":"補完値(imp_*)を計算中（train+test結合、transductive、seed非依存で1回のみ）...\n"}
+,{"stream_name":"stdout","time":167.273361651,"data":"  imp_age: 欠損46,067件を補完\n"}
+,{"stream_name":"stdout","time":184.752601098,"data":"  imp_daily_screen_time_hours: 欠損128,642件を補完\n"}
+,{"stream_name":"stdout","time":201.359814184,"data":"  imp_social_media_hours: 欠損181,392件を補完\n"}
+,{"stream_name":"stdout","time":216.930458238,"data":"  imp_gaming_hours: 欠損186,241件を補完\n"}
+,{"stream_name":"stdout","time":233.516042689,"data":"  imp_work_study_hours: 欠損79,295件を補完\n"}
+,{"stream_name":"stdout","time":248.219738319,"data":"  imp_sleep_hours: 欠損66,935件を補完\n"}
+,{"stream_name":"stdout","time":262.260771557,"data":"  imp_notifications_per_day: 欠損101,805件を補完\n"}
+,{"stream_name":"stdout","time":277.196422221,"data":"  imp_app_opens_per_day: 欠損106,415件を補完\n"}
+,{"stream_name":"stdout","time":293.559181375,"data":"  imp_weekend_screen_time: 欠損162,760件を補完\n"}
+,{"stream_name":"stdout","time":294.385013406,"data":"n_features = 22, device=cuda, HP={'n_d': 16, 'n_a': 16, 'n_steps': 4, 'gamma': 1.3, 'cat_emb_dim': 4, 'lambda_sparse': 0.001, 'momentum': 0.02}\n"}
+,{"stream_name":"stderr","time":299.70284301,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":299.702885573,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":299.702893221,"data":"\n"}
+,{"stream_name":"stderr","time":299.70289853,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":299.702904096,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":945.29469361,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":945.294759727,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":945.294788547,"data":"\n"}
+,{"stream_name":"stderr","time":945.294795419,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":945.294801835,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":1221.898027307,"data":"\n"}
+,{"stream_name":"stdout","time":1221.89808205,"data":"Early stopping occurred at epoch 20 with best_epoch = 5 and best_val_0_auc = 0.96734\n"}
+,{"stream_name":"stderr","time":1221.899201524,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":1221.899230067,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":1221.899236088,"data":"\n"}
+,{"stream_name":"stderr","time":1221.899242315,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":1221.899249287,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":1239.263931656,"data":"  seed=0 fold=0: val=0.96734 elapsed=944.9s\n"}
+,{"stream_name":"stderr","time":1239.651135643,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":1239.651179299,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":1239.651183916,"data":"\n"}
+,{"stream_name":"stderr","time":1239.651188132,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":1239.651208498,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":1901.215965215,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":1901.216024752,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":1901.216033237,"data":"\n"}
+,{"stream_name":"stderr","time":1901.216039326,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":1901.216045185,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":2151.830083986,"data":"\n"}
+,{"stream_name":"stdout","time":2151.830120988,"data":"Early stopping occurred at epoch 18 with best_epoch = 3 and best_val_0_auc = 0.96673\n"}
+,{"stream_name":"stderr","time":2151.831065161,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":2151.83108715,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":2151.831093249,"data":"\n"}
+,{"stream_name":"stderr","time":2151.831098516,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":2151.831104005,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":2168.328814475,"data":"  seed=0 fold=1: val=0.96673 elapsed=1873.9s\n"}
+,{"stream_name":"stderr","time":2168.711304884,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":2168.711371038,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":2168.711379331,"data":"\n"}
+,{"stream_name":"stderr","time":2168.711385298,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":2168.711412254,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":2812.287032423,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":2812.287074549,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":2812.287080762,"data":"\n"}
+,{"stream_name":"stderr","time":2812.287089689,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":2812.287094996,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":3167.135179759,"data":"\n"}
+,{"stream_name":"stdout","time":3167.135227342,"data":"Early stopping occurred at epoch 26 with best_epoch = 11 and best_val_0_auc = 0.96717\n"}
+,{"stream_name":"stderr","time":3167.136326367,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":3167.136360665,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":3167.136368128,"data":"\n"}
+,{"stream_name":"stderr","time":3167.136373277,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":3167.136378669,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":3183.89509349,"data":"  seed=0 fold=2: val=0.96717 elapsed=2889.5s\n"}
+,{"stream_name":"stderr","time":3184.27122338,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":3184.271267693,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":3184.271272322,"data":"\n"}
+,{"stream_name":"stderr","time":3184.271275872,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":3184.271279717,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":3812.782124919,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":3812.782169833,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":3812.782174651,"data":"\n"}
+,{"stream_name":"stderr","time":3812.782177852,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":3812.782181554,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":4079.044804524,"data":"\n"}
+,{"stream_name":"stdout","time":4079.044841695,"data":"Early stopping occurred at epoch 21 with best_epoch = 6 and best_val_0_auc = 0.96645\n"}
+,{"stream_name":"stderr","time":4079.046190708,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":4079.046205299,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":4079.046210073,"data":"\n"}
+,{"stream_name":"stderr","time":4079.046223386,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":4079.046259801,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":4094.333385622,"data":"  seed=0 fold=3: val=0.96645 elapsed=3799.9s\n"}
+,{"stream_name":"stderr","time":4094.693753081,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":4094.69379312,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":4094.693807936,"data":"\n"}
+,{"stream_name":"stderr","time":4094.693813224,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":4094.693819487,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":4691.541715539,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":4691.541764939,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":4691.541770121,"data":"\n"}
+,{"stream_name":"stderr","time":4691.541774061,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":4691.541778142,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":4934.844156968,"data":"\n"}
+,{"stream_name":"stdout","time":4934.844189691,"data":"Early stopping occurred at epoch 20 with best_epoch = 5 and best_val_0_auc = 0.96696\n"}
+,{"stream_name":"stderr","time":4934.845202251,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":4934.845220136,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":4934.845225448,"data":"\n"}
+,{"stream_name":"stderr","time":4934.845230339,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":4934.845235875,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":4949.283590926,"data":"  seed=0 fold=4: val=0.96696 elapsed=4654.9s\n"}
+,{"stream_name":"stdout","time":4949.283636744,"data":"seed=0: OOF=0.96677  fold間std=0.00031  elapsed=77.6min  total_elapsed=77.6min\n"}
+,{"stream_name":"stdout","time":4949.283643364,"data":"saved: oof_173_tabnet_seed0.npy / test_173_tabnet_seed0.npy\n"}
+,{"stream_name":"stderr","time":4949.851925621,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":4949.851967336,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":4949.851980006,"data":"\n"}
+,{"stream_name":"stderr","time":4949.851983773,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":4949.851987272,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":5548.949904631,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":5548.94997478,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":5548.949980347,"data":"\n"}
+,{"stream_name":"stderr","time":5548.949983607,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":5548.949987501,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":5779.63549058,"data":"\n"}
+,{"stream_name":"stdout","time":5779.635529876,"data":"Early stopping occurred at epoch 18 with best_epoch = 3 and best_val_0_auc = 0.96739\n"}
+,{"stream_name":"stderr","time":5779.636452053,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":5779.636482374,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":5779.636489176,"data":"\n"}
+,{"stream_name":"stderr","time":5779.6364937,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":5779.63649896,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":5794.81449787,"data":"  seed=1 fold=0: val=0.96739 elapsed=845.4s\n"}
+,{"stream_name":"stderr","time":5795.145183574,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":5795.145231795,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":5795.145237253,"data":"\n"}
+,{"stream_name":"stderr","time":5795.145240559,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":5795.14524387,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":6398.466458934,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":6398.466499251,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":6398.466505921,"data":"\n"}
+,{"stream_name":"stderr","time":6398.466512619,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":6398.466522381,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":6643.370364668,"data":"\n"}
+,{"stream_name":"stdout","time":6643.370421812,"data":"Early stopping occurred at epoch 18 with best_epoch = 3 and best_val_0_auc = 0.9668\n"}
+,{"stream_name":"stderr","time":6643.371661683,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":6643.371729619,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":6643.371737734,"data":"\n"}
+,{"stream_name":"stderr","time":6643.3717431,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":6643.371748894,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":6660.653339087,"data":"  seed=1 fold=1: val=0.96680 elapsed=1711.2s\n"}
+,{"stream_name":"stderr","time":6661.013416749,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":6661.013465924,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":6661.013472225,"data":"\n"}
+,{"stream_name":"stderr","time":6661.013476376,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":6661.013480975,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":7325.170536623,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":7325.170580015,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":7325.170586852,"data":"\n"}
+,{"stream_name":"stderr","time":7325.170592306,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":7325.170597798,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":7629.304155589,"data":"\n"}
+,{"stream_name":"stdout","time":7629.304192788,"data":"Early stopping occurred at epoch 22 with best_epoch = 7 and best_val_0_auc = 0.9671\n"}
+,{"stream_name":"stderr","time":7629.305259671,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":7629.305277375,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":7629.305283385,"data":"\n"}
+,{"stream_name":"stderr","time":7629.305287946,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":7629.305292758,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":7646.681845483,"data":"  seed=1 fold=2: val=0.96710 elapsed=2697.2s\n"}
+,{"stream_name":"stderr","time":7647.058360559,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":7647.058399816,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":7647.058406812,"data":"\n"}
+,{"stream_name":"stderr","time":7647.058411972,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":7647.058417403,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":8307.318343552,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":8307.318383876,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":8307.318390732,"data":"\n"}
+,{"stream_name":"stderr","time":8307.31839529,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":8307.318400687,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":8586.981899964,"data":"\n"}
+,{"stream_name":"stdout","time":8586.981968145,"data":"Early stopping occurred at epoch 21 with best_epoch = 6 and best_val_0_auc = 0.96679\n"}
+,{"stream_name":"stderr","time":8586.983234171,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":8586.983254046,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":8586.983257872,"data":"\n"}
+,{"stream_name":"stderr","time":8586.983261539,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":8586.983265276,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":8602.478683457,"data":"  seed=1 fold=3: val=0.96679 elapsed=3653.0s\n"}
+,{"stream_name":"stderr","time":8602.803971918,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":8602.804023384,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":8602.804030235,"data":"\n"}
+,{"stream_name":"stderr","time":8602.804034764,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":8602.804040045,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":9223.223197179,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":9223.223250025,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":9223.223256628,"data":"\n"}
+,{"stream_name":"stderr","time":9223.22326138,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":9223.223266436,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":9490.706719805,"data":"\n"}
+,{"stream_name":"stdout","time":9490.706761822,"data":"Early stopping occurred at epoch 21 with best_epoch = 6 and best_val_0_auc = 0.96723\n"}
+,{"stream_name":"stderr","time":9490.707735703,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":9490.707756411,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":9490.707761875,"data":"\n"}
+,{"stream_name":"stderr","time":9490.707792217,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":9490.707798226,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":9505.717813844,"data":"  seed=1 fold=4: val=0.96723 elapsed=4556.3s\n"}
+,{"stream_name":"stdout","time":9505.717864062,"data":"seed=1: OOF=0.96694  fold間std=0.00024  elapsed=75.9min  total_elapsed=153.5min\n"}
+,{"stream_name":"stdout","time":9505.717869521,"data":"saved: oof_173_tabnet_seed1.npy / test_173_tabnet_seed1.npy\n"}
+,{"stream_name":"stderr","time":9506.275526848,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":9506.275565359,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":9506.275569892,"data":"\n"}
+,{"stream_name":"stderr","time":9506.275616523,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":9506.275622277,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":10097.366826862,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":10097.366867642,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":10097.366875375,"data":"\n"}
+,{"stream_name":"stderr","time":10097.366881647,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":10097.366887179,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":10320.684405989,"data":"\n"}
+,{"stream_name":"stdout","time":10320.684445212,"data":"Early stopping occurred at epoch 18 with best_epoch = 3 and best_val_0_auc = 0.96719\n"}
+,{"stream_name":"stderr","time":10320.685424017,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":10320.685446563,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":10320.685453008,"data":"\n"}
+,{"stream_name":"stderr","time":10320.68545773,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":10320.68546304,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":10335.291445778,"data":"  seed=7 fold=0: val=0.96719 elapsed=829.4s\n"}
+,{"stream_name":"stderr","time":10335.666423729,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":10335.666461416,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":10335.666466299,"data":"\n"}
+,{"stream_name":"stderr","time":10335.666483407,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":10335.666488991,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":10922.190067225,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":10922.190111623,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":10922.190117379,"data":"\n"}
+,{"stream_name":"stderr","time":10922.190121171,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":10922.190125143,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":11167.091113711,"data":"\n"}
+,{"stream_name":"stdout","time":11167.091152128,"data":"Early stopping occurred at epoch 20 with best_epoch = 5 and best_val_0_auc = 0.96724\n"}
+,{"stream_name":"stderr","time":11167.092129229,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":11167.092150801,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":11167.092202701,"data":"\n"}
+,{"stream_name":"stderr","time":11167.092207525,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":11167.092211263,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":11181.998115274,"data":"  seed=7 fold=1: val=0.96724 elapsed=1676.1s\n"}
+,{"stream_name":"stderr","time":11182.363961836,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":11182.364001654,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":11182.364007818,"data":"\n"}
+,{"stream_name":"stderr","time":11182.364013129,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":11182.364018256,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":11744.287575077,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":11744.2876138,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":11744.287620559,"data":"\n"}
+,{"stream_name":"stderr","time":11744.287624959,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":11744.287629717,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":11968.143660812,"data":"\n"}
+,{"stream_name":"stdout","time":11968.143707243,"data":"Early stopping occurred at epoch 19 with best_epoch = 4 and best_val_0_auc = 0.96705\n"}
+,{"stream_name":"stderr","time":11968.144643858,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":11968.144659881,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":11968.144665411,"data":"\n"}
+,{"stream_name":"stderr","time":11968.144670579,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":11968.144696272,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":11982.528528055,"data":"  seed=7 fold=2: val=0.96705 elapsed=2476.7s\n"}
+,{"stream_name":"stderr","time":11982.915936776,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":11982.915977276,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":11982.915981321,"data":"\n"}
+,{"stream_name":"stderr","time":11982.915985172,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":11982.916003025,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":12537.802240265,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":12537.802282993,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":12537.802296457,"data":"\n"}
+,{"stream_name":"stderr","time":12537.802299895,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":12537.802303229,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":12762.047114353,"data":"\n"}
+,{"stream_name":"stdout","time":12762.04715339,"data":"Early stopping occurred at epoch 19 with best_epoch = 4 and best_val_0_auc = 0.9676\n"}
+,{"stream_name":"stderr","time":12762.048070906,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":12762.048114048,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":12762.048120671,"data":"\n"}
+,{"stream_name":"stderr","time":12762.048125757,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":12762.048131913,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":12776.518039019,"data":"  seed=7 fold=3: val=0.96760 elapsed=3270.6s\n"}
+,{"stream_name":"stderr","time":12776.863174246,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":12776.863222759,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":12776.863226888,"data":"\n"}
+,{"stream_name":"stderr","time":12776.863230027,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":12776.863247505,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":13333.69639107,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":13333.696433488,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":13333.696440128,"data":"\n"}
+,{"stream_name":"stderr","time":13333.696444486,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":13333.696448832,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":13579.958176267,"data":"\n"}
+,{"stream_name":"stdout","time":13579.958217215,"data":"Early stopping occurred at epoch 21 with best_epoch = 6 and best_val_0_auc = 0.9665\n"}
+,{"stream_name":"stderr","time":13579.95914556,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":13579.959166865,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":13579.959171707,"data":"\n"}
+,{"stream_name":"stderr","time":13579.95917573,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":13579.959180381,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":13594.195618065,"data":"  seed=7 fold=4: val=0.96650 elapsed=4088.3s\n"}
+,{"stream_name":"stdout","time":13594.195682547,"data":"seed=7: OOF=0.96698  fold間std=0.00036  elapsed=68.1min  total_elapsed=221.7min\n"}
+,{"stream_name":"stdout","time":13594.19570617,"data":"saved: oof_173_tabnet_seed7.npy / test_173_tabnet_seed7.npy\n"}
+,{"stream_name":"stderr","time":13594.733475507,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":13594.733511563,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":13594.733516645,"data":"\n"}
+,{"stream_name":"stderr","time":13594.733519815,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":13594.733523558,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":14150.569269202,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":14150.569307502,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":14150.569313951,"data":"\n"}
+,{"stream_name":"stderr","time":14150.569318587,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":14150.569323321,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":14420.547064306,"data":"\n"}
+,{"stream_name":"stdout","time":14420.547102903,"data":"Early stopping occurred at epoch 23 with best_epoch = 8 and best_val_0_auc = 0.96597\n"}
+,{"stream_name":"stderr","time":14420.547967753,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":14420.547989886,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":14420.547995497,"data":"\n"}
+,{"stream_name":"stderr","time":14420.547999935,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":14420.548004791,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":14434.919433849,"data":"  seed=2026 fold=0: val=0.96597 elapsed=840.6s\n"}
+,{"stream_name":"stderr","time":14435.222484825,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":14435.22252185,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":14435.222527616,"data":"\n"}
+,{"stream_name":"stderr","time":14435.222532252,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":14435.222537431,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":14989.123013687,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":14989.123152311,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":14989.12316406,"data":"\n"}
+,{"stream_name":"stderr","time":14989.123169865,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":14989.123175577,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":15229.378476177,"data":"\n"}
+,{"stream_name":"stdout","time":15229.378516765,"data":"Early stopping occurred at epoch 20 with best_epoch = 5 and best_val_0_auc = 0.96763\n"}
+,{"stream_name":"stderr","time":15229.379415314,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":15229.379444106,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":15229.379449776,"data":"\n"}
+,{"stream_name":"stderr","time":15229.379454324,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":15229.379458957,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":15243.744594753,"data":"  seed=2026 fold=1: val=0.96763 elapsed=1649.4s\n"}
+,{"stream_name":"stderr","time":15244.061429845,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":15244.061470222,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":15244.061474641,"data":"\n"}
+,{"stream_name":"stderr","time":15244.061477797,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":15244.06148184,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":15804.934085556,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":15804.934162392,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":15804.934172549,"data":"\n"}
+,{"stream_name":"stderr","time":15804.934177553,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":15804.934182756,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":16019.324454926,"data":"\n"}
+,{"stream_name":"stdout","time":16019.324510125,"data":"Early stopping occurred at epoch 18 with best_epoch = 3 and best_val_0_auc = 0.96744\n"}
+,{"stream_name":"stderr","time":16019.325596323,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":16019.325618516,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":16019.325624776,"data":"\n"}
+,{"stream_name":"stderr","time":16019.325629799,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":16019.325635061,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":16034.551761711,"data":"  seed=2026 fold=2: val=0.96744 elapsed=2440.2s\n"}
+,{"stream_name":"stderr","time":16034.866550211,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":16034.866588007,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":16034.866593754,"data":"\n"}
+,{"stream_name":"stderr","time":16034.866599261,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":16034.866622402,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":16601.123268415,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":16601.123309569,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":16601.123316472,"data":"\n"}
+,{"stream_name":"stderr","time":16601.123321758,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":16601.123326989,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":16847.797557449,"data":"\n"}
+,{"stream_name":"stdout","time":16847.797601781,"data":"Early stopping occurred at epoch 21 with best_epoch = 6 and best_val_0_auc = 0.96682\n"}
+,{"stream_name":"stderr","time":16847.798573795,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":16847.798612348,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":16847.798618242,"data":"\n"}
+,{"stream_name":"stderr","time":16847.798623202,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":16847.798628469,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":16862.34078398,"data":"  seed=2026 fold=3: val=0.96682 elapsed=3268.0s\n"}
+,{"stream_name":"stderr","time":16862.693407405,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":16862.693462108,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":16862.693469558,"data":"\n"}
+,{"stream_name":"stderr","time":16862.69347468,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:687: UserWarning: No early stopping will be performed, last training weights will be used.\n"}
+,{"stream_name":"stderr","time":16862.69347956,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":17419.242615894,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":17419.242660334,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stderr","time":17419.242711069,"data":"\n"}
+,{"stream_name":"stderr","time":17419.24271724,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/abstract_model.py:248: UserWarning: Loading weights from unsupervised pretraining\n"}
+,{"stream_name":"stderr","time":17419.242722286,"data":"  warnings.warn(\"Loading weights from unsupervised pretraining\")\n"}
+,{"stream_name":"stdout","time":17643.28149723,"data":"\n"}
+,{"stream_name":"stdout","time":17643.281534944,"data":"Early stopping occurred at epoch 19 with best_epoch = 4 and best_val_0_auc = 0.96609\n"}
+,{"stream_name":"stderr","time":17643.282774791,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":17643.282801194,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stderr","time":17643.282807159,"data":"\n"}
+,{"stream_name":"stderr","time":17643.28282367,"data":"/usr/local/lib/python3.12/dist-packages/pytorch_tabnet/callbacks.py:172: UserWarning: Best weights from best epoch are automatically used!\n"}
+,{"stream_name":"stderr","time":17643.282828585,"data":"  warnings.warn(wrn_msg)\n"}
+,{"stream_name":"stdout","time":17657.565823178,"data":"  seed=2026 fold=4: val=0.96609 elapsed=4063.3s\n"}
+,{"stream_name":"stdout","time":17657.56585968,"data":"seed=2026: OOF=0.96671  fold間std=0.00068  elapsed=67.7min  total_elapsed=289.4min\n"}
+,{"stream_name":"stdout","time":17657.565866783,"data":"saved: oof_173_tabnet_seed2026.npy / test_173_tabnet_seed2026.npy\n"}
+,{"stream_name":"stdout","time":17657.565871983,"data":"\n"}
+,{"stream_name":"stdout","time":17657.565876563,"data":"全seed完了。total_elapsed=289.4min\n"}
+,{"stream_name":"stdout","time":17657.565881045,"data":"参考 exp169(seed=42) OOF=0.96677 — ローカルでこの4シードと合わせてavg5を計算する\n"}
+,{"stream_name":"stderr","time":17662.805321669,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":17662.80535794,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":17663.000954196,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":17663.000997183,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":17663.764476882,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":17664.084449263,"data":"[NbConvertApp] Writing 40882 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":17666.543009827,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":17667.431172851,"data":"[NbConvertApp] Writing 360765 bytes to __results__.html\n"}
+]
