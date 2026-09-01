@@ -120,8 +120,23 @@ def main():
     if args.model != "lgb":
         print(f"  評価: 重みなし学習 + beta較正（BETA_GRID={BETA_GRID}）")
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE))
+    # study を SQLite に永続化する（インメモリだと TPE の探索状態が失われ、
+    # 「あと N 試行だけ追加したい」ができず毎回ゼロからやり直しになる）
+    study_dir = PARAMS_DIR / "optuna_studies"
+    study_dir.mkdir(parents=True, exist_ok=True)
+    study_name = f"{args.model}_{args.tag}"
+    storage = f"sqlite:///{study_dir / f'{study_name}.db'}"
+
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE),
+        study_name=study_name,
+        storage=storage,
+        load_if_exists=True,
+    )
+    done = len(study.trials)
+    if done:
+        print(f"  既存 study を再開: 完了済み {done} 試行 → 追加 {args.n_trials} 試行")
     study.optimize(lambda trial: objective(trial, X, y, args.model, prior),
                    n_trials=args.n_trials, show_progress_bar=True)
 

@@ -136,6 +136,18 @@ matplotlib で日本語ラベルを描くと文字化け（tofu 表示）する�
 
 ---
 
+## Optuna study の永続化と命名
+
+`scripts/optimize_hp.py` は study を `data/output/params/optuna_studies/{model}_{tag}.db`
+（SQLite）に永続化し、同名 study があれば `load_if_exists=True` で**再開**する。
+
+- `study_name` は `{model}_{tag}` （例: `lgb_working`, `xgb_full`）。**同じ tag を使えば試行が積み上がる**
+- 探索をやり直したい場合は tag を変える（例: `--tag full_v2`）か、該当 `.db` を削除する
+- `.db` は数十 KB〜数 MB。`best_params_*.json` は「最良の 1 点」しか残さないが、
+  study を残せば **追加試行・fANOVA による寄与分析・探索履歴の監査**ができる
+
+---
+
 ## 提出ファイルの命名規約
 
 提出CSVは必ず `submission_path()` ヘルパーで生成する:

@@ -70,3 +70,4 @@
 | `EDA_SUMMARY.md` | EDAで得た発見と問い | `/ds-eda-visual` |
 | `COMPETITION.md` | コンペ概要・CV設計の初期判断 | `/ds-kickoff` |
 | `TODO_TEMPLATE.md` | テンプレート改善項目 | `/ds-template-update` |
+| `KAGGLE_RESEARCH.md` | 外部調査ログ（上位解法・公開カーネルの知見） | `/ds-kaggle-research` |

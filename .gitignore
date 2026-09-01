@@ -42,3 +42,6 @@ experiments/mlflow/
 # .claude 内のセッション状態
 .claude/projects/
 .claude/scheduled_tasks.lock
+
+# Optuna study の永続化DB（再生成可能。最良HPは best_params_*.json に別途保存される）
+data/output/params/optuna_studies/
