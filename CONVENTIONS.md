@@ -42,7 +42,11 @@
 | `scripts/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
 | `scripts/av_check.py` | 4 | AV診断（train/test 分布シフトの検出） |
 | `scripts/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
-| `scripts/viz_guard.py` | 随時 | 可視化の実施状況・診断記録率の機械チェック |
+| `scripts/viz_guard.py` | 随時 | 可視化・診断記録・推論成果物の機械チェック |
+| `scripts/state_audit.py` | 随時 | 状態ファイルの停滞を検知（log.csv の実験時刻 vs mtime） |
+| `scripts/session_brief.py` | hook | SessionStart で現在地を提示 |
+| `scripts/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
+| `scripts/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
@@ -230,13 +234,14 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `SessionStart` | `scripts/session_brief.py` | 現在地（ステージ・次アクション・直近の実験・要対応）を提示。`/ds-resume` の機械部分。行数上限は同ファイルの `MAX_LINES`（毎セッションのコンテキストを消費するため） |
 | `PreToolUse` (Bash) | `scripts/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
 | `PostToolUse` (Bash) | `scripts/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
-| `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・3 ガードを監査（**ブロックしない**） |
+| `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
 
 **ガードの手動実行**:
 
 ```bash
 uv run python -m scripts.viz_guard        # 可視化・診断記録・推論成果物
-uv run python -m scripts.session_audit    # 上記 + コミット規律
+uv run python -m scripts.state_audit      # 状態ファイルの停滞（log.csv の実験時刻 vs mtime）
+uv run python -m scripts.session_audit    # 上記すべて + コミット規律
 uv run python -m scripts.session_brief    # 現在地ブリーフ
 uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェック）
 ```

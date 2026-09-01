@@ -7,7 +7,8 @@ AI への指示ではなく**観測可能な結果の側から**測る（`G-MECH
 判定するもの（すべてファイル・git の実態から）:
   1. 未コミットの実験スクリプト（`experiments/runs/exp*.py`）
   2. log.csv に OOF が記録済みなのに、その実験 ID を含むコミットが存在しない
-  3. 3 つの規律ガード（可視化・診断記録・推論成果物）
+  3. 状態ファイルの停滞（`scripts/state_audit.py`）
+  4. 3 つの規律ガード（可視化・診断記録・推論成果物）
 
 **ブロックはしない。** Stop hook でブロックすると停止と再開のループを招くため、
 `systemMessage` でユーザーに提示するだけにする。ブロックしてよいのは実績のある
@@ -98,6 +99,14 @@ def build_report() -> str | None:
             f"OOF 記録済みだがコミットが見つからない実験: {ids}\n"
             f"  → OOF 判明後 5 分以内に commit する規約です（`G-STEPWISE`）"
         )
+
+    try:
+        from scripts.state_audit import build_report as _state_report
+        stale = _state_report()
+    except Exception:
+        stale = None
+    if stale:
+        sections.append(stale)
 
     for warning in (_check_visualization_guard(),
                     _check_diagnostic_recording_guard(),
