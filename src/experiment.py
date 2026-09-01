@@ -203,6 +203,42 @@ def _check_inference_artifact_guard(exp_id: str) -> Optional[str]:
     )
 
 
+INFER_GUARD_WINDOW = 5   # 直近N実験の推論成果物を見る
+
+
+def _check_inference_artifacts_window(window: int = INFER_GUARD_WINDOW) -> Optional[str]:
+    """直近 `window` 件のうち「OOF はあるのに test 予測が無い」実験を列挙する。
+
+    `_check_inference_artifact_guard()` は tracker 経由（`end_run()`）でしか呼べない。
+    log.csv へ直接追記する使い捨てスクリプトもカバーするため、hook 経路から呼ぶ窓版を用意する。
+    """
+    if not LOG_CSV_PATH.exists() or not OOF_DIR.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+
+    missing = []
+    for row in rows[-window:]:
+        exp_id = (row.get("experiment_id") or "").strip()
+        if not exp_id or not (row.get("oof_score") or "").strip():
+            continue
+        if any(OOF_DIR.glob(f"oof_{exp_id}*.npy")) and not any(OOF_DIR.glob(f"test_{exp_id}*.npy")):
+            missing.append(exp_id)
+    if not missing:
+        return None
+
+    ids = ", ".join(f"exp{i}" for i in missing)
+    return (
+        f"\n⚠️  推論成果物ガード: 直近{window}実験のうち {ids} は OOF のみで test 予測がありません。\n"
+        f"   学習 → OOF + test → 提出ファイルは 1 つの流れです（CLAUDE.md `G-STEPWISE` / PLAYBOOK L-24）。\n"
+        f"   → 実験スクリプトの最後で src.utils.finalize.save_run_outputs() を呼んでください。\n"
+        f"   ΔOOF スクリーニング専用（feature_study 等）なら無視して構いません。"
+    )
+
+
 def _previous_experiment_scores() -> Optional[float]:
     """log.csv の最新行（＝直前の実験）の oof_score を返す。無ければ None。
 
