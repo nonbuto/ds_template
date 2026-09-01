@@ -371,7 +371,30 @@ tracker.end_run(
 
 ---
 
+## 記録先の対応表
+
+CLAUDE.md「思考の外部化の原則」が求める記録を、どのファイルへ・どのスキルで残すか。
+
+| 記録すべきもの | どこに | スキル |
+|---|---|---|
+| 「何を知りたいか」「ドメイン知識」 | EDA_SUMMARY.md | `/ds-eda-visual` |
+| 各変数の特性・ΔOOF・採否 | FEATURE_REPORT.md | `/ds-eda-visual` · `/ds-fe-hypothesis` が記入を促す。**「現在の特徴量セット」節は機械生成**（`end_run(feature_names=...)` → `scripts.feature_report --sync`）。採否の表は自由形式の検証でも確定時に手動更新する — 過去コンペでは 3 週間超の FE 成果が未反映のまま「今どれがベースか」を追えなくなった |
+| 特徴量の仮説・因果・棄却理由 | FE_HYPOTHESES.md | `/ds-fe-hypothesis` |
+| 実験の目的・成功基準・撤退基準 | experiments/log.csv | `/ds-new-experiment` |
+| 実験から何を学んだか | experiments/log.csv | `/ds-kaggle-submit` |
+| テンプレートへの汎用的な気づき | TODO_TEMPLATE.md | `/ds-template-update` |
+| **現在地・次のアクション・未解決の問い** | **SESSION.md** | **`/ds-new-experiment` · `/ds-kaggle-submit` が自動更新** |
+
+---
+
 ## SESSION.md の構成と上限
+
+**SESSION.md の更新タイミング（自動）:**
+- `/ds-kickoff` 実行時 → Stage 0 完了・次のアクション（最小ベースライン）を記録
+- `/ds-eda-visual` 実行時 → Stage 2 完了・次のFE仮説リストを記録
+- `/ds-fe-hypothesis` 実行時（新規） → 仮説登録・次のアクション（実装→計測）を記録
+- `/ds-new-experiment` 実行時 → 実験開始・次のアクションを記録
+- `/ds-kaggle-submit` 実行時 → LBスコア・OOF-LB乖離・**本日の提出数（例: 3/10）**・学び・次の方向性を記録
 
 SESSION.md は「今どこにいるか」を1画面で示すライブダッシュボード。
 **アペンドではなく各セクションを上書き更新する**（蓄積禁止）。

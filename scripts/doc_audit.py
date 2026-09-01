@@ -27,7 +27,12 @@ BASELINE_PATH = ROOT / "experiments" / "doc_audit_baseline.json"
 ALWAYS_LOADED = ["CLAUDE.md"] + sorted(
     str(p.relative_to(ROOT)) for p in (ROOT / ".claude" / "rules").glob("*.md")
 )
-ALWAYS_LOADED_BUDGET = 650          # C1: 常時ロードの行数上限
+# C1: 常時ロードの**文字数**上限。
+# 行数で測っていた頃は「2 つの箇条書きを 1 行に結合する」だけで測定値が下がり、
+# 中身を減らさずに上限を通過できた（実際、ある改善作業では行数 -2 に対して
+# 文字数 +1,898 で通過していた）。コンテキストの費用は改行ではなく中身の量なので、
+# 文字数で測る。30,000 は v6 再設計時の実効値（650 行 × 平均 46 字）。
+ALWAYS_LOADED_BUDGET = 30_000
 
 DOC_FILES = ["CLAUDE.md", "CONVENTIONS.md", "PLAYBOOK.md"]
 SKILL_GLOB = ".claude/skills/*/SKILL.md"
@@ -94,10 +99,14 @@ def check(results: list[tuple[str, str, str]]) -> None:
     docs = dict(_iter_docs())
 
     # ── C1: 常時ロードの行数予算 ──
-    total = sum(len((ROOT / f).read_text().splitlines()) for f in ALWAYS_LOADED if (ROOT / f).exists())
-    detail = ", ".join(f"{f}={len((ROOT/f).read_text().splitlines())}" for f in ALWAYS_LOADED if (ROOT / f).exists())
+    present = [f for f in ALWAYS_LOADED if (ROOT / f).exists()]
+    total = sum(len((ROOT / f).read_text()) for f in present)
+    lines = sum(len((ROOT / f).read_text().splitlines()) for f in present)
+    detail = ", ".join(f"{f}={len((ROOT/f).read_text()):,}字" for f in present)
     lvl = "ERROR" if total > ALWAYS_LOADED_BUDGET else "OK"
-    results.append((lvl, "C1 行数予算", f"常時ロード {total} 行 / 上限 {ALWAYS_LOADED_BUDGET}（{detail}）"))
+    results.append((lvl, "C1 文字数予算",
+                    f"常時ロード {total:,} 字 / 上限 {ALWAYS_LOADED_BUDGET:,}"
+                    f"（{detail} · 参考 {lines} 行）"))
 
     # ── C2: アンカー解決 ──
     unresolved = []
@@ -216,12 +225,12 @@ def check(results: list[tuple[str, str, str]]) -> None:
     drift = []
     if readme_path.exists():
         readme = readme_path.read_text()
-        actual_claude = len((ROOT / "CLAUDE.md").read_text().splitlines())
+        actual_claude = len((ROOT / "CLAUDE.md").read_text())   # C1 と同じ「文字数」で測る
         actual_skills = len(list(ROOT.glob(SKILL_GLOB)))
         n_checks = len(results) + 1                     # 自分自身を含めた総チェック数
         claims = [
             (r"固定\s*(\d+)\s*個の数値", len(CRITICAL_NUMBERS), "C4 の実測値の個数"),
-            (r"\*\*(\d[\d,]*)\s*行（-\d+%）\*\*", actual_claude, "常時ロードの行数"),
+            (r"\*\*(\d[\d,]*)\s*字（-\d+%）\*\*", actual_claude, "常時ロードの文字数"),
             (r"C1-C(\d+)", n_checks, "doc_audit のチェック数"),
         ]
         for pattern, actual, label in claims:

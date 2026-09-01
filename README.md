@@ -27,7 +27,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 
 | 項目 | 現在値 |
 |---|---|
-| 毎セッション自動ロード（CLAUDE.md） | **648 行（-47%）**（上限 650 行 / v5 は 1,223 行） |
+| 毎セッション自動ロード（CLAUDE.md） | **29,754 字（-47%）**（上限 30,000 字 / v5 は 1,223 行・約 56,000 字） |
 | ドキュメント階層 | L0 CLAUDE.md / L1 CONVENTIONS.md / L2 PLAYBOOK.md / L3 `.claude/skills/` |
 | `doc_audit` のチェック | **C1-C11**（うち C4 は固定 37 個の数値が消えたら ERROR） |
 | 規律の機械化 | hook 6 種（SessionStart / PreToolUse / PostToolUse / Stop / PreCompact / PostCompact）+ ガード 6 種 |
