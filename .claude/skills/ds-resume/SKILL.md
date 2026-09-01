@@ -28,7 +28,7 @@ description: 新しいセッションを開始するときは必ずこれを最�
 3. `FE_HYPOTHESES.md` — **仮説 50 件超なら「索引」セクションのみ Read**（全文 Read 禁止。
    ステータス集計は `grep -c '^| H-' FE_HYPOTHESES.md` と `grep -c '❌' FE_HYPOTHESES.md` で行う）
 4. `COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
-5. `TODO_TEMPLATE.md` — HIGH優先度の未完了項目
+5. `TODO_TEMPLATE.md` — 未完了項目（完了済みは `docs/TODO_ARCHIVE.md` にあり、通常は読まない）
 
 > **規約（パス・命名・log.csv 列・コミット形式・ExperimentTracker の使い方）は `CONVENTIONS.md` にある。**
 > 毎セッション自動ロードされないので、該当する作業に入るときに必ずその節を Read すること。
