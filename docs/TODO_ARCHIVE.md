@@ -1062,7 +1062,8 @@ FE_HYPOTHESES.md は 2,300行超・101仮説。資産としては価値がある
 
 ## [2026-09-02] CRITICAL — `G-MECH` がテンプレート自身に適用されておらず、強制の入口が hook 1 本しか無かった
 
-- **説明**: 強制機構は PostToolUse hook 1 本とプロセス内ガード 3 つのみ。`SessionStart` / `PreToolUse` / `Stop` / `PreCompact` は未使用だった。実際に破られた規律（提出前確認・1実験1コミット・状態ファイルの更新・`/ds-resume` の実行）はすべて機械化ゼロの側にあった。
+- **説明**: 強制機構は PostToolUse hook 1 本とプロセス内ガード 3 つのみ。`SessionStart` / `PreToolUse` / `Stop` / `PreCompact` は未使用だった。**s6e8 で実測的に破られた規律**（提出前確認は毎回 AI の自己申告 / 1実験1コミット / FEATURE_REPORT が 3 週間停滞）は、いずれも機械化ゼロの側にあった。
+- **区別すべき点**: `SessionStart` ブリーフは「`/ds-resume` を強制する」ものではない。`/ds-resume` はユーザーの儀式であり、その価値は「現在地を合意して次の一手を決める対話」にある（スキップされたという計測もしていない）。ブリーフが担うのは**下限の保証**——ユーザーが儀式を挟まず本題から入ったとき、`--continue` / `--resume` のとき、圧縮後のときに、AI がゼロ文脈で走り出さないようにする。スキルの代替ではない。
 - **問題の本質**: 規範を書く場所（CLAUDE.md）と、それを守らせる機構の場所（hook・ガード）の対応表が無く、機構のある規律ばかり強化され、無い規律は放置され続けた。
 - **対応**: hook を 5 種へ拡張（SessionStart ブリーフ / PreToolUse 提出ゲート / PostToolUse ガード / Stop 監査 / PreCompact 退避）、ガードを 5 種へ（可視化・提出・診断記録・推論成果物・コミット/状態鮮度）。提出ゲートは `permissionDecision: "ask"` で人間へ承認を戻しつつ、数字は Kaggle API と時計から実測する。
 - **影響ファイル**: `.claude/settings.json`, `scripts/session_brief.py`, `scripts/submit_gate.py`, `scripts/session_audit.py`, `scripts/state_audit.py`, `scripts/session_snapshot.py`, `scripts/job_status.py`, `src/experiment.py`, `CLAUDE.md`, `CONVENTIONS.md`, `PLAYBOOK.md` L-25
