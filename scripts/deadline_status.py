@@ -61,6 +61,38 @@ def count_todays_submissions(competition: str) -> int | None:
     return sum(1 for line in out.splitlines() if today in line)
 
 
+def runtime_stats() -> list[tuple[str, int, float]]:
+    """log.csv の `duration_sec` からモデル別の実測中央値を返す。
+
+    30 分ルールは「推定実行時間」を求めるが、推定を較正する**実測**がどこにも残らなかった。
+    過去コンペでは推定 1 時間の実験が実測 4 時間 17 分（しかも 4/25 fold）で、
+    締切直前の貴重な時間を溶かした。推定の根拠はここから取る。
+    """
+    import csv
+    from statistics import median
+
+    path = Path(__file__).resolve().parent.parent / "experiments" / "log.csv"
+    if not path.exists():
+        return []
+    try:
+        with open(path, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return []
+
+    by_model: dict[str, list[float]] = {}
+    for row in rows:
+        raw = (row.get("duration_sec") or "").strip()
+        model = (row.get("model") or "?").strip() or "?"
+        if raw:
+            try:
+                by_model.setdefault(model, []).append(float(raw))
+            except ValueError:
+                continue
+    return sorted(((m, len(v), median(v)) for m, v in by_model.items()),
+                  key=lambda t: -t[2])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--deadline", type=str, default=None, help="例: '2026-08-31 23:59'（UTC）")
@@ -103,6 +135,15 @@ def main() -> None:
             print(f"{mark} 本日の提出   : {used}/{args.limit} 使用済み（残り {left} 枠）  コンペ: {competition}")
     else:
         print("本日の提出   : コンペ slug 不明（--competition で指定可）")
+
+    stats = runtime_stats()
+    if stats:
+        print("\n実測の実行時間（log.csv の duration_sec・中央値）— 推定はここから取る:")
+        for model, n, med in stats[:5]:
+            mark = "⚠️" if med >= 30 * 60 else "  "
+            print(f"  {mark} {model:<20} {med / 60:6.1f} 分  (n={n})")
+    else:
+        print("\n実測の実行時間: まだ記録がありません（duration_sec は start_run 経由で自動記録）")
 
     if deadline and (deadline - now).total_seconds() / 3600 < 12:
         print("\n⚠️ 締切まで 12 時間を切っています。"

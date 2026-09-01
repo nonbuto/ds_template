@@ -46,6 +46,7 @@ LOG_CSV_COLUMNS = [
     "lb_rank",
     "n_folds",
     "n_features",
+    "duration_sec",       # start_run から end_run までの実測秒数（ETA 較正の材料）
     "git_hash",
     "git_branch",
     "notes",
@@ -309,11 +310,52 @@ def _get_next_experiment_id() -> str:
     return str((max(ids) + 1) if ids else 1).zfill(3)
 
 
+LONG_RUN_THRESHOLD_SEC = 30 * 60   # CLAUDE.md「30分ルール」の閾値
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    """実行時間を表示用に整える。30 分ルールを超えたら実行環境の再検討を促す。"""
+    if seconds is None:
+        return "計測なし（start_run を経由していない）"
+    text = f"{int(seconds // 60)}分{int(seconds % 60)}秒"
+    if seconds >= LONG_RUN_THRESHOLD_SEC:
+        text += "  ⚠️ 30分超 — 次回は Kaggle Notebook GPU も選択肢に入れること"
+    return text
+
+
 def _ensure_log_csv() -> None:
+    """log.csv を作成し、列が増えていれば既存ファイルを移行する。
+
+    列を追加したあと既存ファイルへそのまま追記すると、ヘッダ（旧列数）と行（新列数）が
+    食い違って**過去の実験記録が丸ごとずれる**。列の増減はテンプレート更新のたびに
+    起こりうるので、追記の前に必ずここで整合させる。
+    """
     if not LOG_CSV_PATH.exists():
         with open(LOG_CSV_PATH, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
             writer.writeheader()
+        return
+
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            reader = csv.DictReader(f)
+            existing = list(reader.fieldnames or [])
+            rows = list(reader)
+    except Exception:
+        return
+
+    missing = [c for c in LOG_CSV_COLUMNS if c not in existing]
+    if not missing:
+        return
+
+    # 既知の列は順序どおりに、未知の列（手で足したもの）は末尾に残す
+    fieldnames = LOG_CSV_COLUMNS + [c for c in existing if c not in LOG_CSV_COLUMNS]
+    with open(LOG_CSV_PATH, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in fieldnames})
+    print(f"🔧 log.csv に列を追加しました（既存 {len(rows)} 行は保持）: {', '.join(missing)}")
 
 
 @dataclass
@@ -338,6 +380,7 @@ class ExperimentTracker:
     notes: str = ""
 
     _experiment_id: Optional[str] = field(default=None, repr=False)
+    _started_at: Optional[datetime] = field(default=None, repr=False)
     _fold_train_scores: list[float] = field(default_factory=list, repr=False)
     _fold_val_scores: list[float] = field(default_factory=list, repr=False)
 
@@ -381,6 +424,7 @@ class ExperimentTracker:
         if notes:
             self.notes = notes
 
+        self._started_at = datetime.now()
         self._experiment_id = _get_next_experiment_id()
 
         if _MLFLOW_AVAILABLE:
@@ -477,6 +521,8 @@ class ExperimentTracker:
             mlflow.end_run()
 
         _ensure_log_csv()
+        duration = ((datetime.now() - self._started_at).total_seconds()
+                    if self._started_at else None)
         row = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "experiment_id": self._experiment_id or "000",
@@ -493,6 +539,7 @@ class ExperimentTracker:
             "lb_rank": "",               # /ds-kaggle-submit スキルが追記
             "n_folds": len(self._fold_val_scores),
             "n_features": n_features,
+            "duration_sec": f"{duration:.0f}" if duration is not None else "",
             "git_hash": _get_git_hash(),
             "git_branch": _get_git_branch(),
             "notes": self.notes,
@@ -539,6 +586,7 @@ class ExperimentTracker:
             f"  CV Val  : {val_mean:.5f} ± {val_std:.5f}\n"
             f"  Gap(train-val): {train_val_gap:.5f}{gap_note}\n"
             f"  OOF     : {oof_str}\n"
+            f"  実行時間: {_format_duration(duration)}\n"
             f"  Branch  : {branch}\n"
             f"  log.csv : {LOG_CSV_PATH}"
         )

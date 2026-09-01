@@ -264,12 +264,17 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
 | `success_criteria` | `/ds-new-experiment` | どんな結果なら成功か |
 | `abort_criteria` | `/ds-new-experiment` | どんな結果なら中止するか |
 | `cv_val_mean` / `oof_score` | 学習完了時 | OOFスコア |
+| `duration_sec` | 学習完了時（自動） | `start_run` → `end_run` の実測秒数。**30分ルールの推定はこの実測から取る**（`uv run python -m scripts.deadline_status` がモデル別中央値を表示） |
 | `submit_score` | `/ds-kaggle-submit` | LBスコア |
 | `oof_lb_gap` | `/ds-kaggle-submit` | OOF tuned − LB（正=OOF過大評価、負=OOF過小評価）。乖離が大きい実験は汎化リスクあり |
 | `learning` | `/ds-kaggle-submit` | この実験から何を学んだか |
 
 > **ベスト実験の管理は SESSION.md のスコアテーブルで一元化する。** log.csv にベストフラグ列（`is_best` 等）を持たない
 > — フラグ方式は過去コンペで 100 実験超のうちほぼ全行が未記入となり形骸化した。二重管理をやめ、SESSION.md の上書き更新に集約する。
+
+**列を追加するとき**: `LOG_CSV_COLUMNS`（`src/experiment.py`）に足すだけでよい。
+`_ensure_log_csv()` が既存ファイルのヘッダを見て不足列を空値で補い、行を保ったまま移行する。
+**この移行を省くとヘッダと行の列数が食い違い、過去の実験記録が丸ごとずれる。**
 
 ---
 
