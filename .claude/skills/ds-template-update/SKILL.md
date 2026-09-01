@@ -1,7 +1,6 @@
 ---
 name: ds-template-update
 description: コンペ・分析作業中に発見したテンプレート改善点を記録する。「Kaggle固有か汎用か」を峻別し、テンプレートが競技向けに特化していくことを防ぐ。
-disable-model-invocation: true
 argument-hint: "<改善の説明>"
 ---
 
