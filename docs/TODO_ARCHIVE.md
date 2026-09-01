@@ -1059,3 +1059,35 @@ FE_HYPOTHESES.md は 2,300行超・101仮説。資産としては価値がある
 - **問題の本質**: 「同じ条件で既に計算済みの結果は再利用できる」という当たり前の最適化が、共通ヘルパーではなくコンペ固有スクリプトの中に埋もれていたため、毎回書き直しになり適用漏れも起きた。
 - **改善案**: 共通ヘルパー化し、seed ごとの予測を規約化された名前で保存して次回自動的に再利用する。ただし**再利用は「同じ特徴量セット・同じ HP」が前提**なので、条件が変わったら `tag` を変える規約を明示する（`G-FAIR` 違反の防止）。
 - **状態**: [DONE]（2026-09-02 反映：`src/utils/multiseed.py` 新設（`run_multiseed()`）、CONVENTIONS に「multi-seed avg の実行規約」、PLAYBOOK L-24 の項目4）
+
+## [2026-09-02] CRITICAL — `G-MECH` がテンプレート自身に適用されておらず、強制の入口が hook 1 本しか無かった
+
+- **説明**: 強制機構は PostToolUse hook 1 本とプロセス内ガード 3 つのみ。`SessionStart` / `PreToolUse` / `Stop` / `PreCompact` は未使用だった。実際に破られた規律（提出前確認・1実験1コミット・状態ファイルの更新・`/ds-resume` の実行）はすべて機械化ゼロの側にあった。
+- **問題の本質**: 規範を書く場所（CLAUDE.md）と、それを守らせる機構の場所（hook・ガード）の対応表が無く、機構のある規律ばかり強化され、無い規律は放置され続けた。
+- **対応**: hook を 5 種へ拡張（SessionStart ブリーフ / PreToolUse 提出ゲート / PostToolUse ガード / Stop 監査 / PreCompact 退避）、ガードを 5 種へ（可視化・提出・診断記録・推論成果物・コミット/状態鮮度）。提出ゲートは `permissionDecision: "ask"` で人間へ承認を戻しつつ、数字は Kaggle API と時計から実測する。
+- **影響ファイル**: `.claude/settings.json`, `scripts/session_brief.py`, `scripts/submit_gate.py`, `scripts/session_audit.py`, `scripts/state_audit.py`, `scripts/session_snapshot.py`, `scripts/job_status.py`, `src/experiment.py`, `CLAUDE.md`, `CONVENTIONS.md`, `PLAYBOOK.md` L-25
+- **状態**: [DONE]（2026-09-02）
+
+---
+
+## [2026-09-02] HIGH — 観測面の欠落（実行時間・状態鮮度・ベース特徴量が機械可読でなかった）
+
+- **説明**: ①log.csv に実行時間の列が無く、30分ルールが要求する推定を較正する実測が残らなかった（推定 1h の実験が実測 4h17m）②7 つの状態ファイルの更新を誰も観測していなかった（FEATURE_REPORT が 3 週間停滞）③「今どの特徴量がベースか」は手書き markdown だけが情報源で、`src/feature_registry.py` は import 元ゼロの死蔵コードだった。
+- **対応**: `duration_sec` の自動記録（+ 列追加マイグレーション）、`scripts/state_audit.py`、`end_run(feature_names=...)` → `params/features_{exp_id}.json` → `feature_report --sync` で FEATURE_REPORT の該当節を機械生成。`feature_registry.py` は削除。
+- **状態**: [DONE]（2026-09-02）
+
+---
+
+## [2026-09-02] HIGH — 復旧性の欠如（中断で fold 全損・圧縮で文脈消失・ジョブ状態が不可視）
+
+- **説明**: fold 単位のチェックポイントが無く、4 時間超まわした学習を fold 4/25 で打ち切った際にその分が全損した。コンテキスト圧縮のたびに現在地の復元コストを払った。長時間ジョブの生死をユーザーが繰り返し尋ねる必要があった。
+- **対応**: `src/utils/foldcache.py`（fold ごとの保存と再開）、`experiments/.running/` ハートビート + `scripts/job_status.py`（生存・進捗・ETA・ハング検知）、PreCompact hook による SESSION.md への状態退避、`experiments/blockers/` の実体作成。
+- **状態**: [DONE]（2026-09-02）
+
+---
+
+## [2026-09-02] MEDIUM — 参照頻度の違うものが同居して肥大していた（TODO 97% が完了済み・README の半分が履歴）
+
+- **説明**: `TODO_TEMPLATE.md` 1,075 行のうち 66 件が DONE で、実際に読むべき未完了は 3 件だった（`/ds-resume` が毎セッション読むファイル）。`README.md` 581 行のうち約 280 行がバージョン履歴だった。`CLAUDE.md` は上限 650 行に張り付き、退避ポリシーが無かった。
+- **対応**: `docs/TODO_ARCHIVE.md` と `CHANGELOG.md` へ分離。CLAUDE.md に「1 行入れるなら 1 行出す」の退避ポリシーと「ガード側を緩めない」を明記。README 側は履歴分離で `doc_audit` C11 の検査対象が消えたため「現在の構成」表を新設して検知を回復した。
+- **状態**: [DONE]（2026-09-02）
