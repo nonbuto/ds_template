@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 15:35:37
-- **git**: `main` / 未コミット 3 件 / HEAD: 211ca4d refactor(metrics): 評価指標と CV を src/metrics.py に一元化
+- **記録時刻**: 2026-09-02 15:37:19
+- **git**: `main` / 未コミット 5 件 / HEAD: 1ad9675 fix(claude-md): 指定された「60行以内」をガードに入れ、59行へ是正
 <!-- END:auto-snapshot -->

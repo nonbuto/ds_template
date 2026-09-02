@@ -312,6 +312,34 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"{len(agent_files)} 件"
                     + ("\n      " + "\n      ".join(agent_issues) if agent_issues else "")))
 
+    # ── C14: 文書中のコマンドが実行可能か ──
+    # `uv run python scripts/x.py` は `src` を import できず ModuleNotFoundError になる。
+    # 正しくは `-m scripts.x`。README の「スクリプトの実行」節が丸ごと動かない状態で
+    # 長く放置されていた（feature_report.py の docstring で同じ誤りを直しながら見落とした）。
+    # 人の注意ではなく機械で捕まえる。
+    cmd_issues = []
+    # docs（DOC_FILES + skills）だけでは **README.md を見落とす** ——
+    # 壊れたコマンド 10 箇所の本体がまさに README だった。走査対象を明示的に広げる。
+    cmd_targets = dict(docs)
+    for extra in ["README.md", *[str(q.relative_to(ROOT)) for q in (ROOT / "state").glob("*.md")],
+                  *[str(q.relative_to(ROOT)) for q in (ROOT / "experiments").rglob("*.md")]]:
+        q = ROOT / extra
+        if q.exists():
+            cmd_targets[extra] = q.read_text()
+    for rel, text in cmd_targets.items():
+        if rel.startswith("docs/") or rel == "CHANGELOG.md":
+            continue                      # 履歴ファイルは当時の記述が正しい
+        for m in re.finditer(r"uv run python (scripts/[\w/]+\.py)", text):
+            cmd_issues.append(f"{rel}: `{m.group(1)}` 形式は src を import できない（-m 形式にする）")
+        # `scripts.<名前>` のような雛形記法は対象外（末尾がドット、または直後が < ）
+        for m in re.finditer(r"uv run python -m (scripts(?:\.[a-z_][\w]*)+)(?![\w.<])", text):
+            mod = m.group(1)
+            if not (ROOT / (mod.replace(".", "/") + ".py")).exists():
+                cmd_issues.append(f"{rel}: `-m {mod}` に対応するスクリプトが無い")
+    results.append(("ERROR" if cmd_issues else "OK", "C14 文書中のコマンド",
+                    f"{len(cmd_issues)} 件"
+                    + ("\n      " + "\n      ".join(sorted(set(cmd_issues))[:8]) if cmd_issues else "")))
+
     # ── C11: README の自己申告値 vs 実測 ──
     # README は「テンプレートが何であるか」の対外的な宣言。実態からずれると、
     # 次にこの repo を開いた人（未来の自分）が誤った前提で作業を始める。

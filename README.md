@@ -32,7 +32,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 | 毎セッション自動ロード（CLAUDE.md） | **3,510 字（-94%）**（59 行。上限は 3,000〜5,000 字かつ 60 行 / v5 は約 56,000 字） |
 | ルート直下 | テンプレート文書 6 件のみ（CLAUDE / GUIDELINES / CONVENTIONS / PLAYBOOK / README / CHANGELOG）。コンペごとに育つ記録は `state/`、改善の記録は `docs/` |
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
-| `doc_audit` のチェック | **C1-C13**（C4 は実測値、C12 は指針の索引と本文、C13 はエージェント定義を検査） |
+| `doc_audit` のチェック | **C1-C14**（C4 は実測値、C12 は指針の索引と本文、C13 はエージェント定義、C14 は文書中のコマンドの実行可能性を検査） |
 | 規律の機械化 | hook 6 種 + statusLine + ガード 6 種 + サブエージェント 4 種（調査・提案・審査のみ／`tools` で学習実行を封じる） |
 
 > この表の数値は `uv run python -m scripts.harness.doc_audit` の C11 が実態と突き合わせる。
@@ -181,31 +181,31 @@ Optuna フル ───── 確定した特徴量セットで100試行以上
 
 ```bash
 # Stage 2: EDA可視化（画像を data/output/plots/ に保存 → Claude が Read で読む）
-uv run python scripts/visualize.py
+uv run python -m scripts.visualize
 
 # Stage 1・4: CV学習
-uv run python scripts/train.py --model lgb
+uv run python -m scripts.train --model lgb
 
 # Stage 3: 作業用HP（FE中のΔOOFノイズ低減）
-uv run python scripts/optimize_hp.py --model lgb --n-trials 25 --tag working
+uv run python -m scripts.optimize_hp --model lgb --n-trials 25 --tag working
 
 # Stage 4: 1列ΔCV計測（FE仮説の効果測定）
-uv run python scripts/feature_study.py --new-feature <feature_name>
+uv run python -m scripts.feature_study --new-feature <feature_name>
 
 # Stage 5: 本格HP最適化
-uv run python scripts/optimize_hp.py --model lgb --n-trials 150 --tag full
+uv run python -m scripts.optimize_hp --model lgb --n-trials 150 --tag full
 
 # 提出ファイル生成
-uv run python scripts/predict.py --exp-id 042 --model lgb --oof-score 0.91688
+uv run python -m scripts.predict --exp-id 042 --model lgb --oof-score 0.91688
 
 # Stage 6: アンサンブル（相関確認 → Simple Blend → Greedy HC）
-uv run python scripts/blend.py --mode corr   --oofs lgb=oof_042.npy cb=oof_070.npy
-uv run python scripts/blend.py --mode blend  --oofs lgb=oof_042.npy cb=oof_070.npy
-uv run python scripts/blend.py --mode greedy --oofs lgb=oof_042.npy cb=oof_070.npy \
+uv run python -m scripts.blend --mode corr   --oofs lgb=oof_042.npy cb=oof_070.npy
+uv run python -m scripts.blend --mode blend  --oofs lgb=oof_042.npy cb=oof_070.npy
+uv run python -m scripts.blend --mode greedy --oofs lgb=oof_042.npy cb=oof_070.npy \
     --tests lgb=test_042.npy cb=test_070.npy
 
 # 特徴量レポート（重要度・ΔOOF棒グラフ → Claude が Read で読む）
-uv run python scripts/feature_report.py
+uv run python -m scripts.feature_report
 ```
 
 ---

@@ -163,7 +163,7 @@ Dataset 名: `{your-username}/ds-template-{competition}` として登録され�
 
 ```bash
 # 通常スクリプト → Kaggle Notebook 用 .ipynb
-uv run python scripts/to_kaggle_nb.py experiments/runs/exp001_s1_lgb_baseline.py \
+uv run python -m scripts.to_kaggle_nb experiments/runs/exp001_s1_lgb_baseline.py \
   --competition <competition-slug> \
   --dataset-name ds-template-<competition> \
   --gpu   # GPU を有効化する場合
@@ -227,7 +227,7 @@ Notebook が直接 `/kaggle/working/submission.csv` を生成する必要があ�
 **変換（--submission-mode を追加）:**
 
 ```bash
-uv run python scripts/to_kaggle_nb.py experiments/runs/exp001_s1_lgb_baseline.py \
+uv run python -m scripts.to_kaggle_nb experiments/runs/exp001_s1_lgb_baseline.py \
   --competition <competition-slug> \
   --dataset-name ds-template-<competition> \
   --submission-mode \

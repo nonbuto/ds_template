@@ -100,7 +100,7 @@ experiments/runs/
 スクリプトの説明
 
 使い方:
-    uv run python scripts/xxx.py --option value
+    uv run python -m scripts.train --model lgb
 """
 
 # 1. 標準ライブラリ

@@ -71,5 +71,5 @@
 
 ```bash
 # 実行コマンド
-uv run python scripts/feature_report.py
+uv run python -m scripts.feature_report
 ```
