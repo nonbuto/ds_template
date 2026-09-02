@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 18:43:32
-- **git**: `main` / 未コミット 3 件 / HEAD: 2b1d0b0 fix(config): kickoff が書く設定値と metrics.py の受付値の乖離を塞ぐ
+- **記録時刻**: 2026-09-02 18:46:47
+- **git**: `main` / 未コミット 5 件 / HEAD: cd028a4 fix: submit_gate のシェル構文バイパスを塞ぎ、実行時ガードの発火をテストする
 <!-- END:auto-snapshot -->

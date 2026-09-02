@@ -269,51 +269,6 @@ def _previous_experiment_scores() -> Optional[float]:
     return None
 
 
-def _find_reserved_row() -> Optional[int]:
-    """`/ds-new-experiment` が予約した行（目的は記入済み・スコアは空欄）の行番号を返す。
-
-    予約行の条件: `experiment_question` が埋まっており、かつ `oof_score` と `cv_val_mean` が空。
-    見つからなければ None。末尾から探索するため、最新の予約行が優先される。
-
-    背景: 予約行を作る設計と `_get_next_experiment_id()`（最大ID+1 を採番）が噛み合わず、
-    目的・成功基準だけの行とスコアだけの行に情報が分裂する事故が起きていた。
-    """
-    if not LOG_CSV_PATH.exists():
-        return None
-    try:
-        with open(LOG_CSV_PATH, newline="") as f:
-            rows = list(csv.DictReader(f))
-    except Exception:
-        return None
-    for idx in range(len(rows) - 1, -1, -1):
-        r = rows[idx]
-        has_purpose = bool((r.get("experiment_question") or "").strip())
-        no_score = not (r.get("oof_score") or "").strip() and not (r.get("cv_val_mean") or "").strip()
-        if has_purpose and no_score:
-            return idx
-    return None
-
-
-def _get_next_experiment_id() -> str:
-    """次の experiment_id を採番する。**予約行があればその ID を再利用する**。"""
-    if not LOG_CSV_PATH.exists():
-        return "001"
-    with open(LOG_CSV_PATH, newline="") as f:
-        rows = list(csv.DictReader(f))
-    if not rows:
-        return "001"
-
-    reserved = _find_reserved_row()
-    if reserved is not None:
-        rid = (rows[reserved].get("experiment_id") or "").strip()
-        if rid:
-            print(f"ℹ️  予約行を検出しました（experiment_id={rid}）。同じ行に結果を書き込みます")
-            return rid
-
-    ids = [int(r["experiment_id"]) for r in rows if r.get("experiment_id", "").isdigit()]
-    return str((max(ids) + 1) if ids else 1).zfill(3)
-
-
 RUNNING_DIR = EXPERIMENTS_DIR / ".running"
 
 
@@ -437,18 +392,20 @@ def _ensure_log_csv() -> None:
     列を追加したあと既存ファイルへそのまま追記すると、ヘッダ（旧列数）と行（新列数）が
     食い違って**過去の実験記録が丸ごとずれる**。列の増減はテンプレート更新のたびに
     起こりうるので、追記の前に必ずここで整合させる。
+
+    移行は**ロック下の原子的書き戻し**で行う。全行を読んで書き直す区間なので、
+    その最中に別プロセスが追記すると、その行は書き戻しで消える（`src/utils/csvlock`）。
     """
+    from src.utils.csvlock import locked_csv
+
     if not LOG_CSV_PATH.exists():
-        with open(LOG_CSV_PATH, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
-            writer.writeheader()
+        with locked_csv(LOG_CSV_PATH, LOG_CSV_COLUMNS):
+            pass                       # 区間を抜けるときにヘッダだけのファイルが書かれる
         return
 
     try:
         with open(LOG_CSV_PATH, newline="") as f:
-            reader = csv.DictReader(f)
-            existing = list(reader.fieldnames or [])
-            rows = list(reader)
+            existing = list(csv.DictReader(f).fieldnames or [])
     except Exception:
         return
 
@@ -456,14 +413,49 @@ def _ensure_log_csv() -> None:
     if not missing:
         return
 
-    # 既知の列は順序どおりに、未知の列（手で足したもの）は末尾に残す
-    fieldnames = LOG_CSV_COLUMNS + [c for c in existing if c not in LOG_CSV_COLUMNS]
-    with open(LOG_CSV_PATH, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k, "") for k in fieldnames})
-    print(f"🔧 log.csv に列を追加しました（既存 {len(rows)} 行は保持）: {', '.join(missing)}")
+    with locked_csv(LOG_CSV_PATH, LOG_CSV_COLUMNS) as rows:
+        n = len(rows)                  # locked_csv が未知の列を末尾に残して書き戻す
+    print(f"🔧 log.csv に列を追加しました（既存 {n} 行は保持）: {', '.join(missing)}")
+
+
+def _claim_experiment_id(experiment_name: str, model: str, description: str) -> str:
+    """次の experiment_id を**ロック下で採番し、その場で行を確保する**。
+
+    以前は採番（読むだけ）と記録（end_run での追記）が離れていたため、
+    並行実行すると全員が同じ番号を名乗った。実測（8 プロセス同時）:
+
+        ID: ['000', '000', '000', '000', '000', '000', '000', '000']
+
+    `CLAUDE.md` は「バックグラウンド並行実行時も例外なし」として同時実行を前提にしているので、
+    **番号を取ると同時に行を書き込み**、次のプロセスにその番号を見せる。
+    `/ds-new-experiment` の予約行があるときは、新しい行を作らずその行を引き継ぐ。
+    """
+    from src.utils.csvlock import locked_csv
+
+    with locked_csv(LOG_CSV_PATH, LOG_CSV_COLUMNS) as rows:
+        # 予約行（目的は記入済み・スコアは空）があればその ID を再利用する
+        for idx in range(len(rows) - 1, -1, -1):
+            r = rows[idx]
+            has_purpose = bool((r.get("experiment_question") or "").strip())
+            no_score = (not (r.get("oof_score") or "").strip()
+                        and not (r.get("cv_val_mean") or "").strip())
+            if has_purpose and no_score:
+                rid = (r.get("experiment_id") or "").strip()
+                if rid:
+                    print(f"ℹ️  予約行を検出しました（experiment_id={rid}）。同じ行に結果を書き込みます")
+                    return rid
+
+        ids = [int(r["experiment_id"]) for r in rows if (r.get("experiment_id") or "").isdigit()]
+        exp_id = str((max(ids) + 1) if ids else 1).zfill(3)
+        rows.append({
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "experiment_id": exp_id,
+            "experiment_name": experiment_name,
+            "description": description,
+            "model": model,
+            "notes": "（実行中 — end_run で結果を書き込む）",
+        })
+    return exp_id
 
 
 @dataclass
@@ -533,7 +525,8 @@ class ExperimentTracker:
             self.notes = notes
 
         self._started_at = datetime.now()
-        self._experiment_id = _get_next_experiment_id()
+        self._experiment_id = _claim_experiment_id(
+            self.experiment_name, self.model, self.description)
         _heartbeat_write(self._experiment_id, experiment_name=self.experiment_name,
                          model=self.model, description=self.description,
                          started_at=self._started_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -705,32 +698,33 @@ class ExperimentTracker:
             "abort_criteria": "",        # /ds-new-experiment スキルが記録
             "learning": "",              # /ds-kaggle-submit スキルが記録
         }
-        # 予約行（/ds-new-experiment が作った目的だけの行）があれば、追記ではなく**上書き**する。
-        # 予約行の experiment_question / success_criteria / abort_criteria は保持する。
-        reserved = _find_reserved_row()
-        merged_into_reserved = False
-        if reserved is not None:
-            with open(LOG_CSV_PATH, newline="") as f:
-                rows = list(csv.DictReader(f))
-            if (rows[reserved].get("experiment_id") or "").strip() == row["experiment_id"]:
-                for key in ("experiment_question", "success_criteria", "abort_criteria"):
-                    row[key] = rows[reserved].get(key, "")
-                # 予約時に記入済みの description / notes は、空でなければ活かす
-                for key in ("description", "notes"):
-                    if not row[key] and rows[reserved].get(key):
-                        row[key] = rows[reserved][key]
-                rows[reserved] = row
-                with open(LOG_CSV_PATH, "w", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                merged_into_reserved = True
-                print(f"✅ 予約行（experiment_id={row['experiment_id']}）に結果をマージしました（行の重複なし）")
+        # 同じ experiment_id の行（start_run が確保した行、または /ds-new-experiment の
+        # 予約行）があれば、追記ではなく**その行を上書き**する。目的・成功基準・撤退基準は
+        # 予約時の記入を残す。読みから書き戻しまでを 1 つのロック区間に収めることが要点 ——
+        # 別々にロックしても、その隙に他プロセスが追記すれば書き戻しで消える。
+        from src.utils.csvlock import locked_csv
 
-        if not merged_into_reserved:
-            with open(LOG_CSV_PATH, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
-                writer.writerow(row)
+        merged_into_reserved = False
+        with locked_csv(LOG_CSV_PATH, LOG_CSV_COLUMNS) as rows:
+            for idx in range(len(rows) - 1, -1, -1):
+                if (rows[idx].get("experiment_id") or "").strip() != row["experiment_id"]:
+                    continue
+                if (rows[idx].get("oof_score") or "").strip():
+                    break                      # 結果まで入った行は上書きしない
+                for key in ("experiment_question", "success_criteria", "abort_criteria"):
+                    row[key] = rows[idx].get(key, "")
+                for key in ("description", "notes"):
+                    if not row[key] and rows[idx].get(key):
+                        row[key] = rows[idx][key]
+                if row["notes"].startswith("（実行中"):
+                    row["notes"] = self.notes   # start_run が置いたプレースホルダは残さない
+                rows[idx] = row
+                merged_into_reserved = True
+                break
+            if not merged_into_reserved:
+                rows.append(row)
+        if merged_into_reserved:
+            print(f"✅ 予約行（experiment_id={row['experiment_id']}）に結果をマージしました（行の重複なし）")
 
         oof_str = f"{oof_score:.5f}" if oof_score is not None else "N/A"
         exp_id = self._experiment_id or "000"

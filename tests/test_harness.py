@@ -504,3 +504,46 @@ def test_pub_oof_gap_guard_fires(tmp_path, monkeypatch):
     spiked = [0.0] * 10 + [0.01] * 3        # 直近が基準線から大きく浮く
     monkeypatch.setattr(ex, "LOG_CSV_PATH", write(spiked))
     assert ex._check_pub_oof_gap_guard() is not None, "Public が浮いているのに発火しない"
+
+
+# ──────────────────────────────────────────────────────────
+# 9. log.csv の並行更新（実験の台帳が壊れないこと）
+# ──────────────────────────────────────────────────────────
+
+def test_concurrent_experiment_ids_are_unique(tmp_path):
+    """同時に走る実験が別々の experiment_id を取ること。
+
+    修正前は採番（読むだけ）と記録（end_run の追記）が離れており、
+    8 プロセス同時で**全員が `000` を名乗った**（重複 7 件）。
+    `CLAUDE.md` は「バックグラウンド並行実行時も例外なし」として同時実行を前提にしている。
+    """
+    import subprocess
+    import sys
+
+    log = tmp_path / "log.csv"
+    helper = Path(__file__).parent / "_concurrent_claim.py"
+    procs = [subprocess.Popen([sys.executable, str(helper), str(log)],
+                              stdout=subprocess.PIPE, text=True) for _ in range(8)]
+    ids = [p.communicate()[0].strip().splitlines()[-1] for p in procs]
+
+    assert len(set(ids)) == 8, f"experiment_id が重複した: {sorted(ids)}"
+    import csv as _csv
+    with open(log, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    assert len(rows) == 8, f"確保した行が失われた（{len(rows)} 行）"
+
+
+def test_atomic_write_survives_reader(tmp_path):
+    """書き戻しの途中でも、読み手はヘッダだけの壊れたファイルを見ないこと。"""
+    import csv as _csv
+    from src.utils.csvlock import write_rows_atomic
+
+    path = tmp_path / "log.csv"
+    cols = ["experiment_id", "oof_score"]
+    write_rows_atomic(path, cols, [{"experiment_id": "001", "oof_score": "0.9"}])
+    write_rows_atomic(path, cols, [{"experiment_id": "001", "oof_score": "0.9"},
+                                   {"experiment_id": "002", "oof_score": "0.8"}])
+    with open(path, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    assert [r["experiment_id"] for r in rows] == ["001", "002"]
+    assert not list(path.parent.glob(".*.tmp")), "一時ファイルが残っている"
