@@ -37,7 +37,12 @@ ALWAYS_LOADED = ["CLAUDE.md"] + sorted(
 # 出典: Claude Code 自身が CLAUDE.md に対して **15,000 字**で警告を出す
 # （"Large CLAUDE.md file detected"）。テンプレートはさらに厳しく、
 # 憲法として必要な最小限（規約・コマンド・指針の索引）だけを置く。
-ALWAYS_LOADED_BUDGET = 5_000
+# **上限と下限の両方**を持つ。上限だけだと膨張しか防げず、削りすぎて憲法が
+# 空洞化する方向を検知できない。行数も併せて検査する —— ユーザー指定の「60 行以内」が
+# どのガードにも入っていなかったため、憲法化後に 84 行までじわじわ増えていた。
+ALWAYS_LOADED_BUDGET = 5_000        # 文字数の上限
+ALWAYS_LOADED_MIN = 3_000           # 文字数の下限（削りすぎの検知）
+ALWAYS_LOADED_MAX_LINES = 60        # 行数の上限（走査性を保つ）
 
 DOC_FILES = ["CLAUDE.md", "GUIDELINES.md", "CONVENTIONS.md", "PLAYBOOK.md"]
 SKILL_GLOB = ".claude/skills/*/SKILL.md"
@@ -111,11 +116,17 @@ def check(results: list[tuple[str, str, str]]) -> None:
     total = sum(len((ROOT / f).read_text()) for f in present)
     lines = sum(len((ROOT / f).read_text().splitlines()) for f in present)
     detail = ", ".join(f"{f}={len((ROOT/f).read_text()):,}字" for f in present)
-    lvl = "ERROR" if total > ALWAYS_LOADED_BUDGET else "OK"
-    results.append((lvl, "C1 文字数予算",
-                    f"常時ロード {total:,} 字 / 上限 {ALWAYS_LOADED_BUDGET:,}"
-                    f"（{detail} · 参考 {lines} 行）"))
-
+    problems = []
+    if total > ALWAYS_LOADED_BUDGET:
+        problems.append(f"文字数超過（{total:,} > {ALWAYS_LOADED_BUDGET:,}）")
+    if total < ALWAYS_LOADED_MIN:
+        problems.append(f"文字数が下限未満（{total:,} < {ALWAYS_LOADED_MIN:,}）—— 削りすぎ")
+    if lines > ALWAYS_LOADED_MAX_LINES:
+        problems.append(f"行数超過（{lines} > {ALWAYS_LOADED_MAX_LINES}）")
+    results.append(("ERROR" if problems else "OK", "C1 常時ロードの予算",
+                    f"{total:,} 字（{ALWAYS_LOADED_MIN:,}〜{ALWAYS_LOADED_BUDGET:,}）/ "
+                    f"{lines} 行（≤{ALWAYS_LOADED_MAX_LINES}）"
+                    + ("\n      " + "\n      ".join(problems) if problems else "")))
     # ── C2: アンカー解決 ──
     unresolved = []
     for rel, text in docs.items():
