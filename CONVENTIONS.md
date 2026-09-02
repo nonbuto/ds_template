@@ -21,6 +21,7 @@
 | `experiments/` | log.csv + MLflowアーティファクト |
 | `scripts/` | 再利用可能なスクリプト（後述） |
 | `experiments/runs/` | 実験ごとの1回限りスクリプト |
+| `tests/` | **ハーネスのテスト**（`uv run pytest`）。ガード・hook・エージェントが壊れていないかを機械検証する |
 | `state/` | **コンペごとに育つ作業記録**（SESSION / COMPETITION / FE_HYPOTHESES / FEATURE_REPORT / EDA_SUMMARY / KAGGLE_RESEARCH）。パスは `src.config` の `STATE_DIR` から取る |
 | `docs/` | テンプレート改善の記録（TODO_TEMPLATE / TODO_ARCHIVE） |
 
@@ -350,6 +351,10 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `Stop` | `scripts/harness/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
 | `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を state/SESSION.md へ退避 |
 | `PostCompact` | `scripts/harness/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
+
+**ハーネス自体のテスト**: `uv run pytest` —— 提出ゲートの検知精度・log.csv の列追加移行・
+fold キャッシュの再開・エージェントの `tools` 制限・hook のブランチ耐性・doc_audit の ERROR 0 を検証する。
+**ハーネスを変更したら必ず実行する。** 手作業の確認は締切前に最初に省略される。
 
 **ガードの手動実行**:
 

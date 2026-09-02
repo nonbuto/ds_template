@@ -40,6 +40,7 @@ Claude Code と連携するデータサイエンス・テンプレート。**こ
 **ハーネス用**（`uv run python -m scripts.harness.<名前>`）——「規律を守らせる・現在地を知らせる」もの
 
 - `doc_audit` ドキュメント階層の検査（**編集したら必ず実行**）／ `session_audit` 規律ガード一式
+- **`uv run pytest`** ハーネス自体のテスト（**ガード・hook・エージェントを変更したら必ず実行**）
 - `deadline_status` 現在 UTC・締切・本日の提出枠・実行時間の実測／ `job_status` 実行中ジョブの生存と ETA
 
 ---

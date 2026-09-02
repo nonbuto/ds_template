@@ -1,3 +1,10 @@
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: 実行に時間がかかるテスト（clone + 学習など）"]
+
 [project]
 name = "ds-template"
 version = "0.1.0"
