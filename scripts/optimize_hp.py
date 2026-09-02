@@ -23,12 +23,13 @@ import json
 import numpy as np
 import optuna
 import pandas as pd
-from src.metrics import get_cv, get_metric, greater_is_better, needs_proba
+from src.metrics import (get_cv, get_metric, greater_is_better, needs_proba,
+                         is_regression, n_classes, shape_for_metric)
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL
 from src.hp_spaces import lgb_space, xgb_space, cb_space
-from scripts.train import FEATURES, N_CLASSES
+from scripts.train import FEATURES
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -37,35 +38,70 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 #       例: {"xgb": [...生値版の特徴量...]}
 MODEL_FEATURES: dict[str, list[str]] = {}
 
-# lgb_space等（src/hp_spaces.py）は二値分類テンプレートのため、
-# multiclass用の目的関数キーをここで上書きする（class_weight="balanced"はscripts/train.pyと統一）
-# xgb/cbはclass_weight相当を持たないため重みなし学習+beta較正（Stage1.5で確立した方式）で評価する
-MULTICLASS_OVERRIDES = {
-    "lgb": {"objective": "multiclass", "num_class": N_CLASSES, "metric": "multi_logloss",
-            "class_weight": "balanced", "n_estimators": 1000},
-    "xgb": {"objective": "multi:softprob", "num_class": N_CLASSES, "eval_metric": "mlogloss", "n_estimators": 1000,
-            "tree_method": "hist", "enable_categorical": True},
-    "cb": {"loss_function": "MultiClass", "iterations": 1000},
-}
-
 HP_SPACE_FN = {"lgb": lgb_space, "cb": cb_space, "xgb": xgb_space}
 
+# beta 較正のグリッド。多クラス × ラベル指標（accuracy / balanced_accuracy / f1）でのみ意味を持つ。
+# 予測確率を事前分布の beta 乗で割ることで、少数クラスの過小予測を補正する（`G-DIAG`）。
 BETA_GRID = [0.0, 0.25, 0.5, 0.75, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5]
 
 
-def _best_calibrated_score(oof: np.ndarray, y: pd.Series, prior: np.ndarray) -> float:
+def _use_beta_calibration(n_cls: int) -> bool:
+    """beta 較正を使う局面か。
+
+    確率をそのまま評価する指標（AUC・logloss）や回帰では、argmax を挟む較正は
+    **情報を捨てるだけ**。二値でも事前分布による再重み付けは閾値移動と等価で、
+    ランキング指標には効かない。多クラス × ラベル指標に限る。
+    """
+    return (not is_regression()) and (not needs_proba()) and n_cls > 2
+
+
+def _score_with_beta(oof: np.ndarray, y: pd.Series, prior: np.ndarray,
+                     n_cls: int) -> tuple[float, float]:
+    """スコアと、それを与えた beta を返す。
+
+    以前の実装には 3 つの問題があった:
+
+    1. `max(...)` で最良を選んでいた —— **小さいほど良い指標では最悪の beta を選ぶ**
+    2. `.argmax(1)` を常に挟んでいた —— AUC / logloss では確率を潰してしまう
+    3. **最良 beta を保存していなかった** —— HP は保存されるのに較正は再現できず、
+       最適化時のスコアと推論時のスコアが一致しない（`G-FAIR` の「較正」項そのもの）
+    4. lgb だけ較正を通さず、xgb / cb とは違う条件で比較していた（不公正比較）
+    """
     metric = get_metric()
-    return max(
-        metric(y, (oof / prior**b).argmax(1))
-        for b in BETA_GRID
-    )
+    if not _use_beta_calibration(n_cls):
+        return metric(y, shape_for_metric(oof)), 1.0
+
+    pick = max if greater_is_better() else min
+    scored = [(metric(y, (oof / prior**b).argmax(1)), b) for b in BETA_GRID]
+    return pick(scored, key=lambda t: t[0])
 
 
-def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str, prior: np.ndarray) -> float:
+def build_search_params(trial, model_type: str, n_cls: int) -> dict:
+    """探索空間の HP に、タスク種別が決めるキー（目的関数・クラス数）を重ねる。
+
+    **以前は `MULTICLASS_OVERRIDES` という定数で多クラス前提のキーを無条件に上書きし、
+    さらに lgb にだけ `class_weight="balanced"` を混ぜていた。** そのため
+    ①二値・回帰コンペでは動かず、②lgb だけ重み付き・xgb/cb は重みなしという
+    条件の揃わない比較になっていた —— テンプレート自身が `G-FAIR` 違反を作っていた。
+    目的関数の定義元は `scripts/train.build_params()` 一箇所に統一する。
+    """
+    from scripts.train import build_params
+
     params = HP_SPACE_FN[model_type](trial)
-    params.update(MULTICLASS_OVERRIDES[model_type])
+    task = build_params(model_type, n_cls)
+    for key in ("objective", "num_class", "metric", "loss_function", "eval_metric",
+                "tree_method", "enable_categorical"):
+        if key in task:
+            params[key] = task[key]
+    return params
+
+
+def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
+              prior: np.ndarray, n_cls: int) -> float:
+    params = build_search_params(trial, model_type, n_cls)
     cv = get_cv()   # train.py と同じ分割器（src.metrics が唯一の定義元）
-    oof = np.zeros((len(y), N_CLASSES))
+    oof = np.zeros(len(y)) if is_regression() else np.zeros((len(y), n_cls))
+    covered = np.zeros(len(y), dtype=bool)   # TimeSeriesSplit は先頭を一度も検証しない
 
     cat_cols = [c for c in X.columns if str(X[c].dtype) in ("object", "category")]
 
@@ -75,27 +111,33 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str, prior: np.n
 
         if model_type == "lgb":
             import lightgbm as lgb
-            model = lgb.LGBMClassifier(**params)
+            Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
+            model = Est(**params)
             model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)],
                       callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)])
         elif model_type == "cb":
-            from catboost import CatBoostClassifier, Pool
-            model = CatBoostClassifier(**params)
+            from catboost import CatBoostClassifier, CatBoostRegressor, Pool
+            Est = CatBoostRegressor if is_regression() else CatBoostClassifier
+            model = Est(**params)
             model.fit(Pool(X_tr, y_tr, cat_features=cat_cols),
                       eval_set=Pool(X_val, y_val, cat_features=cat_cols),
                       early_stopping_rounds=50, verbose=0)
         elif model_type == "xgb":
             import xgboost as xgb
-            model = xgb.XGBClassifier(**params, early_stopping_rounds=50)
+            Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
+            model = Est(**params, early_stopping_rounds=50)
             model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
 
-        oof[val_idx] = model.predict_proba(X_val)
+        oof[val_idx] = model.predict(X_val) if is_regression() else model.predict_proba(X_val)
+        covered[val_idx] = True
 
-    if model_type == "lgb":
-        metric = get_metric()
-        return metric(y, oof[:, 1] if needs_proba() and oof.shape[1] == 2
-                      else (oof if needs_proba() else np.argmax(oof, axis=1)))
-    return _best_calibrated_score(oof, y, prior)
+    # **予測されなかった行を評価に混ぜない。** TimeSeriesSplit では先頭の行が
+    # どの fold の検証にも入らず、ゼロのまま残る。それを正解と突き合わせると
+    # 「全部クラス0と予測した」ことになり、スコアが実力と無関係に動く。
+    score, beta = _score_with_beta(oof[covered], y[covered], prior, n_cls)
+    trial.set_user_attr("beta", beta)
+    trial.set_user_attr("n_scored_rows", int(covered.sum()))
+    return score
 
 
 def main():
@@ -111,16 +153,21 @@ def main():
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     X, y_raw = train[features], train[TARGET_COL]
 
-    le = LabelEncoder()
-    y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
-    classes = le.classes_
-    prior = pd.Series(y_raw).value_counts().reindex(classes).to_numpy() / len(y_raw)
+    if is_regression():
+        y = pd.Series(y_raw.to_numpy(dtype=float), index=y_raw.index)
+        prior = np.array([1.0])
+    else:
+        le = LabelEncoder()
+        y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
+        prior = (pd.Series(y_raw).value_counts().reindex(le.classes_).to_numpy()
+                 / len(y_raw))
+    n_cls = n_classes(y)
 
     stage = "Stage 3（作業用）" if args.n_trials <= 40 else "Stage 5（本格）"
     print(f"\n{stage} HP最適化を開始します")
     print(f"  モデル: {args.model} / 試行数: {args.n_trials} / 特徴量数: {len(features)}")
-    if args.model != "lgb":
-        print(f"  評価: 重みなし学習 + beta較正（BETA_GRID={BETA_GRID}）")
+    if _use_beta_calibration(n_cls):
+        print(f"  評価: beta 較正つき（BETA_GRID={BETA_GRID}）— 全モデル同条件")
 
     # study を SQLite に永続化する（インメモリだと TPE の探索状態が失われ、
     # 「あと N 試行だけ追加したい」ができず毎回ゼロからやり直しになる）
@@ -139,16 +186,23 @@ def main():
     done = len(study.trials)
     if done:
         print(f"  既存 study を再開: 完了済み {done} 試行 → 追加 {args.n_trials} 試行")
-    study.optimize(lambda trial: objective(trial, X, y, args.model, prior),
+    study.optimize(lambda trial: objective(trial, X, y, args.model, prior, n_cls),
                    n_trials=args.n_trials, show_progress_bar=True)
 
     best_params = study.best_params
     best_score = study.best_value
+    best_beta = study.best_trial.user_attrs.get("beta", 1.0)
 
-    # 保存
+    # 保存。**較正パラメータ（beta）も一緒に残す** —— HP だけ保存して beta を捨てると、
+    # 最適化時のスコアを推論時に再現できない（`G-FAIR` の「較正」項）。
     out_path = PARAMS_DIR / f"best_params_{args.model}_{args.tag}.json"
     with open(out_path, "w") as f:
         json.dump(best_params, f, indent=2)
+    if _use_beta_calibration(n_cls):
+        calib_path = PARAMS_DIR / f"calibration_{args.model}_{args.tag}.json"
+        with open(calib_path, "w") as f:
+            json.dump({"beta": best_beta, "prior": prior.tolist()}, f, indent=2)
+        print(f"  較正パラメータを保存しました: {calib_path.name}（beta={best_beta}）")
 
     print(f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -160,7 +214,7 @@ def main():
  保存先     : {out_path}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 次のステップ:
-  uv run python -m scripts.train --model {args.model}_balanced --params {out_path}
+  uv run python -m scripts.train --model {args.model} --params {out_path}
 """)
 
 

@@ -26,7 +26,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from src.config import (
     PROCESSED_DATA_DIR, PLOTS_DIR,
-    RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME, PROBLEM_TYPE,
+    RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME, PROBLEM_TYPE, CV_STRATEGY,
 )
 from src.experiment import ExperimentTracker
 from src.utils.finalize import save_run_outputs
@@ -224,6 +224,10 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
     test_shape = (len(test),) if is_regression() else (len(test), n_cls)
     oof_preds = np.zeros(shape)
     test_preds = np.zeros(test_shape)
+    # TimeSeriesSplit では先頭の行がどの fold の検証にも入らない。予測ゼロのまま
+    # 正解と突き合わせると「全部クラス0と予測した」ことになり、**スコアが実力と無関係に動く**。
+    # どの行が実際に予測されたかを持っておき、評価と保存の両方でそれを尊重する。
+    covered = np.zeros(len(train), dtype=bool)
     train_scores, val_scores = [], []
     importances = []
 
@@ -233,6 +237,7 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
 
         model, val_pred = TRAIN_FN[model_name](X_tr, y_tr, X_val, y_val, seeded_params)
         oof_preds[val_idx] = val_pred
+        covered[val_idx] = True
         test_preds += _predict(model, X_test) / N_SPLITS
 
         val_score = metric(y_val, shape_for_metric(val_pred))
@@ -245,7 +250,12 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
         if imp is not None:
             importances.append(imp)
 
-    oof_score = metric(y, shape_for_metric(oof_preds))
+    oof_score = metric(y[covered], shape_for_metric(oof_preds[covered]))
+    if not covered.all():
+        print(f"  ℹ️ OOF は予測された {covered.sum()} / {len(covered)} 行で評価しました"
+              f"（{CV_STRATEGY} は先頭を検証に使いません）")
+        oof_preds = oof_preds.astype(float)
+        oof_preds[~covered] = np.nan   # 保存側で「未予測」と「クラス0」を混同させない
 
     importance_df = None
     if importances:
@@ -317,6 +327,7 @@ def main():
     test_shape = (len(test),) if is_regression() else (len(test), n_cls)
     oof_preds = np.zeros(shape)
     test_preds = np.zeros(test_shape)
+    covered = np.zeros(len(train), dtype=bool)   # run_cv と同じ理由（未予測行を評価に混ぜない）
     importances = []
     train_scores, val_scores = [], []
 
@@ -341,6 +352,7 @@ def main():
             cache.save(fold, val_pred, fold_test_pred)
 
         oof_preds[val_idx] = val_pred
+        covered[val_idx] = True
         test_preds += fold_test_pred / N_SPLITS   # テスト予測（フォールド平均）
 
         val_score = metric(y_val, shape_for_metric(val_pred))
@@ -364,8 +376,13 @@ def main():
         mark = "（キャッシュ再利用）" if model is None else ""
         print(f"Fold {fold}: train={tr_score:.5f}  val={val_score:.5f} {mark}")
 
-    # OOFスコア
-    oof_score = metric(y, shape_for_metric(oof_preds))
+    # OOFスコア。予測されなかった行（TimeSeriesSplit の先頭）は評価から外す
+    oof_score = metric(y[covered], shape_for_metric(oof_preds[covered]))
+    if not covered.all():
+        print(f"ℹ️ OOF は予測された {covered.sum()} / {len(covered)} 行で評価しました"
+              f"（{CV_STRATEGY} は先頭を検証に使いません）")
+        oof_preds = oof_preds.astype(float)
+        oof_preds[~covered] = np.nan
 
     # 保存: 学習 → OOF + test 予測 → 提出ファイルを 1 回で出し切る（CLAUDE.md `G-STEPWISE`）。
     # 学習だけして推論を省くと、提出したくなった時点で同じ学習をやり直すことになる。

@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 18:52:45
-- **git**: `main` / 未コミット 9 件 / HEAD: 5f21739 fix: log.csv の並行更新をロック + 原子的書き戻しにする（8 実験が同じ ID を名乗る事故）
+- **記録時刻**: 2026-09-02 18:55:40
+- **git**: `main` / 未コミット 4 件 / HEAD: 0130094 fix: 静かに間違う 5 件（ΔOOF の符号 / 提出形式 / クラス数 / importance / resume の train 詐称）
 <!-- END:auto-snapshot -->

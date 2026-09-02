@@ -657,3 +657,65 @@ def test_experiment_diag_columns_blank_when_unmeasured():
     from src.experiment import _fmt
     assert _fmt(float("nan")) == ""
     assert _fmt(0.5) == "0.50000"
+
+
+def test_timeseries_split_leaves_rows_unpredicted():
+    """TimeSeriesSplit が先頭行を一度も検証しないこと（未予測行が存在する前提の確認）。
+
+    この性質があるため、OOF 配列をゼロ初期化したまま全行で評価すると
+    「全部クラス0と予測した」ことになり、**スコアが実力と無関係に動く**。
+    train.py / optimize_hp.py は `covered` マスクで評価対象を絞る。
+    """
+    import numpy as np
+    from src.metrics import get_cv
+
+    cv = get_cv(strategy="TimeSeriesSplit", n_splits=5)
+    X = np.arange(100).reshape(-1, 1)
+    covered = np.zeros(100, dtype=bool)
+    for _, val_idx in cv.split(X):
+        covered[val_idx] = True
+    assert not covered.all(), "この前提が崩れたらマスク処理を見直す"
+    assert covered.sum() < 100
+    # 未予測行があるとき、ゼロのまま評価するとどれだけ結論が動くか
+    assert (~covered).sum() >= 10, f"未予測は {(~covered).sum()} 行"
+
+
+def test_unpredicted_rows_excluded_from_scoring():
+    """学習スクリプトが未予測行を評価から外していること。"""
+    for path in ("scripts/train.py", "scripts/optimize_hp.py"):
+        src = Path(path).read_text(encoding="utf-8")
+        assert "covered" in src, f"{path} に未予測行のマスクが無い"
+        assert "covered[val_idx] = True" in src, f"{path} でマスクを立てていない"
+
+
+def test_hp_search_does_not_inject_class_weight():
+    """HP 探索が特定モデルにだけ class_weight を混ぜないこと。
+
+    修正前は `MULTICLASS_OVERRIDES` が lgb にだけ `class_weight="balanced"` を付けており、
+    lgb は重み付き・xgb/cb は重みなしという条件の揃わない比較になっていた
+    ——**テンプレート自身が `G-FAIR` 違反を作っていた**。
+    """
+    # 説明のためにコメントで言及するのは可。**実行されるコード**に無いことを見る
+    import ast
+    tree = ast.parse(Path("scripts/optimize_hp.py").read_text(encoding="utf-8"))
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert "MULTICLASS_OVERRIDES" not in names, "多クラス前提の上書き定数が残っている"
+    consts = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)}
+    assert "balanced" not in consts, "探索空間に class_weight='balanced' が混ざっている"
+
+
+def test_beta_calibration_respects_metric_direction():
+    """beta 較正が指標の向きに従い、確率指標では argmax を挟まないこと。"""
+    import numpy as np
+    import pandas as pd
+    from scripts import optimize_hp as o
+
+    # 確率指標（AUC）では較正を使わない = 確率のまま評価される
+    assert o._use_beta_calibration(2) is False
+    score, beta = o._score_with_beta(np.array([[0.2, 0.8], [0.7, 0.3]]),
+                                     pd.Series([1, 0]), np.array([0.5, 0.5]), 2)
+    assert beta == 1.0 and score == 1.0
+
+    src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
+    assert "pick = max if greater_is_better() else min" in src, "最良 beta の選び方が向きに従っていない"
+    assert 'trial.set_user_attr("beta", beta)' in src, "最良 beta を保存していない"
