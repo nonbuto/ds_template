@@ -41,6 +41,7 @@ ALWAYS_LOADED_BUDGET = 5_000
 
 DOC_FILES = ["CLAUDE.md", "GUIDELINES.md", "CONVENTIONS.md", "PLAYBOOK.md"]
 SKILL_GLOB = ".claude/skills/*/SKILL.md"
+AGENT_GLOB = ".claude/agents/*.md"
 
 # ── C4: 失ってはいけない実測値（Phase 0 で凍結）────────────────
 # 教訓の payload。これが消えると規範が「守るべきもの」でなくなる。
@@ -84,6 +85,8 @@ def _iter_docs():
         if p.exists():
             yield rel, p.read_text()
     for p in sorted(ROOT.glob(SKILL_GLOB)):
+        yield str(p.relative_to(ROOT)), p.read_text()
+    for p in sorted(ROOT.glob(AGENT_GLOB)):
         yield str(p.relative_to(ROOT)), p.read_text()
     for p in sorted((ROOT / ".claude" / "rules").glob("*.md")):
         yield str(p.relative_to(ROOT)), p.read_text()
@@ -242,6 +245,40 @@ def check(results: list[tuple[str, str, str]]) -> None:
     results.append(("ERROR" if detail else "OK", "C12 指針の索引と本文",
                     f"索引 {len(idx_ids)} / 本文 {len(body_ids)}"
                     + ("\n      " + "\n      ".join(detail) if detail else "")))
+
+    # ── C13: エージェント定義の妥当性 ──
+    # サブエージェントは `tools` を絞ることで「学習実行・commit・提出をさせない」ことを
+    # **機械的に**保証している（指示ではなく道具で縛る）。ここが緩むと保証が消えるので、
+    # 読み取り専用であるべきエージェントに Bash が渡っていないかを検査する。
+    READONLY_AGENTS = {"fe-ideator", "experiment-reviewer"}
+    ALLOWED_TOOLS = {"Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"}
+    agent_issues = []
+    agent_files = sorted(ROOT.glob(AGENT_GLOB))
+    for ap in agent_files:
+        text = ap.read_text()
+        m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+        if not m:
+            agent_issues.append(f"{ap.name}: frontmatter が無い")
+            continue
+        fm = {}
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                fm[k.strip()] = v.strip()
+        if fm.get("name") != ap.stem:
+            agent_issues.append(f"{ap.name}: name({fm.get('name')}) がファイル名と不一致")
+        if not fm.get("description"):
+            agent_issues.append(f"{ap.name}: description が無い（常時ロードされる要素）")
+        tools = {t.strip() for t in fm.get("tools", "").split(",") if t.strip()}
+        if not tools:
+            agent_issues.append(f"{ap.name}: tools が無い（無制限になる）")
+        if tools - ALLOWED_TOOLS:
+            agent_issues.append(f"{ap.name}: 想定外の tools {sorted(tools - ALLOWED_TOOLS)}")
+        if ap.stem in READONLY_AGENTS and "Bash" in tools:
+            agent_issues.append(f"{ap.name}: 読み取り専用のはずが Bash を持っている")
+    results.append(("ERROR" if agent_issues else "OK", "C13 エージェント定義",
+                    f"{len(agent_files)} 件"
+                    + ("\n      " + "\n      ".join(agent_issues) if agent_issues else "")))
 
     # ── C11: README の自己申告値 vs 実測 ──
     # README は「テンプレートが何であるか」の対外的な宣言。実態からずれると、

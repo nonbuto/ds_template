@@ -29,11 +29,11 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 
 | 項目 | 現在値 |
 |---|---|
-| 毎セッション自動ロード（CLAUDE.md） | **3,342 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
+| 毎セッション自動ロード（CLAUDE.md） | **3,444 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
 | ルート直下 | テンプレート文書 6 件のみ（CLAUDE / GUIDELINES / CONVENTIONS / PLAYBOOK / README / CHANGELOG）。コンペごとに育つ記録は `state/`、改善の記録は `docs/` |
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
-| `doc_audit` のチェック | **C1-C12**（C4 は固定 37 個の数値、C12 は指針の索引と本文の一致を検査） |
-| 規律の機械化 | hook 6 種（SessionStart / PreToolUse / PostToolUse / Stop / PreCompact / PostCompact）+ ガード 6 種 |
+| `doc_audit` のチェック | **C1-C13**（C4 は実測値、C12 は指針の索引と本文、C13 はエージェント定義を検査） |
+| 規律の機械化 | hook 6 種 + statusLine + ガード 6 種 + サブエージェント 4 種（調査・提案・審査のみ／`tools` で学習実行を封じる） |
 
 > この表の数値は `uv run python -m scripts.harness.doc_audit` の C11 が実態と突き合わせる。
 > **ズレたら WARNING が出る**ので、README が現実から乖離したまま放置されない。
