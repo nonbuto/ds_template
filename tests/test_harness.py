@@ -2137,3 +2137,194 @@ def test_blend_exposes_new_modes():
     src = Path("scripts/blend.py").read_text(encoding="utf-8")
     assert '"hillclimb"' in src and '"stack"' in src
     assert "signed_stack(" in src and "hillclimb(" in src
+
+
+# ──────────────────────────────────────────────────────────
+# 19. 定石の実装（TE / pseudo / 後処理）—— リークしないこと
+# ──────────────────────────────────────────────────────────
+
+def test_target_encoding_does_not_leak():
+    """**行ごとに一意な列**を target encoding しても情報が漏れないこと。
+
+    素朴な TE（全 train で集計）だとその列は target そのものになる。実測:
+        素朴な TE  : AUC = 1.00000  ← 完全なリーク
+        fold 外 TE : AUC = 0.50000
+    TE のリークは**エラーを出さない**。学習時だけスコアが跳ね、LB で落ちる形で現れる。
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.metrics import roc_auc_score
+
+    from src.utils.encoders import add_target_encoding
+
+    rng = np.random.default_rng(0)
+    n = 1500
+    df = pd.DataFrame({"row_id": [f"id{i}" for i in range(n)],
+                       "city": rng.choice([f"c{i}" for i in range(8)], n)})
+    effect = {f"c{i}": i / 7 for i in range(8)}
+    y = (rng.random(n) < np.array([0.2 + 0.6 * effect[c] for c in df.city])).astype(int)
+
+    te, _ = add_target_encoding(df, None, ["row_id", "city"], y)
+
+    leaked = roc_auc_score(y, te["row_id_te"])
+    assert abs(leaked - 0.5) < 0.05, f"一意な列から情報が漏れている（AUC={leaked:.5f}）"
+
+    signal = roc_auc_score(y, te["city_te"])
+    assert signal > 0.65, f"本物の信号まで消えている（AUC={signal:.5f}）"
+
+
+def test_target_encoding_test_side_uses_full_train():
+    """test 側は train 全体で計算され、未知カテゴリは事前平均になること。"""
+    import numpy as np
+    import pandas as pd
+
+    from src.utils.encoders import add_target_encoding
+
+    train = pd.DataFrame({"k": ["a"] * 20 + ["b"] * 20})
+    test = pd.DataFrame({"k": ["a", "b", "zzz"]})       # zzz は train に無い
+    y = np.array([1] * 20 + [0] * 20)
+
+    _, te_test = add_target_encoding(train, test, ["k"], y, smoothing=0.0)
+    vals = te_test["k_te"].to_numpy()
+    assert vals[0] > vals[1], "a(全部1) が b(全部0) より高くない"
+    assert abs(vals[2] - y.mean()) < 1e-9, "未知カテゴリが事前平均になっていない"
+
+
+def test_count_encoding_needs_no_target():
+    """count encoding が target を使わないこと（リークしようがない）。"""
+    import inspect
+
+    from src.utils import encoders
+
+    sig = inspect.signature(encoders.add_count_encoding).parameters
+    assert "y" not in sig, "count encoding が target を受け取っている"
+
+    import pandas as pd
+    tr = pd.DataFrame({"k": ["a", "a", "b"]})
+    te = pd.DataFrame({"k": ["a", "c"]})
+    out_tr, out_te = encoders.add_count_encoding(tr, te, ["k"], normalize=False)
+    assert out_tr["k_count"].tolist() == [3, 3, 1]      # train+test 合算で a は 3 回
+    assert out_te["k_count"].tolist() == [3, 1]
+
+
+def test_pseudo_labeling_stays_inside_the_fold():
+    """擬似ラベルが**この fold の学習部分だけ**から作られること。
+
+    「全 train で学習したモデルで pseudo を作る」実装は、その予測が検証 fold の
+    情報を含むため OOF を必ず楽観側へ寄せる（そして LB では再現しない）。
+    """
+    import numpy as np
+    import pandas as pd
+
+    from src.utils.pseudo import make_fold_pseudo
+
+    seen = {}
+
+    def spy_train(X_tr, y_tr, X_val, y_val, params):
+        seen["n_rows"] = len(X_tr)
+
+        class M:
+            def predict_proba(self, X):
+                p = np.linspace(0.01, 0.99, len(X))
+                return np.column_stack([1 - p, p])
+
+        return M(), None
+
+    X_tr = pd.DataFrame({"f": range(100)})
+    X_test = pd.DataFrame({"f": range(200, 260)})
+    y_tr = pd.Series(np.repeat([0, 1], 50))
+
+    X_aug, y_aug, w_aug = make_fold_pseudo(X_tr, y_tr, X_test, spy_train, threshold=0.9)
+
+    assert seen["n_rows"] == 100, "擬似ラベル生成に fold の学習部分以外を渡している"
+    assert len(X_aug) == len(y_aug) == len(w_aug)
+    assert len(X_aug) > 100, "擬似ラベルが 1 件も足されていない"
+    assert (w_aug[:100] == 1.0).all() and (w_aug[100:] < 1.0).all(), \
+        "擬似ラベル行が本物と同じ重みになっている"
+
+
+def test_pseudo_selection_respects_threshold_and_cap():
+    """確信度の閾値と上限件数が効くこと。"""
+    import numpy as np
+
+    from src.utils.pseudo import describe_pseudo, select_confident
+
+    proba = np.column_stack([1 - np.linspace(0.01, 0.99, 100),
+                             np.linspace(0.01, 0.99, 100)])
+    mask_hi, _ = select_confident(proba, threshold=0.99)
+    mask_lo, _ = select_confident(proba, threshold=0.6)
+    assert mask_hi.sum() < mask_lo.sum(), "閾値が効いていない"
+
+    capped, labels = select_confident(proba, threshold=0.6, max_n=5)
+    assert capped.sum() == 5, "上限件数が効いていない"
+    assert len(labels) == 5
+
+    empty = np.zeros(10, dtype=bool)
+    assert "採用 0 件" in describe_pseudo(empty, np.array([]), 100), \
+        "0 件のときに警告が出ない（「効かなかった」の前に「実行されたか」を見るための表示）"
+
+
+def test_unify_duplicates_reduces_variance():
+    """重複行の予測統一が、実際にスコアを動かすこと。"""
+    import numpy as np
+    import pandas as pd
+    from sklearn.metrics import roc_auc_score
+
+    from src.utils.postprocess import unify_duplicates
+
+    rng = np.random.default_rng(0)
+    n = 2000
+    base = rng.integers(0, 12, (n, 2))
+    feat = pd.DataFrame(base, columns=list("ab"))
+    p_true = 1 / (1 + np.exp(-(base[:, 0] - 6) / 2))
+    y = (rng.random(n) < p_true).astype(int)
+    pred = np.clip(p_true + rng.normal(0, 0.12, n), 0.001, 0.999)
+
+    after, n_dup = unify_duplicates(pred, feat)
+    assert n_dup > 0, "この設定では重複があるはず（前提の確認）"
+    assert roc_auc_score(y, after) > roc_auc_score(y, pred), "統一しても改善しない"
+
+
+def test_rank_transform_preserves_auc_exactly():
+    """rank 変換が AUC を変えないこと（順序を保つ変換なので保証される）。"""
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    from src.utils.postprocess import rank_transform
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 800)
+    pred = np.clip(y * 0.5 + rng.normal(0.25, 0.3, 800), 0, 1)
+    assert abs(roc_auc_score(y, rank_transform(pred)) - roc_auc_score(y, pred)) < 1e-12
+
+
+def test_postprocess_skips_rank_unless_auc(monkeypatch):
+    """AUC 以外では rank 変換を実行しないこと（値そのものを見る指標で予測を別物にしない）。"""
+    import numpy as np
+    import pandas as pd
+
+    from src.utils import postprocess as pp
+
+    pred = np.linspace(0.01, 0.99, 50)
+    feat = pd.DataFrame({"a": range(50)})
+
+    out, note = pp.apply_postprocess(pred, feat, rank=True)
+    assert "rank 変換（" in note, f"AUC 設定なのに rank が効いていない: {note}"
+
+    import src.config as cfg
+    monkeypatch.setattr(cfg, "EVAL_METRIC", "logloss")
+    out2, note2 = pp.apply_postprocess(pred, feat, rank=True)
+    assert "スキップ" in note2, f"logloss で rank を実行している: {note2}"
+    assert np.allclose(out2, pred), "予測が変わってしまっている"
+
+
+def test_clip_uses_training_range():
+    """clip が学習データの範囲を使い、変更行数を報告すること。"""
+    import numpy as np
+
+    from src.utils.postprocess import clip_predictions
+
+    y = np.array([10.0, 20.0, 30.0])
+    pred = np.array([5.0, 20.0, 99.0])
+    out, n = clip_predictions(pred, y_train=y)
+    assert out.tolist() == [10.0, 20.0, 30.0] and n == 2

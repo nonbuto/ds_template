@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 22:37:28
+- **記録時刻**: 2026-09-02 22:46:33
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 9 件 / HEAD: c88013b feat: 測定装置に分割の引き直しを通し、アンサンブル器を定石に揃える（D-1 / D-3）
+- **git**: `main` / 未コミット 6 件 / HEAD: 8c27e2c feat: NN 系を第一級モデルにし、期間配分と系統凍結を規約化（D-2 / D-4、L-34）
 <!-- END:auto-snapshot -->

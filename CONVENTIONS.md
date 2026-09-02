@@ -70,11 +70,21 @@
 `hp_spaces.py`（Optuna 探索空間）、`validation.py`（スキーマ・リーク・欠損の検証。`preprocess.py` が呼ぶ）、
 `metrics.py`（**評価指標と CV 分割器の唯一の定義元**）
 
-**`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
+**`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック・**hillclimb** ・**符号制約なし stack**）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
 `finalize.py`（OOF + test 予測 + 提出 CSV を 1 回で保存）、
 `multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）、
-`foldcache.py`（fold 単位チェックポイント・中断した学習の再開）
+`foldcache.py`（fold 単位チェックポイント・中断した学習の再開）、
+`csvlock.py`（log.csv の並行更新をロック + 原子的書き戻し）、
+**`encoders.py`（fold 外 target encoding・count encoding）**、
+**`pseudo.py`（fold 内で完結する pseudo-labeling）**、
+**`postprocess.py`（重複行の統一・rank 変換・範囲 clip）**
+
+> **定石は手書きしない。** target encoding / pseudo / 後処理は `PLAYBOOK.md` に記述だけがあり
+> `src/` に実装が無かったため、毎回手書き＝毎回リークの余地だった。
+> **TE と pseudo のリークはエラーを出さない**（学習時だけスコアが跳ね、LB で落ちる）。
+> 実測: 行ごとに一意な列を素朴に TE すると OOF AUC = 1.00000（完全なリーク）、
+> fold 外なら 0.50000。
 
 **`experiments/runs/`（コンペ固有・使い捨て）**
 
@@ -515,7 +525,7 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 | **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減。**不安定な大型アーキでは単一 fold・サブサンプルでの HP 選定を禁止**（→ `G-FULLCV`）。study は SQLite に永続化され同じ tag で追加試行できる（→ `CONVENTIONS.md#optuna-study-の永続化と命名`） | Optuna（軽量） |
 | **4. 段階的FE** | 有効な特徴量の特定 | `state/FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
 | **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを state/SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
-| **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
+| **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み。**提出直前に `src/utils/postprocess.py` を通す**（重複行の統一は指標に依らず安全） | `src/utils/ensemble.py`（`blend.py --mode hillclimb / stack`） |
 
 ### 期間の配分（カレンダー予算）
 
