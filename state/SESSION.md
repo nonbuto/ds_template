@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 19:09:15
-- **git**: `main` / 未コミット 3 件 / HEAD: 41e6e05 fix: FoldCache が「モデル名 + 特徴量の本数」しか区別せず古い予測を再利用していた
+- **記録時刻**: 2026-09-02 19:10:37
+- **git**: `main` / 未コミット 2 件 / HEAD: 041bb7a test: end-to-end スモークテストを常設する（clone 直後の一気通貫）
 <!-- END:auto-snapshot -->
