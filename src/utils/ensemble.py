@@ -82,8 +82,22 @@ def stacking_blend(
         meta_features_test: テスト用追加メタ特徴量（任意）
 
     Returns:
-        (train_meta_preds, test_meta_preds) のタプル
+        (train_meta_preds, test_meta_preds) のタプル。
+        **train 側は out-of-fold で作る**（下記）。
+
+    Note:
+        以前は「全行で学習したメタモデルで同じ全行を予測」していた。これは in-sample 予測なので、
+        返り値をそのままスタッキングの OOF として評価すると**必ず楽観的に出る**。
+        メタモデルは重みを 2〜3 個決めるだけなので過学習は軽いが、
+        `G-OVERFIT` が言うとおり天井帯では「OOF↑なのに LB↓」がこの経路でも起こる。
+        ここで確保した OOF がブレンド候補の比較に使われるので、素性を揃える意味は大きい。
+        メタ予測は `cross_val_predict` で fold 外から作り、test 用のモデルだけ全行で学習する。
     """
+    from sklearn.model_selection import cross_val_predict
+    from sklearn.pipeline import make_pipeline
+
+    from src.metrics import get_cv
+
     X_meta_train = oof_predictions
     X_meta_test = test_predictions
 
@@ -91,17 +105,19 @@ def stacking_blend(
         X_meta_train = np.hstack([X_meta_train, meta_features_train])
         X_meta_test = np.hstack([X_meta_test, meta_features_test])
 
-    scaler = StandardScaler()
-    X_meta_train_scaled = scaler.fit_transform(X_meta_train)
-    X_meta_test_scaled = scaler.transform(X_meta_test)
+    def _pipe():
+        # スケーラも fold 内で fit する（全行で fit すると test 側の統計が漏れる）
+        return make_pipeline(StandardScaler(),
+                             LogisticRegression(C=1.0, max_iter=1000, random_state=42))
 
-    meta_model = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
-    meta_model.fit(X_meta_train_scaled, y_train)
+    train_preds = cross_val_predict(_pipe(), X_meta_train, y_train,
+                                    cv=get_cv(), method="predict_proba")[:, 1]
 
-    train_preds = meta_model.predict_proba(X_meta_train_scaled)[:, 1]
-    test_preds = meta_model.predict_proba(X_meta_test_scaled)[:, 1]
+    final = _pipe().fit(X_meta_train, y_train)
+    test_preds = final.predict_proba(X_meta_test)[:, 1]
 
-    print(f"📐 スタッキング完了: {oof_predictions.shape[1]}モデルをメタ学習")
+    print(f"📐 スタッキング完了: {oof_predictions.shape[1]}モデルをメタ学習"
+          f"（train 側は out-of-fold）")
     return train_preds, test_preds
 
 
@@ -140,6 +156,8 @@ def optimize_weights(
     y: np.ndarray,
     metric_fn,
     method: str = "nelder-mead",
+    n_seeds: int = 1,
+    seed: int = 42,
 ) -> tuple[np.ndarray, float]:
     """複数モデルの最適ブレンド重みを探索する。
 
@@ -148,9 +166,19 @@ def optimize_weights(
         y: 正解ラベル
         metric_fn: スコア計算関数（高いほど良い, 例: roc_auc_score）
         method: "nelder-mead" または "differential-evolution"
+        n_seeds: **独立に探索して重みを平均する回数**（bagging）。
+            2 以上にすると、初期点をランダムに振った探索を n_seeds 回まわして
+            得られた重みベクトルを平均する。
+        seed: 初期点の生成に使う乱数 seed。
 
     Returns:
         (最適重みの配列, 最適スコア) のタプル
+
+    Note:
+        `G-CEILING` の集約戦略 (a)。天井帯では**単一の最適化ランは「平坦な領域の中で
+        たまたま辿り着いた 1 点」に過ぎない**。過去コンペの Private 最高は 12 シードの
+        重み bagging であり、OOF 最高の 1 本を選んだ場合は天井帯でも下位だった（L-03）。
+        以前はこの関数に seed も複数開始点も無く、**その戦略が実行できなかった**。
     """
     from scipy.optimize import differential_evolution, minimize
 
@@ -161,17 +189,29 @@ def optimize_weights(
         w = w / (w.sum() + 1e-8)
         return -metric_fn(y, oofs @ w)
 
-    if method == "nelder-mead":
-        result = minimize(neg_score, x0=np.ones(n_models) / n_models, method="Nelder-Mead")
-        w_opt = np.clip(result.x, 0, 1)
-    else:
-        bounds = [(0, 1)] * n_models
-        result = differential_evolution(
-            neg_score, bounds, seed=42, maxiter=500, tol=1e-8, workers=1,
-        )
-        w_opt = np.clip(result.x, 0, 1)
+    def _one(x0: np.ndarray, run_seed: int) -> np.ndarray:
+        if method == "nelder-mead":
+            result = minimize(neg_score, x0=x0, method="Nelder-Mead")
+        else:
+            result = differential_evolution(
+                neg_score, [(0, 1)] * n_models, seed=run_seed, maxiter=500, tol=1e-8, workers=1,
+            )
+        w = np.clip(result.x, 0, 1)
+        total = w.sum()
+        return w / total if total > 0 else np.ones(n_models) / n_models
 
+    rng = np.random.default_rng(seed)
+    starts = [np.ones(n_models) / n_models]                      # 1 本目は等重み
+    starts += [rng.dirichlet(np.ones(n_models)) for _ in range(max(0, n_seeds - 1))]
+
+    weights = [_one(x0, seed + i) for i, x0 in enumerate(starts)]
+    w_opt = np.mean(weights, axis=0)
     w_opt = w_opt / w_opt.sum()
+
+    if n_seeds > 1:
+        spread = float(np.std(weights, axis=0).max())
+        print(f"  重み bagging: {n_seeds} 本の平均（重みのばらつき最大 {spread:.4f}）")
+
     best_score = metric_fn(y, oofs @ w_opt)
     return w_opt, best_score
 

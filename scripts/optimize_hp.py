@@ -29,7 +29,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL
 from src.hp_spaces import lgb_space, xgb_space, cb_space
-from scripts.train import FEATURES
+from scripts.train import FEATURES, _lgb_eval_kwargs
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -113,7 +113,7 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
             import lightgbm as lgb
             Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
             model = Est(**params)
-            model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)],
+            model.fit(X_tr, y_tr, **_lgb_eval_kwargs(Est, X_val, y_val),
                       callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)])
         elif model_type == "cb":
             from catboost import CatBoostClassifier, CatBoostRegressor, Pool

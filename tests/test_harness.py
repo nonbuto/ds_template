@@ -896,3 +896,101 @@ def test_viz_guard_reaches_the_conversation():
     src = Path("scripts/harness/viz_guard.py").read_text(encoding="utf-8")
     assert "systemMessage" in src, "ユーザーに届く経路が無い"
     assert "additionalContext" in src, "AI の文脈に入る経路が無い"
+
+
+# ──────────────────────────────────────────────────────────
+# 11. 学習・アンサンブルの設計上のリーク
+# ──────────────────────────────────────────────────────────
+
+def test_early_stopping_does_not_watch_the_oof_fold():
+    """early stopping の監視先が既定で train fold の内側であること。
+
+    検証 fold（= OOF になる行）で木の本数を決めると、OOF はその選択を経た予測になる。
+    合成データでの実測差は **AUC +0.00467**（ノイズ床 ±0.0002 の 20 倍以上）で、
+    `G-OOF`「OOF を足切りに使う」という前提が静かに崩れる大きさ。
+    """
+    from src.config import EARLY_STOPPING_ON
+
+    assert EARLY_STOPPING_ON == "inner", "既定が検証 fold を見る設定になっている"
+    src = Path("scripts/train.py").read_text(encoding="utf-8")
+    for fn in ("train_fold_lgb", "train_fold_cb", "train_fold_xgb"):
+        body = src.split(f"def {fn}")[1].split("\ndef ")[0]
+        assert "_split_for_fit" in body, f"{fn} が early stopping 用の分割を経ていない"
+
+
+def test_early_stopping_inner_split_is_stratified():
+    """内側分割がクラス比を保つこと（少数クラスが消えると early stopping が壊れる）。"""
+    import numpy as np
+    import pandas as pd
+    import scripts.train as t
+
+    X = pd.DataFrame({"a": range(200)})
+    y = pd.Series([0] * 180 + [1] * 20)
+    X_fit, y_fit, X_es, y_es = t._split_for_fit(X, y, X, y)
+    assert len(X_fit) + len(X_es) == 200
+    assert set(np.unique(y_es)) == {0, 1}, "内側分割で少数クラスが消えた"
+
+
+def test_stacking_meta_predictions_are_out_of_fold():
+    """スタッキングの train 側予測が in-sample でないこと。
+
+    全行で学習したメタモデルで同じ全行を予測すると、返り値をそのまま
+    スタッキングの OOF として評価したとき**必ず楽観的に出る**。
+    """
+    src = Path("src/utils/ensemble.py").read_text(encoding="utf-8")
+    body = src.split("def stacking_blend")[1].split("\ndef ")[0]
+    assert "cross_val_predict" in body
+
+    import numpy as np
+    from src.utils.ensemble import stacking_blend
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 400)
+    oof = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1) for _ in range(3)])
+    tr, te = stacking_blend(oof, np.column_stack([rng.random(50)] * 3), y)
+    assert tr.shape == (400,) and te.shape == (50,)
+
+
+def test_weight_bagging_is_available():
+    """重み探索の bagging が使えること（`G-CEILING` の集約戦略 (a)）。
+
+    過去コンペの Private 最高は 12 シードの重み bagging だった（L-03）が、
+    以前の `optimize_weights` には seed も複数開始点も無く**その戦略が実行できなかった**。
+    """
+    import inspect
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    from src.utils.ensemble import optimize_weights
+
+    sig = inspect.signature(optimize_weights).parameters
+    assert "n_seeds" in sig and "seed" in sig
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 400)
+    oofs = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, s, 400), 0, 1)
+                            for s in (0.30, 0.32, 0.35)])
+    w, score = optimize_weights(oofs, y, roc_auc_score, n_seeds=5)
+    assert abs(w.sum() - 1.0) < 1e-6 and 0 < score <= 1
+
+
+def test_lightgbm_eval_api_is_current():
+    """LightGBM の非推奨 API を使っていないこと（警告が出続けると本命の警告が埋もれる）。"""
+    import warnings
+
+    import pandas as pd
+    from sklearn.datasets import make_classification
+    import scripts.train as t
+
+    X, y = make_classification(n_samples=200, n_features=6, random_state=0)
+    X = pd.DataFrame(X, columns=[f"f{i}" for i in range(6)])
+    y = pd.Series(y)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        t.train_fold_lgb(X[:150], y[:150], X[150:], y[150:],
+                         {"n_estimators": 20, "verbose": -1})
+
+
+def test_imputation_statistics_come_from_train_only():
+    """欠損補完の統計量が test を含まないこと（train/test 混合は明確なリーク）。"""
+    src = Path("scripts/preprocess.py").read_text(encoding="utf-8")
+    assert "medians = train[NUMERIC_COLS].median()" in src
+    assert "concat" not in src, "train と test を連結してから統計量を取っている"

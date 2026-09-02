@@ -60,6 +60,9 @@ def main():
                         help="Test予測ファイル（形式: モデル名=ファイルパス）")
     parser.add_argument("--corr-threshold", type=float, default=0.998,
                         help="相関確認のスキップ閾値（デフォルト: 0.998）")
+    parser.add_argument("--n-seeds", type=int, default=1,
+                        help="重み探索を独立に何本まわして平均するか（G-CEILING の重み bagging）。"
+                             "天井帯では 8〜12 本を推奨")
     parser.add_argument("--out-prefix", type=str, default="blend",
                         help="出力ファイルのプレフィックス")
     args = parser.parse_args()
@@ -132,7 +135,8 @@ def main():
         tests_matrix = np.column_stack([tests[n] for n in names]) if tests else None
 
         print("\n【STEP 2: 最適重みブレンド】")
-        w_opt, best_score = optimize_weights(oofs_matrix, y, _ascending_metric())
+        w_opt, best_score = optimize_weights(oofs_matrix, y, _ascending_metric(),
+                                             n_seeds=args.n_seeds)
 
         print("\nブレンド結果:")
         for name, w in zip(names, w_opt):

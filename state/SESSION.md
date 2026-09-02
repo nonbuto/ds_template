@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 19:02:26
-- **git**: `main` / 未コミット 8 件 / HEAD: f23d1cc fix: 深刻度3 の 6 件（ΔOOF 診断の自己参照 / 値の読み取り / GroupKFold / blend の形状）
+- **記録時刻**: 2026-09-02 19:05:53
+- **git**: `main` / 未コミット 6 件 / HEAD: 877052a fix: ハーネスの警告経路・fail open・定義の散在・死んだ仕組み（MEDIUM-4〜LOW-8）
 <!-- END:auto-snapshot -->

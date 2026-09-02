@@ -22,11 +22,13 @@ import numpy as np
 import pandas as pd
 from src.metrics import (get_cv, get_groups, get_metric, n_classes, is_regression,
                          shape_for_metric, describe as describe_setup)
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import (
     PROCESSED_DATA_DIR, PLOTS_DIR,
     RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME, PROBLEM_TYPE, CV_STRATEGY,
+    EARLY_STOPPING_ON, EARLY_STOPPING_INNER_SIZE,
 )
 from src.experiment import ExperimentTracker
 from src.utils.finalize import save_run_outputs
@@ -131,15 +133,59 @@ def _predict(model, X):
     return model.predict_proba(X) if _has_proba(model) else model.predict(X)
 
 
+def _early_stopping_split(X_tr, y_tr, X_val, y_val):
+    """early stopping の監視に使う `(X, y)` を返す。
+
+    **既定は train fold の内側から切り出す。** 検証 fold（= OOF になる行）を
+    early stopping の監視に使うと、木の本数がその fold に合わせて選ばれる。
+    OOF はその選択を経た予測なので、**OOF が本来より良く出る**。
+    `G-OOF` は「OOF を足切りに使う」ことを前提にしているので、
+    OOF が構造的に楽観側へ寄ると、その前提が静かに崩れる。
+
+    `EARLY_STOPPING_ON = "val"` にすれば従来どおり検証 fold を使う
+    （Kaggle で広く使われる書き方。速く、この程度のリークは無視できるという判断もある）。
+    """
+    if EARLY_STOPPING_ON == "val":
+        return X_val, y_val
+    stratify = None if is_regression() else y_tr
+    X_fit, X_es, y_fit, y_es = train_test_split(
+        X_tr, y_tr, test_size=EARLY_STOPPING_INNER_SIZE,
+        random_state=RANDOM_STATE, stratify=stratify)
+    return (X_fit, y_fit), (X_es, y_es)
+
+
+def _split_for_fit(X_tr, y_tr, X_val, y_val):
+    """`(学習に使う X, y, early stopping 用 X, y)` に展開する。"""
+    a, b = _early_stopping_split(X_tr, y_tr, X_val, y_val)
+    if EARLY_STOPPING_ON == "val":
+        return X_tr, y_tr, a, b
+    (X_fit, y_fit), (X_es, y_es) = a, b
+    return X_fit, y_fit, X_es, y_es
+
+
+def _lgb_eval_kwargs(Est, X_es, y_es) -> dict:
+    """LightGBM の検証データ引数を、インストール済みバージョンに合わせて作る。
+
+    4.7 で `eval_set` が非推奨になり、使うたびに `LGBMDeprecationWarning` が出る。
+    警告を放置すると本当に見るべき警告が埋もれるので、ここで吸収する
+    （`pyproject.toml` は 4.6 以上を許すため、両方に対応する）。
+    """
+    import inspect
+
+    if "eval_X" in inspect.signature(Est.fit).parameters:
+        return {"eval_X": X_es, "eval_y": y_es}
+    return {"eval_set": [(X_es, y_es)]}
+
+
 def train_fold_lgb(X_tr, y_tr, X_val, y_val, params: dict):
     import lightgbm as lgb
     Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
+    X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
     model = Est(**params)
-    model.fit(
-        X_tr, y_tr,
-        eval_set=[(X_val, y_val)],
-        callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(100)],
-    )
+    # LightGBM 4.7 で `eval_set` は非推奨（`eval_X` / `eval_y` へ移行）。
+    # 4.6 以前も動くよう、シグネチャを見てから渡し方を決める。
+    model.fit(X_fit, y_fit, **_lgb_eval_kwargs(Est, X_es, y_es),
+              callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(100)])
     return model, _predict(model, X_val)
 
 
@@ -147,10 +193,11 @@ def train_fold_cb(X_tr, y_tr, X_val, y_val, params: dict):
     from catboost import CatBoostClassifier, CatBoostRegressor, Pool
     cat_features = [c for c in X_tr.columns if X_tr[c].dtype in ("object", "category")]
     Est = CatBoostRegressor if is_regression() else CatBoostClassifier
+    X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
     model = Est(**params)
     model.fit(
-        Pool(X_tr, y_tr, cat_features=cat_features),
-        eval_set=Pool(X_val, y_val, cat_features=cat_features),
+        Pool(X_fit, y_fit, cat_features=cat_features),
+        eval_set=Pool(X_es, y_es, cat_features=cat_features),
         early_stopping_rounds=50,
     )
     return model, _predict(model, X_val)
@@ -159,10 +206,11 @@ def train_fold_cb(X_tr, y_tr, X_val, y_val, params: dict):
 def train_fold_xgb(X_tr, y_tr, X_val, y_val, params: dict):
     import xgboost as xgb
     Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
+    X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
     model = Est(**params, early_stopping_rounds=50)
     model.fit(
-        X_tr, y_tr,
-        eval_set=[(X_val, y_val)],
+        X_fit, y_fit,
+        eval_set=[(X_es, y_es)],
         verbose=100,
     )
     return model, _predict(model, X_val)
