@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 21:08:18
-- **git**: `main` / 未コミット 5 件 / HEAD: 5b1c4f2 fix: HP 探索が本番と違う条件で最適化していた 4 件（3 体が独立に指摘）
+- **記録時刻**: 2026-09-02 21:11:53
+- **git**: `main` / 未コミット 7 件 / HEAD: 5ec2940 fix: AV 診断・foldcache の破損復帰・診断列の 0.00000・比較相手の取り違え
 <!-- END:auto-snapshot -->

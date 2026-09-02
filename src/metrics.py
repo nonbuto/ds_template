@@ -124,6 +124,13 @@ def get_cv(n_splits: int | None = None, strategy: str | None = None,
     if name == "TimeSeriesSplit":
         return ms.TimeSeriesSplit(n_splits=k)
     if name == "GroupKFold":
+        # GroupKFold は分割に乱数を使わない（グループを均等に配るだけ）。
+        # seed を渡されても効かないので、**黙って捨てずに知らせる** ——
+        # 「seed を振ったのに分割が変わらない」ことに気づかないまま
+        # 分割の bagging をしたつもりになるのを防ぐ。
+        if seed is not None and seed != RANDOM_STATE:
+            print("  ⚠️ GroupKFold は分割に乱数を使わないため seed は効きません。"
+                  "分割を振りたい場合は StratifiedGroupKFold を使ってください")
         return ms.GroupKFold(n_splits=k)
     if name == "StratifiedGroupKFold":
         return ms.StratifiedGroupKFold(n_splits=k, shuffle=shuffle,

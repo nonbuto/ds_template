@@ -1323,3 +1323,62 @@ def test_av_check_shares_training_protocol():
     assert "_split_for_fit" in src, "検証 fold で early stopping している"
     assert "extract_importance" in src, "importance が split ベースのまま"
     assert "model.feature_importances_" not in src
+
+
+def test_leakage_check_detects_duplicate_rows():
+    """train と test に同一行があることを検知すること。
+
+    `preprocess.py` のコメントは「train/test に同一行が混入する事故を保存前に止める」と
+    主張していたのに実装が無く、完全に同じ 3 行を test に入れても `✅ PASS` を返していた。
+    """
+    import pandas as pd
+    from src.validation import validate_no_leakage
+
+    tr = pd.DataFrame({"a": [1, 2, 3, 4], "b": [5, 6, 7, 8], "target": [0, 1, 0, 1]})
+    dup = pd.DataFrame({"a": [1, 2, 9], "b": [5, 6, 10]})       # 先頭 2 行が train と同一
+    clean = pd.DataFrame({"a": [9, 10], "b": [11, 12]})
+
+    assert validate_no_leakage(tr, dup, "target").passed is False
+    assert validate_no_leakage(tr, clean, "target").passed is True
+    assert validate_no_leakage(tr, tr.drop(columns=[]), "target").passed is False, \
+        "test に target 列がある場合も落ちること"
+
+
+def test_latest_submission_is_chosen_by_mtime(tmp_path):
+    """「最新の提出ファイル」を辞書順ではなく更新時刻で選ぶこと。
+
+    命名は `sub_{exp_id}_{model}_{score}_{ts}.csv` なので、辞書順では先頭の exp_id が効き
+    時刻は効かない（exp010 を後から作っても exp100 が選ばれる）。
+    Notebook コンペではこれが**間違った CSV の提出**になる。
+    """
+    import os
+    import time
+
+    (tmp_path / "sub_100_lgb_0.9_20260101_0000.csv").write_text("x")
+    time.sleep(0.01)
+    newest = tmp_path / "sub_010_lgb_0.9_20260601_0000.csv"
+    newest.write_text("x")
+
+    by_name = sorted(tmp_path.glob("sub_*.csv"))[-1]
+    by_mtime = sorted(tmp_path.glob("sub_*.csv"), key=os.path.getmtime)[-1]
+    assert by_name != newest and by_mtime == newest, "この前提が崩れたらテストを見直す"
+
+    src = Path("scripts/to_kaggle_nb.py").read_text(encoding="utf-8")
+    assert "key=os.path.getmtime" in src, "辞書順で最新を選んでいる"
+
+
+def test_shape_logic_is_not_copied_around():
+    """指標に合わせた整形が `shape_for_metric` の外に写経されていないこと。
+
+    同じ三項演算子が 6 箇所に写経され、片方だけ直る事故が起きた（L-29 #2）。
+    その後も `save_oof_analysis` と実験雛形に残っていた。
+    """
+    import re
+
+    pattern = re.compile(r"needs_proba\(\).*shape\[1\] == 2")
+    for path in Path("src").rglob("*.py"):
+        if path.name == "metrics.py":
+            continue
+        assert not pattern.search(path.read_text(encoding="utf-8")), f"{path} に写経が残っている"
+    for path in list(Path("scripts").rglob("*.py")) + list(Path("experiments").rglob("*.py")):
+        assert not pattern.search(path.read_text(encoding="utf-8")), f"{path} に写経が残っている"

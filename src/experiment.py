@@ -651,7 +651,7 @@ class ExperimentTracker:
         """
         try:
             from src.config import PROBLEM_TYPE
-            from src.metrics import get_metric, needs_proba
+            from src.metrics import get_metric, shape_for_metric
         except ImportError:
             return
 
@@ -659,12 +659,8 @@ class ExperimentTracker:
         lines = ["\n📋 OOF 誤差分析"]
 
         try:
-            pred_for_metric = oof_preds
-            if not needs_proba() and oof_preds.ndim == 2:
-                pred_for_metric = np.argmax(oof_preds, axis=1)
-            elif needs_proba() and oof_preds.ndim == 2 and oof_preds.shape[1] == 2:
-                pred_for_metric = oof_preds[:, 1]
-            lines.append(f"  OOF スコア: {get_metric()(labels, pred_for_metric):.5f}")
+            # 整形は `shape_for_metric` に任せる（写経を増やさない。L-29 #2）
+            lines.append(f"  OOF スコア: {get_metric()(labels, shape_for_metric(oof_preds)):.5f}")
         except Exception as e:
             lines.append(f"  OOF スコア: 計算できず（{type(e).__name__}）")
 

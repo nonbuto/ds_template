@@ -113,7 +113,11 @@ import shutil
 from src.config import SUBMISSIONS_DIR
 import glob
 
-sub_files = sorted(glob.glob(str(SUBMISSIONS_DIR / "sub_*.csv")))
+# **「最新」は更新時刻で選ぶ。** 命名は sub_{exp_id}_{model}_{score}_{ts}.csv なので、
+# 辞書順に並べると先頭の exp_id が効き、時刻は効かない（exp010 を後から作っても
+# exp100 が選ばれる）。Notebook コンペではこれが**間違った CSV の提出**になる。
+import os
+sub_files = sorted(glob.glob(str(SUBMISSIONS_DIR / "sub_*.csv")), key=os.path.getmtime)
 if sub_files:
     latest = sub_files[-1]
     output_path = Path("/kaggle/working/submission.csv")

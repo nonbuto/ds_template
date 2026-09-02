@@ -43,11 +43,15 @@ def main():
 
     # 保存前にデータバリデーションを通す（スキーマ・リーク・欠損）。
     # ここを通さないと `src/validation.py` は「書かれているが一度も走らないコード」になる。
-    # とくに no_leakage は、train/test に同一行が混入する事故を保存前に止める。
-    run_all_validations(
+    # no_leakage は ① test に target 列が無いこと ② train/test に同一行が無いこと を見る。
+    # **`raise_on_failure=False` なので保存は止まらない**（前処理をやり直すコストが高く、
+    # 正当な重複がありうる合成データコンペもあるため）。FAIL が出たら中身を確認すること。
+    results = run_all_validations(
         train_df=train, test_df=test, target_col=TARGET_COL,
         expected_columns=list(train.columns), raise_on_failure=False,
     )
+    if any(not r.passed for r in results.values()):
+        print("\n⚠️ バリデーションに FAIL があります。保存は続行しますが、内容を確認してください")
 
     train.to_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     test.to_pickle(PROCESSED_DATA_DIR / "test_features.pkl")

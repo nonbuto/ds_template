@@ -76,6 +76,15 @@ def validate_no_leakage(
 ) -> ValidationResult:
     """テストデータにターゲット情報がリークしていないことを検証。
 
+    見るのは 2 つ:
+
+    1. test に target 列が入っていないか
+    2. **train と test に同一行が混入していないか**
+
+    2 は `preprocess.py` のコメントが「保存前に止める」と主張していたのに
+    実装が無く、完全に同じ 3 行を test に入れても `✅ PASS` を返していた。
+    同一行があると、その行は学習にも検証にも使われ、OOF が実力以上に出る。
+
     Args:
         train_df: 訓練データ
         test_df: テストデータ
@@ -86,6 +95,21 @@ def validate_no_leakage(
     """
     messages: list[str] = []
     passed = True
+
+    shared = [c for c in train_df.columns if c != target_col and c in test_df.columns]
+    if shared:
+        # ハッシュで突き合わせる（全列の直接比較は行数の積になる）
+        tr_keys = pd.util.hash_pandas_object(train_df[shared], index=False)
+        te_keys = pd.util.hash_pandas_object(test_df[shared], index=False)
+        n_dup = int(te_keys.isin(set(tr_keys)).sum())
+        if n_dup:
+            messages.append(
+                f"train と同一の行が test に {n_dup:,} 件あります（特徴量 {len(shared)} 列で一致）。"
+                "自前の結合・重複処理で混入したなら、その行は学習にも検証にも使われ OOF が実力以上に出ます。"
+                "合成データコンペでは元から重複が生じることもあるので、"
+                "**自分の前処理が作った混入かどうか**を確認してください"
+            )
+            passed = False
 
     if target_col in test_df.columns:
         messages.append(f"テストデータにターゲットカラム '{target_col}' が含まれています（リーク可能性）")
