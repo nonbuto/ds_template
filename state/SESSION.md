@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 18:24:12
-- **git**: `main` / 未コミット 5 件 / HEAD: 31e4db0 fix: ガードの空洞検知(C15)・blend の実バグ・README構成図・ruff導入
+- **記録時刻**: 2026-09-02 18:43:32
+- **git**: `main` / 未コミット 3 件 / HEAD: 2b1d0b0 fix(config): kickoff が書く設定値と metrics.py の受付値の乖離を塞ぐ
 <!-- END:auto-snapshot -->

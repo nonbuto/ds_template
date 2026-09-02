@@ -38,38 +38,55 @@ from scripts.harness.deadline_status import (  # noqa: E402
     read_deadline_from_competition_md,
 )
 
-SEPARATORS = {";", "&&", "||", "|", "&", "(", "{"}
 ENV_ASSIGN_RE = re.compile(r"^\w+=")
 SUBCOMMANDS = {"competitions", "c"}
+# 実行を包むだけで本体が次のトークンになるもの。透過して次を見る。
+WRAPPERS = {"uv", "run", "nohup", "time", "env", "sudo", "xargs", "command", "exec",
+            "poetry", "pipenv", "do", "then", "else", "elif"}
+# shlex が演算子として返すトークン。ここでコマンド位置がリセットされる。
+OPERATORS = {";", "&", "&&", "|", "||", "(", ")", "{", "}", ";;", "\n"}
 
 
 def is_submit_command(command: str) -> bool:
     """実際に Kaggle 提出を実行するコマンドか判定する。
 
-    提出コマンドを単に**文字列として含むだけ**のコマンド（ドキュメントの編集・grep・
-    heredoc など）を誤検知しないよう、**コマンド位置**（先頭、または `;` `&&` `|` などの
-    直後）に現れる場合だけ true にする。クォートで囲まれた部分は shlex が 1 トークンに
-    まとめるため、文字列としての言及は自然に除外される。
-    （この判定を入れる前は、本ファイルを編集する Bash 自身がブロックされた）
-    """
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        # クォートが閉じていない等でパースできないときは、安全側（確認を求める）に倒す
-        return "submit" in command and "kaggle" in command
+    **見逃しは提出の無確認実行に直結する**（この gate は不可逆な操作を止める唯一の関門）。
+    以前は `shlex.split()` で空白分割してからコマンド位置を探していたが、
+    **`shlex.split` は `;` や改行を演算子として扱わない**（`"echo a; kaggle …"` は
+    `'a;'` に融合する）。そのため複数行コマンド・`;` 区切り・`uv run` 前置・絶対パスが
+    すべて素通りしていた（8 パターン中 6 件）。
 
-    at_command_position = True
-    for i, tok in enumerate(tokens):
-        if tok in SEPARATORS:
-            at_command_position = True
+    いまは `punctuation_chars=True` の `shlex` で**クォートを尊重しつつ演算子も分離**する。
+
+    **誤検知と見逃しは非対称**: 誤検知は確認を 1 回求めるだけだが、見逃しは
+    無確認の提出になる。判断に迷う入力は**検知側（確認を求める）に倒す**。
+    """
+    for line in command.splitlines():          # 改行もコマンド区切り
+        if not line.strip():
             continue
-        if at_command_position and ENV_ASSIGN_RE.match(tok):
-            continue          # `VAR=value cmd` の環境変数はコマンド位置のまま
-        if (at_command_position and tok == "kaggle"
-                and tokens[i + 1:i + 2] and tokens[i + 1] in SUBCOMMANDS
-                and tokens[i + 2:i + 3] == ["submit"]):
-            return True
-        at_command_position = False
+        try:
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+        except ValueError:
+            # クォートが閉じていない等。安全側（確認を求める）に倒す
+            if "kaggle" in line and "submit" in line:
+                return True
+            continue
+
+        k = 0
+        while k < len(tokens):
+            tok = tokens[k]
+            if tok in OPERATORS or ENV_ASSIGN_RE.match(tok) or Path(tok).name in WRAPPERS:
+                k += 1
+                continue
+            if (Path(tok).name == "kaggle"
+                    and tokens[k + 1:k + 2] and tokens[k + 1] in SUBCOMMANDS
+                    and tokens[k + 2:k + 3] == ["submit"]):
+                return True
+            # コマンド本体が来たので、次の演算子までは引数。読み飛ばす
+            while k < len(tokens) and tokens[k] not in OPERATORS:
+                k += 1
     return False
 
 

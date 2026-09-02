@@ -38,19 +38,34 @@ SUB = "kaggle" + " competitions submit"      # 文字列として書くと自分
 
 
 @pytest.mark.parametrize("command,expected,label", [
+    # 検知すべき —— 見逃しは**無確認の提出**に直結する。
+    # 以前は `shlex.split` で空白分割していたため、`;`・改行・`uv run` 前置・絶対パスが
+    # すべて素通りしていた（8 パターン中 6 件）。テストが `&&` の形しか見ておらず
+    # 誤った安心を与えていたので、ここを厚くする。
     (f"{SUB} -c x -f y.csv -m z", True, "素の提出コマンド"),
     (f"cd /tmp && {SUB} -c x -f y.csv", True, "&& の後ろ"),
-    ("kaggle c submit -c x -f y.csv", True, "短縮形"),
+    (f"uv run {SUB} -c x -f y.csv", True, "uv run 前置"),
+    (f"echo start; {SUB} -c x -f y.csv", True, "; 区切り（空白なし）"),
+    (f"echo start\n{SUB} -c x -f y.csv", True, "改行区切り（複数行コマンド）"),
+    (f"nohup {SUB} -c x -f y.csv", True, "nohup 前置"),
+    (f"time {SUB} -c x -f y.csv", True, "time 前置"),
+    (f"/opt/homebrew/bin/{SUB} -c x -f y.csv", True, "絶対パス"),
     (f"KAGGLE_CONFIG_DIR=/tmp {SUB} -c x -f y.csv", True, "環境変数つき"),
+    ("kaggle c submit -c x -f y.csv", True, "短縮形 c submit"),
+    (f"for i in 1; do {SUB} -c x -f y.csv; done", True, "for ループ内"),
+    (f"ls | head && {SUB} -c x -f y.csv", True, "パイプの後"),
+    # 無視すべき —— 誤検知はドキュメント編集を妨げる
     (f"grep -rn '{SUB}' CONVENTIONS.md", False, "grep での言及"),
     (f"echo '| hook | {SUB} を検知 |' >> doc.md", False, "ドキュメント編集"),
     ("kaggle competitions submissions -c x", False, "submissions は提出ではない"),
+    ('python3 -c "print(\'kaggle competitions submit\')"', False, "python 内の文字列"),
     ("ls -la", False, "無関係"),
 ])
 def test_submit_gate_detection(command, expected, label):
-    """提出コマンドの検知はコマンド位置で判定する（文字列としての言及を誤検知しない）。
+    """提出コマンドの検知。**見逃しと誤検知は非対称**（見逃し＝無確認の提出）。
 
-    導入直後、この判定が無かったために**本ファイルを編集する Bash 自身がブロックされた**。
+    シェルの区切り（`;` `&&` `|` 改行 `(` `)`）をクォートを尊重しつつ分離し、
+    ラッパー（`uv run` `nohup` `time`）と環境変数代入を透過して先頭を見る。
     """
     from scripts.harness.submit_gate import is_submit_command
     assert is_submit_command(command) is expected, label
@@ -395,3 +410,97 @@ def test_skills_reference_existing_files():
             if not (ROOT / m.group(1)).exists():
                 missing.append(f"{skill.parent.name}: {m.group(1)}")
     assert not missing, f"スキルが存在しないファイルを参照している: {sorted(set(missing))}"
+
+
+# ──────────────────────────────────────────────────────────
+# 8. 実行時ガードが「実際に発火する」こと
+# ──────────────────────────────────────────────────────────
+# これまで**ガードを `return None` に潰しても全件合格**していた。
+# 「壊れを検知するテスト」が無く、リファクタや締切前の緩和で規律機構が
+# 静かに死んでも全部グリーンのままだった（L-06 の形骸化と同じ構造）。
+
+def _fake_log(tmp_path, n_rows: int, **extra) -> "Path":
+    """指定件数の実験行を持つ log.csv を作る。"""
+    import csv as _csv
+    from src import experiment as ex
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        for i in range(n_rows):
+            row = {"experiment_id": f"{i:03d}", "timestamp": "2020-01-01 00:00:00",
+                   "model": "lgb", "oof_score": "0.5"}
+            row.update(extra)
+            w.writerow(row)
+    return log
+
+
+def test_visualization_guard_fires(tmp_path, monkeypatch):
+    """直近 N 実験で可視化ゼロなら発火し、新しい .png があれば黙ること。"""
+    from src import experiment as ex
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", _fake_log(tmp_path, ex.VIZ_GUARD_WINDOW))
+    plots = tmp_path / "plots"
+    plots.mkdir()
+    monkeypatch.setattr(ex, "PLOTS_DIR", plots)
+    assert ex._check_visualization_guard() is not None, "可視化ゼロなのに発火しない"
+
+    import time
+    png = plots / "x.png"
+    png.write_bytes(b"x")
+    import os
+    os.utime(png, (time.time(), time.time()))
+    assert ex._check_visualization_guard() is None, "新しい .png があるのに発火する"
+
+
+def test_diagnostic_recording_guard_fires(tmp_path, monkeypatch):
+    """診断列が空の実験が続けば発火し、埋まっていれば黙ること。"""
+    from src import experiment as ex
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", _fake_log(tmp_path, ex.DIAG_GUARD_WINDOW))
+    assert ex._check_diagnostic_recording_guard() is not None, "診断列が空なのに発火しない"
+
+    monkeypatch.setattr(ex, "LOG_CSV_PATH",
+                        _fake_log(tmp_path / "b", ex.DIAG_GUARD_WINDOW,
+                                  cv_train_mean="0.9", cv_val_std="0.01")
+                        if (tmp_path / "b").mkdir() is None else None)
+    assert ex._check_diagnostic_recording_guard() is None, "診断列が埋まっているのに発火する"
+
+
+def test_inference_artifact_guard_fires(tmp_path, monkeypatch):
+    """OOF はあるのに test 予測が無い実験を検知すること。"""
+    from src import experiment as ex
+    oof_dir = tmp_path / "oof"
+    oof_dir.mkdir()
+    monkeypatch.setattr(ex, "OOF_DIR", oof_dir)
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", _fake_log(tmp_path, 1))
+
+    (oof_dir / "oof_000_lgb.npy").write_bytes(b"x")
+    assert ex._check_inference_artifact_guard("000") is not None, "test が無いのに発火しない"
+    assert ex._check_inference_artifacts_window() is not None, "窓版が発火しない"
+
+    (oof_dir / "test_000_lgb.npy").write_bytes(b"x")
+    assert ex._check_inference_artifact_guard("000") is None, "test があるのに発火する"
+    assert ex._check_inference_artifacts_window() is None, "窓版が発火し続ける"
+
+
+def test_pub_oof_gap_guard_fires(tmp_path, monkeypatch):
+    """Public が OOF より基準線 +0.0005 を超えて浮いたら発火すること。"""
+    import csv as _csv
+    from src import experiment as ex
+
+    def write(gaps):
+        log = tmp_path / f"log_{len(gaps)}_{gaps[-1]}.csv"
+        with open(log, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+            w.writeheader()
+            for i, g in enumerate(gaps):
+                w.writerow({"experiment_id": f"{i:03d}", "oof_score": "0.90000",
+                            "submit_score": f"{0.90000 + g:.5f}"})
+        return log
+
+    flat = [0.0] * 10
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", write(flat))
+    assert ex._check_pub_oof_gap_guard() is None, "gap が一定なのに発火する"
+
+    spiked = [0.0] * 10 + [0.01] * 3        # 直近が基準線から大きく浮く
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", write(spiked))
+    assert ex._check_pub_oof_gap_guard() is not None, "Public が浮いているのに発火しない"
