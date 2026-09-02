@@ -58,3 +58,11 @@ experiments/.statusline_cache.json
 data/output/oof/_foldcache/
 # hook 発火の実測ログ（scripts/hook_status.py が読む）
 experiments/.hook_log
+
+# Kaggle Notebook の成果物とコンペ固有の .ipynb
+# テンプレート本体に置くのは README（手順）だけ。実行結果・push 用ファイル・
+# コンペごとの Notebook はコンペブランチに残す
+# （main に 106MB のコンペ成果物が混入していたため 2026-09-02 に整理した）
+kaggle_nb/*.ipynb
+kaggle_nb/output/
+kaggle_nb/push*/

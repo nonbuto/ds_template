@@ -183,11 +183,32 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"{len(viol)} 件" + ("\n      " + "\n      ".join(viol[:8]) if viol else "")))
 
     # ── C7: コンペ識別子の混入 ──
+    # 本文だけでなく**追跡ファイルのパス名**も検査する。
+    # 過去に kaggle_nb/ の Notebook と予測 .npy が 41 ファイル・106MB 混入していたが、
+    # .md しか見ていなかったため素通りした（2026-09-02 の精査で発覚）。
+    tracked_leaks = []
+    try:
+        import subprocess
+        out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
+                             text=True, timeout=15).stdout
+        for path in out.splitlines():
+            if path in COMPETITION_ALLOWED or path.startswith("docs/"):
+                continue
+            if COMPETITION_TOKENS.search(path):
+                tracked_leaks.append(f"追跡ファイル名: {path}")
+            # 予測・提出物がテンプレート本体に入っていないか
+            if path.endswith((".npy", ".pkl")) or "/submissions/" in path:
+                tracked_leaks.append(f"成果物が追跡されている: {path}")
+    except Exception:
+        pass
+
     leaks = [f"{rel} ({len(COMPETITION_TOKENS.findall(text))} 件)"
              for rel, text in docs.items()
              if rel not in COMPETITION_ALLOWED and COMPETITION_TOKENS.search(text)]
-    results.append(("ERROR" if leaks else "OK", "C7 コンペ識別子",
-                    f"{len(leaks)} ファイルに混入" + ("\n      " + "\n      ".join(leaks) if leaks else "")))
+    all_leaks = leaks + tracked_leaks[:8]
+    results.append(("ERROR" if all_leaks else "OK", "C7 コンペ識別子",
+                    f"本文 {len(leaks)} ファイル / 追跡パス {len(tracked_leaks)} 件"
+                    + ("\n      " + "\n      ".join(all_leaks) if all_leaks else "")))
 
     # ── C8: SESSION.md 上限値の同期 ──
     caps = {}
