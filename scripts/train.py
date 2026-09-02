@@ -333,6 +333,10 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
         "oof_score": oof_score,
         "oof_preds": oof_preds,
         "test_preds": test_preds,
+        # 呼び出し側が床を実測できるように、正解と「どの行を予測したか」も返す
+        # （`src/noise.py` の対応差ブートストラップに必要）
+        "y_true": y.to_numpy(),
+        "covered": covered,
         "importance_df": importance_df,
     }
 

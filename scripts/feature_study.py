@@ -37,6 +37,7 @@ import numpy as np
 
 from scripts.train import run_cv, DEFAULT_PARAMS, FEATURES as BASE_FEATURES
 from src.metrics import greater_is_better
+from src.noise import fold_paired_se, min_detectable_difference, paired_se
 from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME
 from src.experiment import ExperimentTracker
 
@@ -136,26 +137,40 @@ def main():
     delta = raw_delta if greater_is_better() else -raw_delta
     gap_delta = new_stats["gap"] - base_stats["gap"]
 
-    # ΔOOFがノイズ範囲・棄却域にある場合、gapの変化で「純粋なノイズ」か
-    # 「軽度の過学習兆候」かを判別する（CV内部診断）。
-    # 実績（過去コンペ）: gap_delta≈+0.00004（ノイズ）はLBで改善、gap_delta≈+0.0002前後（軽度過学習兆候）はLBでも悪化、
-    # gap_delta>+0.01（明確な過学習）はLBで明確に悪化、という一貫した対応関係を確認済み。
-    GAP_NOTABLE = 0.0005
+    # ── 床は固定値ではなく**この 2 本から実測する** ──
+    # 以前は ±0.0003 / +0.001 の絶対値だった。しかし ΔOOF 自身のばらつきは実測で
+    # **SD 0.0011**（seed だけ振った 8 回）あり、**完全に無関係な列が seed 次第で
+    # 「🔶 採用検討」「⬜ ノイズ範囲」「❌ 棄却」の 3 判定すべてを出す**。
+    # しかも閾値は指標非依存の絶対値で、RMSE（目標σ=1000）でも同じ 0.0003 を使っていた。
+    #
+    # base と new は**同じ行を同じ分割で**予測しているので、対応のある比較ができる。
+    # 行の当たり外れと fold の難易度は差を取った時点で相殺する（`src/noise.py`）。
+    # 両方で予測された行だけを突き合わせる（TimeSeriesSplit の未予測行を混ぜない）
+    both = base_result["covered"] & new_result["covered"]
+    se_rows = paired_se(base_result["y_true"][both],
+                        new_result["oof_preds"][both], base_result["oof_preds"][both])
+    se_folds = fold_paired_se(new_result["val_scores"], base_result["val_scores"])
+    # 2 つの床のうち**大きいほう**を採る。行のゆらぎと fold のゆらぎは別の不確実性で、
+    # 片方だけを見ると、もう片方に由来する差を「測れた」と誤認する。
+    se = float(np.nanmax([se_rows, se_folds]))
+    floor = min_detectable_difference(se)
+    z = delta / se if se > 0 else float("nan")
 
-    if delta > 0.001:
-        verdict = "✅ 採用推奨"
-    elif delta > 0.0003:
-        verdict = "🔶 採用検討（他モデルでも確認を推奨）"
-    elif delta > -0.0003:
+    GAP_NOTABLE = 0.0005      # 過学習の兆候（gap の拡大）。効果量とは別軸で見る
+
+    if abs(delta) < floor:
+        # **「測れていない」と「効果がない」を混同しない。**
+        # 前者は床を下げれば測れる可能性があり、後者は測った上で差が無い。
+        base_note = "⬜ 測れていない（床未満）"
         if gap_delta > GAP_NOTABLE:
-            verdict = "⬜ ノイズ範囲だが軽度の過学習兆候あり（gap拡大、要注意）"
+            verdict = f"{base_note} — ただし gap が拡大しており過学習の兆候あり"
         else:
-            verdict = "⬜ ノイズ範囲（過学習兆候なし、採用不要）"
+            verdict = f"{base_note} — seed / fold を増やすか、集約へ（G-CEILING）"
+    elif delta > 0:
+        verdict = "✅ 採用推奨" if z >= 3 else "🔶 採用検討（他モデル・他 seed でも確認を推奨）"
     else:
-        if gap_delta > GAP_NOTABLE:
-            verdict = "❌ 棄却（過学習傾向を伴う明確な悪化）"
-        else:
-            verdict = "❌ 棄却"
+        verdict = ("❌ 棄却（過学習傾向を伴う明確な悪化）" if gap_delta > GAP_NOTABLE
+                   else "❌ 棄却")
 
     gap_warning = ""
     if gap_delta > 0.005:
@@ -221,6 +236,10 @@ def main():
  New  OOF  : {new_oof:.5f}
  ΔOOF      : {delta:+.5f}   ← 改善方向に揃えた値（正なら改善）
  素の差     : {raw_delta:+.5f}（{metric_dir}）
+
+ [この 2 本で実測した床]（固定閾値ではない → src/noise.py）
+ 対応差の床 : 行 1σ={se_rows:.5f} / fold 1σ={se_folds:.5f} → 採用 1σ={se:.5f}
+ 判定の境界 : 2σ={floor:.5f}   z={z:+.2f}
 
  [CV内部診断: train/val 平均・ばらつき・gap]
  Base: train={base_stats['train_mean']:.5f}±{base_stats['train_std']:.5f}  val={base_stats['val_mean']:.5f}±{base_stats['val_std']:.5f}  gap={base_stats['gap']:.5f}

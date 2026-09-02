@@ -1676,3 +1676,150 @@ def test_mutations_are_detected():
                        capture_output=True, text=True, timeout=900)
     assert r.returncode == 0, f"検知できない変異がある:\n{r.stdout}\n{r.stderr[-1000:]}"
     assert "❌" not in r.stdout, r.stdout
+
+
+# ──────────────────────────────────────────────────────────
+# 16. 判断の床が実測であること（固定値の表ではない）
+# ──────────────────────────────────────────────────────────
+
+def test_auc_noise_floor_matches_hanley_mcneil():
+    """AUC の床が Hanley-McNeil 式と一致し、旧テーブルの ±0.0001 とは桁で違うこと。
+
+    `G-NOISE` の表は「Hanley-McNeil 由来」と明記しながら ±0.0001 を掲げていたが、
+    式に n_pos=n_neg=5,000 / AUC=0.9 を入れると **0.0032**（32 倍）。
+    ±0.0001 は実際には「相関 0.999 のペア差」の値で、それを単体スコアの床として掲げ、
+    さらに「paired は 5-10x 小さい」と書いていたため実効閾値が 10〜20 倍甘くなっていた。
+    **これが L-21（OOF 有意な 6 件が全部 LB に再現しなかった）を説明する。**
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    from src.noise import auc_se, single_score_se
+
+    assert auc_se(0.90, 5_000, 5_000) > 0.002, "旧テーブルの値では説明できない大きさ"
+
+    rng = np.random.default_rng(0)
+    n = 20_000
+    y = rng.integers(0, 2, n)
+    pred = y * 1.9 + rng.normal(0, 1, n)
+    got = single_score_se(y, pred, n_boot=200)
+    analytic = auc_se(roc_auc_score(y, pred), n // 2, n // 2)
+    assert 0.5 < got / analytic < 2.0, f"実測 {got:.5f} と解析式 {analytic:.5f} が桁で違う"
+
+
+def test_paired_floor_is_much_smaller_than_single_floor():
+    """対応差の床が単体スコアの床より 1〜2 桁小さいこと。
+
+    **用途が違う 2 つの床を取り違えると、判断が桁で狂う。**
+    単体の床で FE を判定すると実在する改善を切り捨て、
+    対応差の床で LB を判定すると偶然を「突破」と呼ぶ。
+    """
+    import numpy as np
+    from src.noise import paired_se, single_score_se
+
+    rng = np.random.default_rng(0)
+    n = 20_000
+    y = rng.integers(0, 2, n)
+    a = y * 1.9 + rng.normal(0, 1, n)
+    b = a + rng.normal(0, 0.05, n)          # ほぼ同じ 2 本
+
+    single = single_score_se(y, a, n_boot=150)
+    paired = paired_se(y, a, b, n_boot=150)
+    assert paired < single / 10, f"対応差 {paired:.5f} が単体 {single:.5f} と近すぎる"
+
+
+def test_fold_paired_se_is_smaller_than_val_std():
+    """fold 対応差の SE が、fold 間 val std より小さいこと。
+
+    `G-DIAG` は「ΔOOF が fold 間 std より小さいなら測れていない」としていたが、
+    val std は「fold ごとの難易度の差」を主成分に含み、同じ fold で 2 つを比べれば
+    相殺する成分。実測では val std 0.01251 に対し正しい床は 0.00124（**10 倍**）で、
+    実在する改善を体系的に「判別不能」と切り捨てていた
+    （L-19: 個別 Δ≈0 が 13 系統累積すると確定的な正の差になった）。
+    """
+    import numpy as np
+    from src.noise import fold_paired_se
+
+    # fold の難易度が大きく違い、2 本の差は小さい状況
+    difficulty = np.array([0.80, 0.86, 0.90, 0.94, 0.99])
+    a = difficulty + np.array([0.0010, 0.0012, 0.0009, 0.0011, 0.0008])
+    b = difficulty
+
+    val_std = float(np.std(a))
+    se = fold_paired_se(a, b)
+    assert se < val_std / 10, f"fold 対応差の SE {se:.5f} が val std {val_std:.5f} と近い"
+    assert abs((a - b).mean()) > 2 * se, "この設定では差が検出できるはず（前提の確認）"
+
+
+def test_feature_study_uses_measured_floor():
+    """`feature_study` が固定閾値ではなく実測した床で判定すること。
+
+    旧実装の ±0.0003 / +0.001 は指標非依存の絶対値で、ΔOOF 自身の seed 間ばらつき
+    （実測 SD 0.0011）の 1/4 しかなかった。**完全に無関係な列が seed 次第で
+    「🔶 採用検討」「⬜ ノイズ範囲」「❌ 棄却」の 3 判定すべてを出す。**
+    実際、合成データで無関係な列の ΔOOF は +0.00081 になり、
+    旧閾値なら「採用検討」と判定されていた（新しい床では z=+0.33 で「測れていない」）。
+    """
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "paired_se" in src and "fold_paired_se" in src
+    assert "min_detectable_difference" in src
+    for old in ("delta > 0.001", "delta > 0.0003", "delta > -0.0003"):
+        assert old not in src, f"固定閾値 {old} が残っている"
+
+
+def test_pub_oof_gap_guard_carries_information(tmp_path, monkeypatch):
+    """Public 過剰浮上ガードが、帰無条件と真の危険を区別できること。
+
+    修正前は基準線が**全提出の中央値**だったため、検知したい系統差そのものが
+    基準線に吸収されていた。モンテカルロ（20,000 回）で帰無条件 93.1% /
+    真に危険な条件 92.9% と**発火率がほぼ同じ** —— この警告は情報を持っていなかった。
+    さらに閾値 0.0005 が LB のノイズ床（実測 0.002 前後）より小さく、
+    純粋なノイズで 84〜97% 発火していた。
+    """
+    import csv as _csv
+    import numpy as np
+    from src import experiment as ex
+
+    def build(gap_fn, lb_se=0.002, n=25, seed=0):
+        rng = np.random.default_rng(seed)
+        log = tmp_path / f"log_{gap_fn.__name__}_{seed}.csv"
+        with open(log, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+            w.writeheader()
+            for i in range(n):
+                lb = 0.97 + gap_fn(i) + rng.normal(0, lb_se)
+                w.writerow({"experiment_id": f"{i:03d}", "oof_score": "0.97000",
+                            "submit_score": f"{lb:.5f}"})
+        return log
+
+    def flat(i):
+        return 0.0
+
+    def constant_offset(i):
+        return 0.004        # 5-fold OOF vs full-train test の**正当な**オフセット
+
+    def drift(i):
+        return 0.0 if i < 15 else 0.006      # 後から浮く = 検知したい形
+
+    fired = {}
+    for fn in (flat, constant_offset, drift):
+        hits = 0
+        for seed in range(12):
+            monkeypatch.setattr(ex, "LOG_CSV_PATH", build(fn, seed=seed))
+            hits += ex._check_pub_oof_gap_guard() is not None
+        fired[fn.__name__] = hits / 12
+
+    assert fired["flat"] <= 0.25, f"帰無条件で鳴りすぎ（{fired['flat']:.0%}）"
+    assert fired["constant_offset"] <= 0.25, \
+        f"正当な一定オフセットで鳴っている（{fired['constant_offset']:.0%}）"
+    assert fired["drift"] >= 0.6, f"後から浮いたのに鳴らない（{fired['drift']:.0%}）"
+
+
+def test_fold_scores_are_recorded_for_paired_comparison():
+    """fold ごとの val スコアが log.csv に残ること（対応差の床を出すのに要る）。"""
+    from src.experiment import LOG_CSV_COLUMNS
+
+    assert "fold_val_scores" in LOG_CSV_COLUMNS
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    assert '";".join(_fmt(v) for v in self._fold_val_scores)' in src
+    assert "fold_paired_se" in src, "診断が fold 対応差の床を使っていない"
+    assert "abs(d) < val_std" not in src, "val std を床に使う旧判定が残っている"

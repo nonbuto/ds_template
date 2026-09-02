@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 21:31:32
+- **記録時刻**: 2026-09-02 21:45:55
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 3 件 / HEAD: 85bda2f test: テストを字面 grep から振る舞い検証へ作り直し、変異注入を常設する（L-30）
+- **git**: `main` / 未コミット 10 件 / HEAD: abef1f1 docs: config 設定 5 件の未文書化を解消し、再発を検知する C16 を追加
 <!-- END:auto-snapshot -->

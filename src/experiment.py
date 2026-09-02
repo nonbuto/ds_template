@@ -46,6 +46,7 @@ LOG_CSV_COLUMNS = [
     "cv_train_std",
     "cv_val_mean",
     "cv_val_std",
+    "fold_val_scores",   # fold ごとの val スコア（";" 区切り）。**対応差の床を出すのに要る**
     "oof_score",
     "submit_score",
     "lb_rank",
@@ -245,6 +246,38 @@ def _check_inference_artifacts_window(window: int = INFER_GUARD_WINDOW) -> Optio
     )
 
 
+def _previous_fold_scores(exclude_id: Optional[str] = None,
+                          model: Optional[str] = None,
+                          features: Optional[str] = None) -> Optional[list[float]]:
+    """比較可能な直近の実験の fold ごとの val スコアを返す。無ければ None。
+
+    **同じ fold で比べた差**の標準誤差を出すために要る（`src/noise.py` の `fold_paired_se`）。
+    fold 平均と `cv_val_std` だけでは、fold の難易度差が相殺されないので床が 10 倍高く出る。
+    """
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+    for row in reversed(rows):
+        if exclude_id and (row.get("experiment_id") or "").strip() == exclude_id:
+            continue
+        if model is not None and (row.get("model") or "").strip() != model:
+            continue
+        if features is not None and (row.get("features") or "").strip() != features:
+            continue
+        raw = (row.get("fold_val_scores") or "").strip()
+        if not raw:
+            continue
+        try:
+            return [float(v) for v in raw.split(";") if v.strip()]
+        except ValueError:
+            continue
+    return None
+
+
 def _previous_experiment_scores(exclude_id: Optional[str] = None,
                                 model: Optional[str] = None,
                                 features: Optional[str] = None) -> Optional[float]:
@@ -378,20 +411,70 @@ def _check_pub_oof_gap_guard(window: int = PUB_OOF_GAP_WINDOW) -> Optional[str]:
     if len(values) < window:
         return None       # 基準線を引くだけの提出数がまだ無い
 
-    baseline = float(np.median(values))
-    limit = baseline + PUB_OOF_GAP_THRESHOLD
-    recent = [(i, g) for i, g in scored[-window:] if g is not None and g > limit]
-    if not recent:
+    # ── 基準線は「初期の安定期」で固定する ──
+    # 以前は**全提出の中央値**を基準線にしていた。これには 2 つの欠陥があった。
+    #
+    # 1. 検知したい系統差そのものが基準線に吸収される。モンテカルロ（20,000 回）で
+    #    帰無条件（真の gap=0）と真に危険な条件（全実験で gap=+0.004）の発火率が
+    #    **93.1% vs 92.9% でほぼ同じ** —— この警告は情報を持っていなかった。
+    # 2. 閾値 0.0005 が LB のノイズ床（実測 0.002 前後）より小さく、純粋なノイズで
+    #    ほぼ常に発火していた（帰無条件で 84〜97%）。アラーム疲れを作るだけ。
+    #
+    # 直したいのは「**gap が後から広がっていないか**」なので、基準線は前半で固定し、
+    # 閾値は LB のノイズ床から決める（`src/noise.py`）。
+    # 5-fold OOF と全学習相当の test 予測を比べる以上、gap には正当な系統オフセットが
+    # 常に乗る。それは初期の基準線に含まれるので、差分だけを見れば消える。
+    n_base = max(window, len(values) // 2)
+    baseline = float(np.median(values[:n_base]))
+    limit = baseline + _pub_gap_threshold(rows)
+    # **直近窓の中央値**で判定する。1 点でも超えたら鳴らす形だと、窓 5 件のうち
+    # どれか 1 つが 2σ を超える確率が積み上がって偽陽性が増える（実測 20.7%）。
+    # 見たいのは「後から系統的に浮いたか」なので、点ではなく水準で見る。
+    recent_vals = [g for _, g in scored[-window:] if g is not None]
+    if len(recent_vals) < window or float(np.median(recent_vals)) <= limit:
         return None
+    recent = [(i, g) for i, g in scored[-window:] if g is not None and g > limit]
 
     lines = ", ".join(f"exp{i}({g:+.5f})" for i, g in recent)
     return (
-        f"\n⚠️  Public 過剰浮上警告（`G-TWOAXIS`）: pub_oof_gap が基準線 +{PUB_OOF_GAP_THRESHOLD} を超えました。\n"
-        f"   基準線（全 {len(values)} 提出の中央値）= {baseline:+.5f} / 閾値 = {limit:+.5f}\n"
+        f"\n⚠️  Public 過剰浮上警告（`G-TWOAXIS`）: pub_oof_gap が初期の水準から離れました。\n"
+        f"   基準線（最初の {n_base} 提出の中央値）= {baseline:+.5f} / 閾値 = {limit:+.5f}\n"
         f"   超過した実験: {lines}\n"
-        f"   → Public が OOF より浮いている＝シェイクダウンのリスク。SESSION.md に記録し、\n"
+        f"   → Public が OOF より**後から**浮いている＝シェイクダウンのリスク。SESSION.md に記録し、\n"
         f"     Final 2 でこの系統に偏らせないこと（OOF を犠牲にして gap を操作しない）"
     )
+
+
+def _pub_gap_threshold(rows: list) -> float:
+    """Public 過剰浮上の閾値。**LB のノイズ床から決める**（固定値ではない）。
+
+    `PUBLIC_TEST_ROWS` が設定されていれば解析式で床を出す。無ければ、
+    観測された gap の**前半のばらつき**を床の代理として使う
+    （後半のばらつきを混ぜると、検知したい変化そのものが閾値を押し上げる）。
+    """
+    from src.config import PUBLIC_TEST_ROWS
+    from src.noise import min_detectable_difference, single_score_se
+
+    gaps, scores = [], []
+    for r in rows:
+        try:
+            oof, lb = float(r["oof_score"]), float(r["submit_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        gaps.append(lb - oof)
+        scores.append(lb)
+
+    if PUBLIC_TEST_ROWS and scores:
+        try:
+            se = single_score_se(metric_name="auc", n=PUBLIC_TEST_ROWS,
+                                 score=float(np.median(scores)))
+            return min_detectable_difference(se)
+        except ValueError:
+            pass          # auc 以外は解析式が無いので観測ベースへ落ちる
+
+    half = gaps[: max(len(gaps) // 2, 3)]
+    observed = float(np.std(half)) if len(half) >= 3 else PUB_OOF_GAP_THRESHOLD
+    return max(min_detectable_difference(observed), PUB_OOF_GAP_THRESHOLD)
 
 
 LONG_RUN_THRESHOLD_SEC = 30 * 60   # CLAUDE.md「30分ルール」の閾値
@@ -767,6 +850,9 @@ class ExperimentTracker:
             "cv_train_std": _fmt(train_std),
             "cv_val_mean": _fmt(val_mean),
             "cv_val_std": _fmt(val_std),
+            # fold 平均だけでは「同じ fold で比べた差のばらつき」が出せない。
+            # 生の fold スコアを残すことで、次の実験が対応差の SE を計算できる（`src/noise.py`）
+            "fold_val_scores": ";".join(_fmt(v) for v in self._fold_val_scores),
             "oof_score": f"{oof_score:.5f}" if oof_score is not None else "",
             "submit_score": "",          # /ds-kaggle-submit スキルが追記
             "lb_rank": "",               # /ds-kaggle-submit スキルが追記
@@ -834,18 +920,30 @@ class ExperimentTracker:
 
         # CV 内部診断（`G-DIAG`）。OOF/LB だけで判断させないための常設表示。
         if val_std > 0:
-            print(
-                f"\n🔍 CV内部診断（指針#31）\n"
-                f"  fold間 val std = {val_std:.5f}\n"
-                f"  → **前実験との OOF 差がこの std を下回るなら、その差は「測れていない」**"
-            )
+            print(f"\n🔍 CV内部診断（`G-DIAG`）\n"
+                  f"  fold間 val std = {val_std:.5f}（CV 設計の安定性。**床ではない**）")
             if prev is None:
                 print("     （同条件〔同じモデル・特徴量セット〕の直近実験が無いため ΔOOF は出しません）")
-            if prev is not None and oof_score is not None:
-                d = oof_score - prev
-                verdict = ("判別不能（std 未満）" if abs(d) < val_std
-                           else "std を超える差")
-                print(f"     前実験 OOF={prev:.5f} → 今回 {oof_score:.5f}  ΔOOF={d:+.5f}  … {verdict}")
+            elif oof_score is not None:
+                # **床は fold 対応差の標準誤差で出す。** `cv_val_std` を床にしてはいけない ——
+                # それは「fold ごとの難易度の差」を主成分に含み、同じ fold で 2 つを比べれば
+                # 相殺する成分。実測では val std 0.01251 に対し正しい床は 0.00124（**10 倍**）で、
+                # 実在する改善を体系的に「判別不能」と切り捨てていた。
+                # これが L-19（個別 Δ≈0 が 13 系統累積すると確定的な正の差になった）の説明。
+                from src.noise import fold_paired_se, verdict as noise_verdict
+
+                d = (oof_score - prev) * (1 if greater_is_better() else -1)
+                prev_folds = _previous_fold_scores(exclude_id=self._experiment_id or "",
+                                                   model=self.model, features=self.features)
+                se = (fold_paired_se(self._fold_val_scores, prev_folds)
+                      if prev_folds and len(prev_folds) == len(self._fold_val_scores)
+                      else float("nan"))
+                print(f"     前実験 OOF={prev:.5f} → 今回 {oof_score:.5f}  ΔOOF={d:+.5f}")
+                if se == se:      # NaN でない
+                    print(f"     fold対応差の床: 1σ={se:.5f}  → {noise_verdict(d, se)}")
+                else:
+                    print("     fold対応差の床: 算出不可（前実験の fold スコアが無い/fold 数が違う）"
+                          "\n     → 行単位で測るなら src.noise.paired_se(y, oof_new, oof_prev)")
         if train_val_gap > 0.01:
             print(
                 "  ⚠️ train−val 乖離が大きい。正則化に飛びつく前に、"

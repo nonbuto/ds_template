@@ -37,6 +37,8 @@ N_SPLITS = 5
 # "val" = 検証 fold をそのまま使う（速いが、木の本数がその fold に合わせて選ばれ **OOF が楽観側に寄る**）
 EARLY_STOPPING_ON = "inner"
 EARLY_STOPPING_INNER_SIZE = 0.15
+PUBLIC_TEST_ROWS: int | None = None       # Public LB の行数（分かればノイズ床を解析式で出せる）
+                                          # 例: test 全体 × Public 比率。/ds-kickoff で確認する
 DAILY_SUBMISSION_LIMIT = 10               # Kaggle の 1 日あたり提出上限（UTC 00:00 リセット）
                                           # コンペにより 5 のこともある。/ds-kickoff で確認して更新する
 
