@@ -10,18 +10,15 @@ SSoT 原則を守れているかを機械的に検証する。
 
 使い方:
     uv run python -m scripts.harness.doc_audit                    # 検査
-    uv run python -m scripts.harness.doc_audit --baseline-write   # 現状をベースラインとして保存
 """
 
 import argparse
 import hashlib
-import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
-BASELINE_PATH = ROOT / "experiments" / "doc_audit_baseline.json"
 
 # ── 4 層の定義 ──────────────────────────────────────────────
 ALWAYS_LOADED = ["CLAUDE.md"] + sorted(
@@ -297,6 +294,10 @@ def check(results: list[tuple[str, str, str]]) -> None:
     # **機械的に**保証している（指示ではなく道具で縛る）。ここが緩むと保証が消えるので、
     # 読み取り専用であるべきエージェントに Bash が渡っていないかを検査する。
     READONLY_AGENTS = {"fe-ideator", "experiment-reviewer"}
+    # 期待するエージェント一覧の定義元。**追加したらここにも足す** —— そうしないと
+    # 「消えても気づかない」状態に戻る（LOW-8 の再発防止）。
+    AGENT_NAMES_EXPECTED = {"fe-ideator", "experiment-reviewer",
+                            "blocker-investigator", "kaggle-researcher"}
     ALLOWED_TOOLS = {"Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"}
     agent_issues = []
     agent_files = sorted(ROOT.glob(AGENT_GLOB))
@@ -322,7 +323,22 @@ def check(results: list[tuple[str, str, str]]) -> None:
             agent_issues.append(f"{ap.name}: 想定外の tools {sorted(tools - ALLOWED_TOOLS)}")
         if ap.stem in READONLY_AGENTS and "Bash" in tools:
             agent_issues.append(f"{ap.name}: 読み取り専用のはずが Bash を持っている")
-    CHECKED["C13"] = len(agent_files)
+    # **文書が名指しするエージェントが実在するか**も見る。ファイル側だけを検査していると、
+    # エージェントを 1 つ消しても「残った分は全部正しい」で ✅ のまま通る
+    # （テストも glob の結果を回すだけなので、入力が消えれば検査項目ごと消える）。
+    # 参照する側から見れば「消えたこと」が検知できる。
+    known = {ap.stem for ap in agent_files}
+    referenced: set[str] = set()
+    for rel, text in _iter_docs():
+        for name in re.findall(r"`([a-z][a-z0-9-]+)`", text):
+            if name in known or name in AGENT_NAMES_EXPECTED:
+                referenced.add(name)
+    for missing in sorted(AGENT_NAMES_EXPECTED - known):
+        agent_issues.append(f"{missing}: 文書が参照しているのに .claude/agents/ に定義が無い")
+    for orphan in sorted(known - referenced):
+        agent_issues.append(f"{orphan}: どの文書からも参照されていない（存在が伝わらない）")
+
+    CHECKED["C13"] = len(agent_files) + len(AGENT_NAMES_EXPECTED)
     results.append(("ERROR" if agent_issues else "OK", "C13 エージェント定義",
                     f"{len(agent_files)} 件"
                     + ("\n      " + "\n      ".join(agent_issues) if agent_issues else "")))
@@ -416,17 +432,10 @@ def check(results: list[tuple[str, str, str]]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--baseline-write", action="store_true", help="現状をベースラインとして保存する")
-    args = ap.parse_args()
-
-    if args.baseline_write:
-        snap = {rel: {"lines": len(text.splitlines()), "chars": len(text)} for rel, text in _iter_docs()}
-        snap["_critical_numbers"] = CRITICAL_NUMBERS
-        BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_PATH.write_text(json.dumps(snap, ensure_ascii=False, indent=2))
-        print(f"ベースラインを保存: {BASELINE_PATH.relative_to(ROOT)}（{len(snap)-1} ファイル）")
-        return 0
+    # 引数は取らない。以前あった `--baseline-write` は**誰も読まないファイルを書くだけ**で、
+    # コミットされたベースラインは実態から大きくずれたまま放置されていた。
+    # 「あるのに何もしていない仕組み」は、無いより悪い（あると思って安心する）。
+    argparse.ArgumentParser(description=__doc__.splitlines()[1]).parse_args()
 
     results: list[tuple[str, str, str]] = []
     check(results)

@@ -207,7 +207,16 @@ def main() -> int:
     if not is_submit_command(command):
         return 0
 
-    brief, fatal = build_brief(command)
+    # **内部エラーで素通しさせない。** 例外がそのまま出ると hook は非ゼロ終了し、
+    # 提出コマンドは確認を経ずに実行されうる。ゲートが守るのは
+    # 「取り消せない・回数制限つき・外部に見える」唯一の操作なので、
+    # 壊れたときは通すのではなく**必ず確認を求める**側に倒す。
+    try:
+        brief, fatal = build_brief(command)
+    except Exception as exc:                       # noqa: BLE001 — 全例外を確認に倒す
+        brief = (f"⚠️ 提出前チェックが内部エラーで完了しませんでした（{type(exc).__name__}: {exc}）。\n"
+                 "   ファイル名・本日の提出回数・残り枠を手で確認してから実行してください。")
+        fatal = False
     decision = "deny" if fatal else "ask"
     print(json.dumps({
         "hookSpecificOutput": {

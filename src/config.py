@@ -32,6 +32,8 @@ GROUP_COL: str | None = None              # GroupKFold / StratifiedGroupKFold �
 CV_STRATEGY = "StratifiedKFold"           # StratifiedKFold / KFold / TimeSeriesSplit /
                                           # GroupKFold / StratifiedGroupKFold（src/metrics.py の get_cv）
 N_SPLITS = 5
+DAILY_SUBMISSION_LIMIT = 10               # Kaggle の 1 日あたり提出上限（UTC 00:00 リセット）
+                                          # コンペにより 5 のこともある。/ds-kickoff で確認して更新する
 
 # ===== データディレクトリ =====
 if IS_KAGGLE:

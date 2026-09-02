@@ -817,3 +817,82 @@ def test_greedy_ensemble_without_tests(capsys):
         oofs=oofs, tests={}, y=y, metric_fn=lambda a, b: float(((b > 0.5) == a).mean()))
     assert selected and ens_test is None
     assert ens_oof.shape == (200,)
+
+
+def test_agent_removal_is_detected():
+    """エージェントを 1 つ消したら doc_audit が気づくこと。
+
+    ファイル側だけを検査していると、消しても「残った分は全部正しい」で ✅ のまま通る。
+    テストも glob の結果を回すだけなので、**入力が消えれば検査項目ごと消える**。
+    参照する側（文書）から見て初めて「消えたこと」が検知できる。
+    """
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    # git clone ではなく**作業ツリーを複製する** —— clone は HEAD を取るので、
+    # 未コミットの doc_audit を検査できず「直したのにテストが落ちる」ことになる。
+    with tempfile.TemporaryDirectory() as td:
+        work = Path(td) / "repo"
+        work.mkdir()
+        for rel in ("scripts", "src", ".claude", "CLAUDE.md", "GUIDELINES.md",
+                    "CONVENTIONS.md", "PLAYBOOK.md", "README.md"):
+            srcp = ROOT / rel
+            if srcp.is_dir():
+                shutil.copytree(srcp, work / rel,
+                                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            elif srcp.exists():
+                shutil.copy2(srcp, work / rel)
+
+        (work / ".claude" / "agents" / "fe-ideator.md").unlink()
+        r = subprocess.run([sys.executable, "-m", "scripts.harness.doc_audit"],
+                           cwd=work, capture_output=True, text=True)
+        assert "fe-ideator" in r.stdout, "エージェントを消しても doc_audit が黙っている"
+
+
+def test_submit_gate_asks_when_internal_check_fails(monkeypatch):
+    """提出前チェックが内部エラーでも、素通しせず確認を求めること。
+
+    ゲートが守るのは「取り消せない・回数制限つき・外部に見える」唯一の操作なので、
+    壊れたときは通す側ではなく**確認を求める側**に倒す。
+    """
+    import io
+    import json as _json
+    import sys as _sys
+    from scripts.harness import submit_gate as g
+
+    monkeypatch.setattr(g, "build_brief",
+                        lambda cmd: (_ for _ in ()).throw(RuntimeError("kaggle CLI 異常")))
+    payload = _json.dumps({"tool_name": "Bash",
+                           "tool_input": {"command": f"{SUB} -c x -f y.csv -m t"}})
+    stdin = io.StringIO(payload)
+    stdin.isatty = lambda: False
+    monkeypatch.setattr(_sys, "stdin", stdin)
+    buf = io.StringIO()
+    monkeypatch.setattr(_sys, "stdout", buf)
+    g.main()
+    out = _json.loads(buf.getvalue())["hookSpecificOutput"]
+    assert out["permissionDecision"] == "ask"
+    assert "内部エラー" in out["permissionDecisionReason"]
+
+
+def test_submission_limit_has_single_definition():
+    """提出上限の定義元が 1 つであること（表示ごとに違う値になるのを防ぐ）。"""
+    from src.config import DAILY_SUBMISSION_LIMIT
+    from scripts.harness import deadline_status, submit_gate
+
+    assert submit_gate.DAILY_LIMIT == deadline_status.DAILY_LIMIT == DAILY_SUBMISSION_LIMIT
+    src = Path("scripts/harness/deadline_status.py").read_text(encoding="utf-8")
+    assert "DAILY_LIMIT = 10" not in src, "ハーネス側に上限が直書きされている"
+
+
+def test_viz_guard_reaches_the_conversation():
+    """ガードの警告が hook 経由で AI とユーザーに届く形で出ること。
+
+    PostToolUse の素の stdout はどちらにも届かない（トランスクリプトにしか出ない）。
+    警告を出したつもりで**誰も読んでいなかった**状態がガードの空洞化そのもの。
+    """
+    src = Path("scripts/harness/viz_guard.py").read_text(encoding="utf-8")
+    assert "systemMessage" in src, "ユーザーに届く経路が無い"
+    assert "additionalContext" in src, "AI の文脈に入る経路が無い"

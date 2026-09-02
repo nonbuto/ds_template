@@ -19,7 +19,9 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-DAILY_LIMIT = 10  # Kaggle の 1 日あたり提出上限（コンペにより異なる場合は --limit で上書き）
+# 提出上限の定義元は `src/config.py`。ここに直書きすると、コンペごとに変わる値が
+# ハーネスの中に隠れて、submit_gate の表示と食い違う（実際に 2 箇所に散っていた）。
+from src.config import DAILY_SUBMISSION_LIMIT as DAILY_LIMIT
 
 
 def read_deadline_from_competition_md() -> str | None:

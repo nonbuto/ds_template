@@ -24,6 +24,7 @@ AI の自己申告・記憶に依存しないことが唯一の設計目的。
 """
 
 import argparse
+import json
 import sys
 
 from src.experiment import (VIZ_GUARD_WINDOW, _check_diagnostic_recording_guard,
@@ -38,13 +39,29 @@ def main() -> int:
                         help="直近N実験を判定窓とする（default: %(default)s）")
     args = parser.parse_args()
 
-    for warning in (_check_visualization_guard(window=args.window),
-                    _check_diagnostic_recording_guard(),
-                    _check_inference_artifacts_window(),
-                    _check_pub_oof_gap_guard()):
-        if warning:
-            print(warning)
-    # 警告は「気づかせる」ためのものでありワークフローを止めない。常に正常終了する。
+    warnings = [w for w in (_check_visualization_guard(window=args.window),
+                            _check_diagnostic_recording_guard(),
+                            _check_inference_artifacts_window(),
+                            _check_pub_oof_gap_guard()) if w]
+    if not warnings:
+        return 0
+
+    text = "\n".join(warnings)
+    if sys.stdin.isatty():
+        # 手動起動（ターミナル）—— そのまま読ませる
+        print(text)
+        return 0
+
+    # hook として起動された場合。**PostToolUse の素の stdout は AI にもユーザーにも
+    # 届かない**（トランスクリプト表示にしか出ない）ため、警告を出したつもりで
+    # 誰も読んでいなかった —— ガードの空洞化そのもの。JSON で明示的に両方へ渡す。
+    print(json.dumps({
+        "systemMessage": text,                       # ユーザーの画面に出す
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": text,               # AI の文脈に入れる
+        },
+    }, ensure_ascii=False))
     return 0
 
 

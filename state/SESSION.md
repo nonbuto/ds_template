@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 18:58:57
-- **git**: `main` / 未コミット 9 件 / HEAD: 982e0bd fix: HP 最適化の較正・不公正比較・未予測行（深刻度1 の残り 2 件）
+- **記録時刻**: 2026-09-02 19:02:26
+- **git**: `main` / 未コミット 8 件 / HEAD: f23d1cc fix: 深刻度3 の 6 件（ΔOOF 診断の自己参照 / 値の読み取り / GroupKFold / blend の形状）
 <!-- END:auto-snapshot -->
