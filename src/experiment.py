@@ -477,6 +477,69 @@ def _pub_gap_threshold(rows: list) -> float:
     return max(min_detectable_difference(observed), PUB_OOF_GAP_THRESHOLD)
 
 
+BELOW_FLOOR_WINDOW = 8       # 「床の下での探索」を判定する直近の実験数
+
+
+def _check_below_floor_guard(window: int = BELOW_FLOOR_WINDOW) -> Optional[str]:
+    """直近の実験がすべて「LB に現れる床」の下に収まっていないか。
+
+    **これは飽和の宣言ではなく、測定の限界の通知。** 床の下で回し続けても、
+    返ってくるのは「変わらなかった」という情報にならない結果だけになる。
+    `G-PERSIST` は探索の縮小を禁じているが、**同じ土俵での微調整を続けること**は
+    探索ではない。向きを変える判断材料としてこの警告を出す。
+
+    前回コンペの実測（最終盤 47 提出）:
+        LB = OOF + 0.00112 ± 0.00007  →  床 = 0.00013
+        隣接実験の ΔOOF 中央値 = 0.000010、床を超えた隣接ペア = **0%**
+        その間 8 日・32 提出で LB 更新はゼロだった。
+    """
+    from src.metrics import greater_is_better
+    from src.noise import empirical_lb_floor
+
+    if not LOG_CSV_PATH.exists():
+        return None
+    try:
+        with open(LOG_CSV_PATH, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return None
+
+    floor = empirical_lb_floor(rows)
+    if floor is None:
+        return None
+
+    scores = []
+    for row in rows:
+        raw = (row.get("oof_score") or "").strip()
+        if raw:
+            try:
+                scores.append((row.get("experiment_id", "?"), float(raw)))
+            except ValueError:
+                continue
+    if len(scores) < window + 1:
+        return None
+
+    best_before = max(v for _, v in scores[:-window])
+    recent = scores[-window:]
+    gains = [(eid, (v - best_before) * (1 if greater_is_better() else -1)) for eid, v in recent]
+    # **「床を超えた」と数えてよいのは改善方向だけ。** 悪化の大きさで判定すると、
+    # 大きく外した実験が 1 つあるだけで「まだ測れる領域にいる」と誤認する。
+    if any(g > 0 and floor.ratio(g) >= 1 for _, g in gains):
+        return None
+
+    best_recent = max(gains, key=lambda t: t[1])
+    return (
+        f"\n⚠️  床下探索の通知（`G-CALIB-SUB`）: 直近 {window} 実験がすべて"
+        f"「LB に現れる床」の下にあります。\n"
+        f"   {floor}\n"
+        f"   直近のベスト更新幅: exp{best_recent[0]} の {best_recent[1]:+.5f}"
+        f"（床の {floor.ratio(best_recent[1]):.1f} 倍）\n"
+        f"   → **飽和ではなく測定の限界**。同じ土俵の微調整を続けても結果は情報にならない。\n"
+        f"     ①seed / fold を増やして床を下げる ②情報源を変える（`G-SOURCE`）\n"
+        f"     ③集約に切り替える（`G-CEILING`）のいずれかを選ぶこと"
+    )
+
+
 LONG_RUN_THRESHOLD_SEC = 30 * 60   # CLAUDE.md「30分ルール」の閾値
 
 
@@ -944,6 +1007,16 @@ class ExperimentTracker:
                 else:
                     print("     fold対応差の床: 算出不可（前実験の fold スコアが無い/fold 数が違う）"
                           "\n     → 行単位で測るなら src.noise.paired_se(y, oof_new, oof_prev)")
+
+                # **提出実績から測った「LB に現れるための床」**も出す。
+                # CV 上で測れることと、LB に出ることは別問題（`G-CALIB-SUB`）。
+                from src.noise import empirical_lb_floor
+
+                lb_floor = empirical_lb_floor()
+                if lb_floor is not None:
+                    ratio = lb_floor.ratio(d)
+                    tail = "  ← 床未満。LB には出ない公算が大きい" if ratio < 1 else ""
+                    print(f"     {lb_floor}\n     今回の ΔOOF はその {ratio:.1f} 倍{tail}")
         if train_val_gap > 0.01:
             print(
                 "  ⚠️ train−val 乖離が大きい。正則化に飛びつく前に、"

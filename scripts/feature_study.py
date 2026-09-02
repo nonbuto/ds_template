@@ -37,7 +37,8 @@ import numpy as np
 
 from scripts.train import run_cv, DEFAULT_PARAMS, FEATURES as BASE_FEATURES
 from src.metrics import greater_is_better
-from src.noise import fold_paired_se, min_detectable_difference, paired_se
+from src.noise import (empirical_lb_floor, fold_paired_se,
+                       min_detectable_difference, paired_se)
 from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME
 from src.experiment import ExperimentTracker
 
@@ -156,6 +157,15 @@ def main():
     floor = min_detectable_difference(se)
     z = delta / se if se > 0 else float("nan")
 
+    # **提出実績から測った床**も併記する。ブートストラップの床は「この CV の上で測れるか」、
+    # 実績床は「**LB に現れるか**」を答える。後者は分割の引き直し・分布差・Public の
+    # 標本ゆらぎを含むので、提出する価値があるかの判断ではこちらが現実の壁になる。
+    lb_floor = empirical_lb_floor()
+    lb_note = (f"{lb_floor}\n 今回の ΔOOF はその {lb_floor.ratio(delta):.1f} 倍"
+               + ("  ← 床未満。LB には出ない公算が大きい" if lb_floor.ratio(delta) < 1 else "")
+               if lb_floor else
+               "LB 反映の床: まだ測れません（OOF と LB が揃った提出が 8 件未満）")
+
     GAP_NOTABLE = 0.0005      # 過学習の兆候（gap の拡大）。効果量とは別軸で見る
 
     if abs(delta) < floor:
@@ -240,6 +250,7 @@ def main():
  [この 2 本で実測した床]（固定閾値ではない → src/noise.py）
  対応差の床 : 行 1σ={se_rows:.5f} / fold 1σ={se_folds:.5f} → 採用 1σ={se:.5f}
  判定の境界 : 2σ={floor:.5f}   z={z:+.2f}
+ {lb_note}
 
  [CV内部診断: train/val 平均・ばらつき・gap]
  Base: train={base_stats['train_mean']:.5f}±{base_stats['train_std']:.5f}  val={base_stats['val_mean']:.5f}±{base_stats['val_std']:.5f}  gap={base_stats['gap']:.5f}

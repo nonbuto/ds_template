@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 21:45:55
+- **記録時刻**: 2026-09-02 22:18:59
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 10 件 / HEAD: abef1f1 docs: config 設定 5 件の未文書化を解消し、再発を検知する C16 を追加
+- **git**: `main` / 未コミット 10 件 / HEAD: 5214763 fix: 判断の床を固定値の表から実測へ置き換える（L-31 / L-32）
 <!-- END:auto-snapshot -->

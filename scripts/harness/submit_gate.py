@@ -137,6 +137,64 @@ def _git_status() -> str:
     return f"⚠️ 未コミット {len(out.splitlines())} 件（提出前は clean が規約）"
 
 
+def _floor_lines(filename: str) -> list[str]:
+    """「この提出の OOF は、これまでのベストと比べて LB に出る大きさか」を出す。
+
+    提出枠は限られた資源で、**LB は分散の大きい観測器**。床未満の差を提出しても、
+    返ってくるのは「変わらなかった」という情報にならない結果だけ。
+    s6e8 の最終盤では**隣接実験の ΔOOF が 1 件残らず床の下**で、
+    8 日間・32 提出のあいだ LB は 1 度も更新されなかった（`G-CALIB-SUB`）。
+
+    ファイル名の命名規約 `sub_{exp_id}_{model}_{score}_{ts}.csv` から OOF を読む。
+    """
+    import csv as _csv
+
+    from src.config import EXPERIMENTS_DIR
+    from src.noise import empirical_lb_floor
+
+    m = re.search(r"_(-?\d+\.\d+)_\d{8}_\d{4}\.csv$", filename)
+    floor = empirical_lb_floor()
+    if floor is None:
+        return ["OOF 対比     : まだ床を測れません（OOF と LB が揃った提出が 8 件未満）"]
+    if not m:
+        return [f"OOF 対比     : ファイル名から OOF を読めません / {floor}"]
+
+    this_oof = float(m.group(1))
+    log = EXPERIMENTS_DIR / "log.csv"
+    best = None
+    if log.exists():
+        try:
+            with open(log, newline="") as f:
+                scored = [float(r["oof_score"]) for r in _csv.DictReader(f)
+                          if (r.get("oof_score") or "").strip()
+                          and (r.get("submit_score") or "").strip()]
+            best = max(scored) if scored else None
+        except (OSError, ValueError, KeyError):
+            best = None
+
+    out = [f"{floor}"]
+    if best is None:
+        out.append(f"OOF 対比     : 今回 {this_oof:.5f}（比較対象の提出実績なし）")
+        return out
+    from src.metrics import greater_is_better
+
+    # **改善方向に揃えてから床と比べる。** 素の差で判定すると、
+    # ベストより悪い提出が「床の 1.6 倍」として 🟢 になる（悪化の大きさを実力と取り違える）。
+    delta = (this_oof - best) * (1 if greater_is_better() else -1)
+    ratio = floor.ratio(delta)
+    cleared = delta > 0 and ratio >= 1
+    mark = "🟢" if cleared else "🟡"
+    if cleared:
+        tail = ""
+    elif delta <= 0:
+        tail = "  ← 提出済みベストを上回っていません（枠を使う価値を再考）"
+    else:
+        tail = "  ← 床未満。LB に出ない公算が大きい（枠を使う価値を再考）"
+    out.append(f"{mark} OOF 対比   : 今回 {this_oof:.5f} / 提出済みベスト {best:.5f} "
+               f"→ Δ={delta:+.5f}（床の {ratio:.1f} 倍）{tail}")
+    return out
+
+
 def build_brief(command: str) -> tuple[str, bool]:
     """提出内容の実測ブリーフを組み立てる。戻り値は (本文, 致命的エラーか)。"""
     lines: list[str] = ["Kaggle 提出の確認（数値はすべて実測値です）", ""]
@@ -155,11 +213,13 @@ def build_brief(command: str) -> tuple[str, bool]:
             fatal = True
         else:
             size_kb = abs_path.stat().st_size / 1024
-            n_rows = sum(1 for _ in abs_path.open()) - 1
+            with abs_path.open() as f:
+                n_rows = sum(1 for _ in f) - 1
             conv = "✅ 命名規約に適合" if abs_path.name.startswith("sub_") else \
                    "⚠️ submission_path() 由来ではない可能性（sub_ で始まっていない）"
             lines.append(f"対象ファイル : {abs_path.name}")
             lines.append(f"               {n_rows:,} 行 / {size_kb:,.0f} KB / {conv}")
+            lines.extend(_floor_lines(abs_path.name))
 
     # ── 本日の提出枠（UTC）──
     competition = None

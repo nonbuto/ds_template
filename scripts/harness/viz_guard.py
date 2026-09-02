@@ -8,7 +8,8 @@
     （tracker を経由しない使い捨てスクリプトが `G-DIAG` を空洞化させていないか）
   - **推論成果物ガード**: 直近 N 実験に「OOF はあるのに test 予測が無い」ものがないか
     （学習だけして推論を省くと、提出時に同じ学習をやり直すことになる → `G-STEPWISE`）
-  - **Public 過剰浮上ガード**: pub_oof_gap が基準線 +0.0005 を超えていないか（→ `G-TWOAXIS`）
+  - **Public 過剰浮上ガード**: pub_oof_gap が初期の水準から離れていないか（→ `G-TWOAXIS`）
+  - **床下探索の通知**: 直近の実験がすべて「LB に現れる床」の下に収まっていないか（→ `G-CALIB-SUB`）
 
 AI の自己申告・記憶に依存しないことが唯一の設計目的。
 
@@ -27,7 +28,8 @@ import argparse
 import json
 import sys
 
-from src.experiment import (VIZ_GUARD_WINDOW, _check_diagnostic_recording_guard,
+from src.experiment import (VIZ_GUARD_WINDOW, _check_below_floor_guard,
+                            _check_diagnostic_recording_guard,
                             _check_inference_artifacts_window,
                             _check_pub_oof_gap_guard,
                             _check_visualization_guard)
@@ -42,7 +44,8 @@ def main() -> int:
     warnings = [w for w in (_check_visualization_guard(window=args.window),
                             _check_diagnostic_recording_guard(),
                             _check_inference_artifacts_window(),
-                            _check_pub_oof_gap_guard()) if w]
+                            _check_pub_oof_gap_guard(),
+                            _check_below_floor_guard()) if w]
     if not warnings:
         return 0
 

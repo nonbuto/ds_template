@@ -1823,3 +1823,134 @@ def test_fold_scores_are_recorded_for_paired_comparison():
     assert '";".join(_fmt(v) for v in self._fold_val_scores)' in src
     assert "fold_paired_se" in src, "診断が fold 対応差の床を使っていない"
     assert "abs(d) < val_std" not in src, "val std を床に使う旧判定が残っている"
+
+
+# ──────────────────────────────────────────────────────────
+# 17. 実績から測る床（LB に現れるか）
+# ──────────────────────────────────────────────────────────
+
+def _floor_log(tmp_path, gaps, base_oof=0.9690):
+    """指定した gap 列を持つ log.csv を作る。"""
+    import csv as _csv
+    from src.experiment import LOG_CSV_COLUMNS
+
+    log = tmp_path / f"log_{len(gaps)}_{gaps[0]:.5f}.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+        w.writeheader()
+        for i, g in enumerate(gaps):
+            oof = base_oof + i * 1e-5
+            w.writerow({"experiment_id": f"{i:03d}", "model": "lgb", "features": "7f",
+                        "oof_score": f"{oof:.5f}", "submit_score": f"{oof + g:.5f}"})
+    return log
+
+
+def test_empirical_floor_measures_gap_dispersion(tmp_path):
+    """床が gap の**散らばり**から出ること（平均オフセットは床に影響しないこと）。
+
+    `gap = LB − OOF` の平均は 5-fold OOF と全学習相当の test 予測の差による
+    正当なオフセットで、毎回同じだけ乗るので差を取れば消える。
+    **閾値の情報を持つのは SD の方。**
+    """
+    import csv as _csv
+    from src.noise import empirical_lb_floor
+
+    rng = np.random.default_rng(0)
+    noise = rng.normal(0, 0.0001, 20)
+
+    def read(log):
+        with open(log, newline="") as f:
+            return empirical_lb_floor(list(_csv.DictReader(f)))
+
+    tight = read(_floor_log(tmp_path, 0.001 + noise))
+    shifted = read(_floor_log(tmp_path, 0.005 + noise))       # オフセットだけ違う
+    loose = read(_floor_log(tmp_path, 0.001 + noise * 10))    # 散らばりが 10 倍
+
+    assert abs(tight.floor - shifted.floor) < 1e-6, "平均オフセットが床を動かしている"
+    assert loose.floor > tight.floor * 5, "散らばりが床に反映されていない"
+    assert shifted.offset > tight.offset, "オフセット自体は報告されるべき"
+
+
+def test_empirical_floor_needs_enough_history(tmp_path):
+    """実績が足りないときは床を出さない（推測で数字を作らない）。"""
+    import csv as _csv
+    from src.noise import EMPIRICAL_MIN_N, empirical_lb_floor
+
+    few = _floor_log(tmp_path, [0.001] * (EMPIRICAL_MIN_N - 1))
+    with open(few, newline="") as f:
+        assert empirical_lb_floor(list(_csv.DictReader(f))) is None
+
+
+def test_below_floor_guard_fires_only_when_nothing_clears_the_floor(tmp_path, monkeypatch):
+    """直近の実験がすべて床の下なら通知し、1 件でも床を超える改善があれば黙ること。
+
+    s6e8 の最終盤では**隣接実験の ΔOOF が 1 件残らず床の下**にあり、
+    8 日・32 提出のあいだ LB は 1 度も更新されなかった。
+    「飽和した」のではなく**検出可能な大きさの差を作れていなかった**（`G-CALIB-SUB`）。
+    """
+    import csv as _csv
+    from src import experiment as ex
+
+    rng = np.random.default_rng(0)
+
+    def build(recent_gains):
+        log = tmp_path / f"g_{recent_gains[0]:.5f}_{len(recent_gains)}.csv"
+        with open(log, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+            w.writeheader()
+            for i in range(20):                       # 床を測るための実績
+                oof = 0.9690 + i * 1e-5
+                w.writerow({"experiment_id": f"{i:03d}", "oof_score": f"{oof:.5f}",
+                            "submit_score": f"{oof + 0.0011 + rng.normal(0, 0.00007):.5f}"})
+            best = 0.9690 + 19 * 1e-5
+            for j, gain in enumerate(recent_gains):    # 直近の実験（未提出でよい）
+                w.writerow({"experiment_id": f"{100 + j}", "oof_score": f"{best + gain:.5f}"})
+        return log
+
+    below = [1e-5, -2e-5, 5e-6, -1e-5, 0.0, 3e-6, -4e-5, 1e-5]     # 全部床の下
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", build(below))
+    assert ex._check_below_floor_guard() is not None, "床の下ばかりなのに通知しない"
+
+    cleared = below[:4] + [0.0020] + below[5:]                      # 1 件だけ床超えの改善
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", build(cleared))
+    assert ex._check_below_floor_guard() is None, "床を超える改善があるのに通知している"
+
+    # **悪化の大きさを「床超え」と数えない**（符号の取り違え）
+    worse = below[:4] + [-0.0050] + below[5:]
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", build(worse))
+    assert ex._check_below_floor_guard() is not None, \
+        "大きく悪化した実験を「まだ測れる領域」と誤認している"
+
+
+def test_submit_gate_reports_floor_ratio(tmp_path, monkeypatch):
+    """提出ゲートが「今回の ΔOOF は床の何倍か」を出すこと。
+
+    提出枠は限られた資源で、LB は分散の大きい観測器。床未満の差を提出しても、
+    返るのは情報にならない結果だけ。
+    """
+    import csv as _csv
+    from src import config
+    from scripts.harness import submit_gate
+
+    log = tmp_path / "log.csv"
+    from src.experiment import LOG_CSV_COLUMNS
+    rng = np.random.default_rng(0)
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+        w.writeheader()
+        for i in range(20):
+            oof = 0.9690 + i * 1e-5
+            w.writerow({"experiment_id": f"{i:03d}", "oof_score": f"{oof:.5f}",
+                        "submit_score": f"{oof + 0.0011 + rng.normal(0, 0.00007):.5f}"})
+    monkeypatch.setattr(config, "EXPERIMENTS_DIR", tmp_path)
+
+    tiny = submit_gate._floor_lines("sub_900_blend_0.96921_20260902_1200.csv")   # +0.00002
+    worse = submit_gate._floor_lines("sub_902_blend_0.96900_20260902_1200.csv")  # ベスト以下
+    high = submit_gate._floor_lines("sub_901_blend_0.97500_20260902_1200.csv")   # 大幅改善
+
+    assert any("床" in line for line in tiny)
+    assert any("🟡" in line for line in tiny), f"床未満なのに警告が出ない: {tiny}"
+    assert any("上回っていません" in line for line in worse), \
+        f"ベストより悪い提出が警告されない: {worse}"
+    assert any("🟢" in line for line in high) and not any("🟡" in line for line in high), \
+        f"床を超える改善なのに警告が出ている: {high}"

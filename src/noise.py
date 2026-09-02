@@ -9,19 +9,31 @@
 | 50,000 | 0.00101 | ±0.0001（10 倍） |
 
 表は「Hanley-McNeil 由来」と明記していたのに、その式に代入すると 0.0032 が出る。
-±0.0001 は実際には**相関 0.999 のペア差**の値で、それを単体スコアの床として掲げ、
-さらに脚注で「paired は 5-10x 小さい」と書いていたため、実効閾値が 10〜20 倍甘くなっていた。
+±0.0001 は実際には**相関 0.999 のペア差**の値で、それを単体スコアの床として掲げていた。
 
-**これが L-21（bagged paired bootstrap で OOF 有意だった 6 件が全部 LB に再現しなかった）を
-説明する。** 有意判定の床が桁で低ければ、再現しないのは当然の帰結。
+**ただし実データ（前回コンペ 165 提出）で突き合わせると、ずれ方は一様ではなかった**（`EmpiricalFloor` 参照）:
 
-床は 2 種類あり、**用途がまったく違う**:
+| 当時の閾値 | 実測床（0.00013）との比 |
+|---|---|
+| 表の見出し「突破 2σ = +0.0002」 | 1.5 倍（**妥当だった**） |
+| 脚注「paired は 5-10x 小さい」→ 0.00002〜0.00004 | 0.22 倍（甘すぎ） |
+| `feature_study` の +0.0003 | 2.2 倍（やや厳しい） |
+| `G-DIAG` の `cv_val_std` ≈ 0.01 | **80 倍**（桁違いに厳しい） |
+
+つまり問題は「全部が甘かった」ことではなく、**用途の違う 3 つの床が混在し、
+そのどれもが自分の用途に合っていなかった**こと。とくに `cv_val_std` を床にしたことで、
+実在する改善が体系的に「判別不能」に落とされていた。
+
+床は 3 種類あり、**用途がまったく違う**:
 
 - `single_score_se()` —— **1 つのスコア**が標本のゆらぎでどれだけ動くか。
   「LB 0.9710 は本当に 0.9705 より良いのか」のように、**別の観測点**と比べるときに使う。
 - `paired_se()` —— **同じ行を同じ分割で予測した 2 本**の差がどれだけ動くか。
   fold の難易度や行の当たり外れが差を取った時点で相殺するので、単体の床より 1〜2 桁小さい。
   FE の採否・モデルの優劣は**必ずこちら**で判定する。
+- `empirical_lb_floor()` —— **提出実績から測る「LB に現れるための床」**。
+  行の再抽出では再現できないもの（分割の引き直し・分布差・Public の標本ゆらぎ）を
+  すべて含むので、**「提出する価値があるか」の判断はこれが現実の壁**になる。
 
 使い方:
 
@@ -175,3 +187,100 @@ def describe_floor(y_true, pred_a, pred_b=None, *, metric_name: str | None = Non
     corr = float(np.corrcoef(np.asarray(pred_a).ravel(), np.asarray(pred_b).ravel())[0, 1])
     return (f"対応差の床: 1σ={se:.5f} / {SIGMA_MULTIPLIER:.0f}σ="
             f"{min_detectable_difference(se):.5f}（予測相関 {corr:.4f}）")
+
+
+# ──────────────────────────────────────────────────────────
+# 実績から測る床 —— ブートストラップが取りこぼす分を含む
+# ──────────────────────────────────────────────────────────
+
+EMPIRICAL_WINDOW = 20          # 床を測る直近の提出数
+EMPIRICAL_MIN_N = 8            # これ未満では床を出さない
+
+
+class EmpiricalFloor:
+    """`log.csv` の (OOF, LB) 実績から測った「LB に現れるための床」。
+
+    `gap = LB − OOF` の**散らばり**が、OOF では説明できない LB の動きの大きさ。
+    平均のオフセットは 5-fold OOF と全学習相当の test 予測の差で、これは無害
+    （毎回同じだけ乗るので、差を取れば消える）。**閾値の情報を持つのは SD の方。**
+
+    ブートストラップの床（`paired_se`）より優れている点:
+    **実測の対象が本物**なので、行の再抽出では再現できないもの——
+    CV 分割を引き直したときのばらつき、train/test の分布差、Public の標本ゆらぎ——が
+    すべて含まれる。合成では作れない数字。
+
+    前回コンペ最終盤（OOF 上位帯・n=47）での実測:
+
+        LB = OOF + 0.00112 ± 0.00007  →  床（2σ）= 0.00013
+        この帯の隣接実験の ΔOOF 中央値 = 0.000010
+        床を超えた隣接ペア = **0%**
+
+    「8 日間・32 提出で LB 更新ゼロ」は運ではなく、**検出可能な大きさの差を
+    そもそも作れていなかった**という測定結果だった。
+
+    留意: 似た提出ばかりだと散らばりは小さく出る。系統を変えたら測り直すこと。
+    """
+
+    def __init__(self, sd: float, n: int, oof_lo: float, oof_hi: float, offset: float):
+        self.sd = sd
+        self.n = n
+        self.oof_range = (oof_lo, oof_hi)
+        self.offset = offset
+
+    @property
+    def floor(self) -> float:
+        """LB に現れることを期待してよい最小の ΔOOF（2σ）。"""
+        return min_detectable_difference(self.sd)
+
+    def ratio(self, delta: float) -> float:
+        """その ΔOOF は床の何倍か。1 未満なら LB に出ない公算が大きい。"""
+        return abs(delta) / self.floor if self.floor > 0 else float("inf")
+
+    def __str__(self) -> str:
+        return (f"LB 反映の床: {self.floor:.5f}（直近 {self.n} 提出の gap SD={self.sd:.5f}、"
+                f"OOF {self.oof_range[0]:.5f}〜{self.oof_range[1]:.5f}、"
+                f"オフセット {self.offset:+.5f}）")
+
+
+def empirical_lb_floor(log_rows=None, window: int = EMPIRICAL_WINDOW,
+                       min_n: int = EMPIRICAL_MIN_N) -> "EmpiricalFloor | None":
+    """`log.csv` の実績から「LB に現れるための床」を測る。データ不足なら None。
+
+    直近 `window` 件の (OOF, LB) が揃った提出だけを見る。**古い提出を混ぜない**のは、
+    序盤の大きく違う構成を含めると散らばりが実態より大きく出るため
+    （実測: 全体 SD 0.00106 に対し、最終盤に絞ると 0.00007）。
+    """
+    import csv as _csv
+
+    if log_rows is None:
+        from src.config import EXPERIMENTS_DIR
+
+        path = EXPERIMENTS_DIR / "log.csv"
+        if not path.exists():
+            return None
+        try:
+            with open(path, newline="") as f:
+                log_rows = list(_csv.DictReader(f))
+        except OSError:
+            return None
+
+    pairs = []
+    for row in log_rows:
+        try:
+            oof = float((row.get("oof_score") or "").strip())
+            lb = float((row.get("submit_score") or "").strip())
+        except (TypeError, ValueError):
+            continue
+        pairs.append((oof, lb))
+
+    recent = pairs[-window:]
+    if len(recent) < min_n:
+        return None
+
+    gaps = np.array([lb - oof for oof, lb in recent])
+    oofs = np.array([oof for oof, _ in recent])
+    sd = float(np.std(gaps, ddof=1))
+    if not np.isfinite(sd) or sd <= 0:
+        return None
+    return EmpiricalFloor(sd=sd, n=len(recent), oof_lo=float(oofs.min()),
+                          oof_hi=float(oofs.max()), offset=float(np.mean(gaps)))
