@@ -2059,9 +2059,21 @@ def test_feature_study_includes_split_variance():
     分割 1σ=0.00341 が行 1σ=0.00243・fold 1σ=0.00126 を上回った。
     **最も見落とされやすい成分が、実は最大だった。**
     """
-    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
-    assert "--n-repeats" in src and "se_splits" in src
-    assert "np.nanmax([se_rows, se_folds, se_splits])" in src, "分割の床が採用されていない"
+    import inspect
+
+    from scripts import feature_study as fs
+
+    src = inspect.getsource(fs.main)
+    assert "--n-repeats" not in src or True      # 引数の存在は下の CLI 検査で見る
+    # **分割が揃ったらそれを床に採る**（下位と混ぜない。分割は 1 段上の不確実性）
+    assert "se = se_splits if len(per_split) >= 3" in src, "分割の床を採用していない"
+    assert "np.nanmax([se_rows, se_folds])" in src, "分割が無いときの下限を採っていない"
+
+    help_text = subprocess.run(
+        [sys.executable, "-m", "scripts.feature_study", "--help"],
+        cwd=ROOT, capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)}).stdout
+    assert "--n-repeats" in help_text, "分割を引き直す手段が CLI に無い"
 
 
 def test_zero_floor_is_not_reported_as_a_result():
@@ -2500,3 +2512,45 @@ def test_feature_study_counts_prior_tests(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(fs)
+
+
+def test_split_uncertainty_subsumes_the_lower_ones():
+    """分割由来の不確実性が、行・fold のゆらぎより 1 段上にあること。
+
+    行・fold のゆらぎは「**この分割の上で測った Δ を、どれだけ正確に測れたか**」。
+    分割をまたぐと **Δ 自体が変わる**ので、こちらは下位を内側に含む
+    （各分割の Δ は、その分割の行ノイズ込みで得た値だから）。
+
+    実測（効果ゼロの列・8 分割）: Δ = -0.00365 〜 +0.00237、分割をまたいだ SD 0.00195。
+    **同じ分割の中では Δ は 1 つの値に定まるのに、分割を変えると符号ごと動く。**
+    したがって分割が揃っているならそれを床に採り、下位を足し合わせない。
+    """
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "se = se_splits if len(per_split) >= 3" in src, \
+        "分割が揃っていても下位の床と混ぜている"
+    assert "np.nanmax([se_rows, se_folds])" in src, \
+        "分割が無いときに下位の最大を採っていない"
+
+
+def test_screening_floor_is_a_lower_bound_of_the_adoption_floor():
+    """スクリーニングの床が、採用判定の床より小さくなりうること（＝下限であること）。
+
+    実測: 1 分割 0.00243 に対し 4 分割 0.00341（**40% 大きい**）。
+    この差があるからこそ、スクリーニングで「採用推奨」と言ってはいけない。
+    """
+    import numpy as np
+
+    # 分割ごとに Δ が動く状況（効果ゼロの特徴量で実際に起きる）
+    per_split = np.array([0.00081, 0.00491, 0.01481, -0.00008])
+    se_splits = float(np.std(per_split, ddof=1) / np.sqrt(len(per_split)))
+    se_rows, se_folds = 0.00243, 0.00126
+
+    screening = float(np.nanmax([se_rows, se_folds]))
+    adoption = se_splits
+    assert adoption > screening, \
+        f"この設定では分割の床が大きいはず（採用 {adoption:.5f} / スクリーニング {screening:.5f}）"
+
+    from src.noise import min_detectable_difference
+    delta = float(per_split.mean())
+    assert abs(delta) < min_detectable_difference(adoption), \
+        "効果ゼロの列が採用判定の床を超えている（前提の確認）"

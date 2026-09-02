@@ -237,9 +237,17 @@ def main():
     se_splits = (float(np.std(per_split, ddof=1) / np.sqrt(len(per_split)))
                  if len(per_split) > 1 else float("nan"))
 
-    # 3 つの床のうち**大きいほう**を採る。行・fold・分割は別の不確実性で、
-    # どれか 1 つだけを見ると、他に由来する差を「測れた」と誤認する。
-    se = float(np.nanmax([se_rows, se_folds, se_splits]))
+    # ── 3 つの床は同格ではない ──
+    # 行・fold のゆらぎは「**この分割の上で測った Δ を、どれだけ正確に測れたか**」。
+    # 分割をまたぐと **Δ 自体が変わる**ので、こちらは 1 段上の不確実性で、
+    # 下位のゆらぎを内側に含んでいる（各分割の Δ は、その分割の行ノイズ込みで得た値だから）。
+    #
+    # 実測（効果ゼロの列・8 分割）: Δ = -0.00365 〜 +0.00237、分割をまたいだ SD 0.00195。
+    # 同じ分割の中では Δ は 1 つの値に定まるのに、分割を変えると符号ごと動く。
+    #
+    # したがって**分割が揃っているならそれを床に採る**（下位を足し合わせない）。
+    # 分割が 1 回しかないときは下位しか無いので、その最大値を採り「下限」と明示する。
+    se = se_splits if len(per_split) >= 3 else float(np.nanmax([se_rows, se_folds]))
     split_deltas = (", ".join(f"{d:+.5f}" for d in per_split) if len(per_split) > 1
                     else "（--n-repeats 2 以上で分割を引き直せます）")
     floor = min_detectable_difference(se)
