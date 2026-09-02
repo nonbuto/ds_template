@@ -28,6 +28,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import os
+
 import numpy as np
 
 from src.config import OOF_DIR
@@ -84,20 +86,42 @@ class FoldCache:
         return self.dir / f"{kind}_{self.tag}_s{self.seed}_f{fold}.npy"
 
     def load(self, fold: int) -> Optional[tuple[np.ndarray, np.ndarray]]:
-        """保存済みなら `(val 予測, test 予測)` を返す。無ければ None。"""
+        """保存済みなら `(val 予測, test 予測)` を返す。無ければ None。
+
+        **壊れたファイルは「無い」として扱う。** このモジュールの存在理由は
+        「kill・クラッシュ・打ち切りで fold の計算が失われるのを防ぐ」ことなのに、
+        保存の最中に落ちると中途半端な .npy が残り、次の `--resume` が
+        `ValueError: EOF: reading array header` で落ちていた（復旧手段は手動削除だけ）。
+        **自分が守るはずの事故で自分が壊れる**のは避ける。
+        """
         if not self.enabled:
             return None
         va, te = self._path(fold, "val"), self._path(fold, "test")
-        if va.exists() and te.exists():
+        if not (va.exists() and te.exists()):
+            return None
+        try:
             return np.load(va), np.load(te)
-        return None
+        except (ValueError, OSError, EOFError) as exc:
+            print(f"  ⚠️ foldcache[{self.tag}] fold {fold} が壊れています（{type(exc).__name__}）。"
+                  "この fold は学習し直します")
+            for path in (va, te):
+                path.unlink(missing_ok=True)
+            return None
 
     def save(self, fold: int, val_pred: np.ndarray, test_pred: np.ndarray) -> None:
-        """fold の予測を保存する。**fold ループの中で毎回呼ぶこと。**"""
+        """fold の予測を保存する。**fold ループの中で毎回呼ぶこと。**
+
+        一時ファイルに書いてから `os.replace` で差し替える（`csvlock` と同じ理由）。
+        `np.save` は非原子的なので、途中で落ちると壊れたファイルが「存在する」状態で残る。
+        """
         if not self.enabled:
             return
-        np.save(self._path(fold, "val"), val_pred)
-        np.save(self._path(fold, "test"), test_pred)
+        for path, arr in ((self._path(fold, "val"), val_pred),
+                          (self._path(fold, "test"), test_pred)):
+            # `np.save` は拡張子が .npy でないと勝手に付け足すので、一時名も .npy で終える
+            tmp = path.with_name(f".{path.name}.tmp.npy")
+            np.save(tmp, arr)
+            os.replace(tmp, path)
 
     def completed_folds(self) -> list[int]:
         """既に計算済みの fold 番号を返す。"""

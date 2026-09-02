@@ -11,12 +11,12 @@ Stage 6移行前に必ず実施する。
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score
 import lightgbm as lgb
 
 from src.config import PROCESSED_DATA_DIR, PLOTS_DIR, RANDOM_STATE, N_SPLITS
-from scripts.train import FEATURES
+from src.metrics import get_cv, get_groups, needs_groups
+from scripts.train import FEATURES, _lgb_eval_kwargs, _split_for_fit, extract_importance
 
 
 def main():
@@ -35,7 +35,14 @@ def main():
     X_av = pd.concat([X_train, X_test], ignore_index=True)
     y_av = np.concatenate([np.zeros(len(X_train)), np.ones(len(X_test))])
 
-    cv = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
+    # AV は「train か test か」の二値分類なので、分割は常に層化 K-fold で固定する
+    # （コンペ側の CV_STRATEGY が TimeSeriesSplit 等でも、AV の判定には無関係）。
+    # ただしグループがある場合は跨がせない —— 跨ぐとシフトを過大評価する。
+    cv = get_cv(strategy="StratifiedGroupKFold" if needs_groups() else "StratifiedKFold",
+                n_splits=N_SPLITS)
+    av_groups = None
+    if needs_groups():
+        av_groups = np.concatenate([get_groups(train), get_groups(test)])
     oof_pred = np.zeros(len(X_av))
     importances = []
 
@@ -51,18 +58,26 @@ def main():
         verbose=-1,
     )
 
-    for fold, (tr_idx, val_idx) in enumerate(cv.split(X_av, y_av)):
+    for fold, (tr_idx, val_idx) in enumerate(cv.split(X_av, y_av, groups=av_groups)):
         X_tr, X_val = X_av.iloc[tr_idx], X_av.iloc[val_idx]
         y_tr, y_val = y_av[tr_idx], y_av[val_idx]
 
+        # **early stopping は学習側の内側で行う。** 検証 fold を監視すると AV-AUC が
+        # 系統的に押し上がる。train と test を完全に同じ分布から作った帰無条件
+        # （真の AV-AUC = 0.500）での実測:
+        #     検証 fold で ES : 0.5166 / 0.5039 / 0.5176
+        #     内側分割で ES   : 0.4951 / 0.4949 / 0.4957
+        # 0.55 の閾値は超えないが、判定帯を +0.005〜+0.018 押し上げるので、
+        # 「シフトなし / 軽度シフト」の境界付近では判定が逆になる。
+        X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
         model = lgb.LGBMClassifier(**params)
-        model.fit(
-            X_tr, y_tr,
-            eval_set=[(X_val, y_val)],
-            callbacks=[lgb.early_stopping(50, verbose=False)],
-        )
+        model.fit(X_fit, y_fit, **_lgb_eval_kwargs(lgb.LGBMClassifier, X_es, y_es),
+                  callbacks=[lgb.early_stopping(50, verbose=False)])
         oof_pred[val_idx] = model.predict_proba(X_val)[:, 1]
-        importances.append(model.feature_importances_)
+        # importance は gain で取る。`feature_importances_` は LightGBM では split（分岐回数）で、
+        # **この CSV は「上位重要度特徴量を drop 検討」という破壊的な判断に使われる**。
+        # 高カーディナリティ列が上位に来やすい指標で drop を決めるのは危険（train.py と同じ定義に）。
+        importances.append(extract_importance(model, FEATURES))
 
     av_auc = roc_auc_score(y_av, oof_pred)
 

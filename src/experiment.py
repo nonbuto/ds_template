@@ -245,14 +245,22 @@ def _check_inference_artifacts_window(window: int = INFER_GUARD_WINDOW) -> Optio
     )
 
 
-def _previous_experiment_scores(exclude_id: Optional[str] = None) -> Optional[float]:
-    """log.csv の最新行（＝直前の実験）の oof_score を返す。無ければ None。
+def _previous_experiment_scores(exclude_id: Optional[str] = None,
+                                model: Optional[str] = None,
+                                features: Optional[str] = None) -> Optional[float]:
+    """比較可能な直近の実験の oof_score を返す。無ければ None。
 
     `G-DIAG`「ΔOOF が fold 間 std より小さいなら、その差は測れていない」の自動判定に使う。
 
     `exclude_id` は**今まさに書き込んだ自分の行**を除くためのもの。以前はこの関数を
     行の書き込み**後**に呼んでいたため、直前の実験ではなく自分自身を拾い、
     **ΔOOF が常に ±0.00000 と表示されていた**（診断が常に「判別不能」を出す）。
+
+    `model` / `features` を渡すと**条件が揃う実験だけ**を比較相手にする。
+    以前は「最後に oof_score が入っている行」を無条件に取っていたため、
+    CatBoost の直後に LightGBM を回すと**異種モデル間の差が「ΔOOF」として表示された**。
+    診断機構そのものが `G-FAIR` 違反（条件の揃わない比較）を作っていた。
+    条件が揃う行が無ければ None を返す —— 比較しないほうが、誤った比較より良い。
     """
     if not LOG_CSV_PATH.exists():
         return None
@@ -263,6 +271,10 @@ def _previous_experiment_scores(exclude_id: Optional[str] = None) -> Optional[fl
         return None
     for row in reversed(rows):
         if exclude_id and (row.get("experiment_id") or "").strip() == exclude_id:
+            continue
+        if model is not None and (row.get("model") or "").strip() != model:
+            continue
+        if features is not None and (row.get("features") or "").strip() != features:
             continue
         raw = (row.get("oof_score") or "").strip()
         if not raw:
@@ -722,10 +734,15 @@ class ExperimentTracker:
             arr = arr[~np.isnan(arr)]
             return float(arr.std()) if arr.size else float("nan")
 
-        train_mean = _mean(self._fold_train_scores) if self._fold_train_scores else 0.0
-        train_std = _std(self._fold_train_scores) if self._fold_train_scores else 0.0
-        val_mean = _mean(self._fold_val_scores) if self._fold_val_scores else 0.0
-        val_std = _std(self._fold_val_scores) if self._fold_val_scores else 0.0
+        # **fold スコアを 1 度も記録しなかった実験は「0.00000」ではなく NaN。**
+        # 以前は空リストのとき 0.0 を渡していたため、`_fmt()` の NaN → 空欄という対策に
+        # 到達する前に無効化され、`log_fold_scores` を呼ばない実験が
+        # 診断記録ガードに「記入済み」と数えられていた（実測で 100% すり抜け）。
+        # しかも画面には**測っていない 0.00000 が診断値として表示される**。
+        train_mean = _mean(self._fold_train_scores)
+        train_std = _std(self._fold_train_scores)
+        val_mean = _mean(self._fold_val_scores)
+        val_std = _std(self._fold_val_scores)
 
         if _MLFLOW_AVAILABLE:
             mlflow.log_metric("cv_train_mean", train_mean)
@@ -769,7 +786,8 @@ class ExperimentTracker:
             "learning": "",              # /ds-kaggle-submit スキルが記録
         }
         # 直前の実験のスコアは**自分の行を書く前に**読む（書いた後だと自分自身を拾う）
-        prev = _previous_experiment_scores(exclude_id=row["experiment_id"])
+        prev = _previous_experiment_scores(exclude_id=row["experiment_id"],
+                                           model=self.model, features=self.features)
 
         # 同じ experiment_id の行（start_run が確保した行、または /ds-new-experiment の
         # 予約行）があれば、追記ではなく**その行を上書き**する。目的・成功基準・撤退基準は
@@ -825,6 +843,8 @@ class ExperimentTracker:
                 f"  fold間 val std = {val_std:.5f}\n"
                 f"  → **前実験との OOF 差がこの std を下回るなら、その差は「測れていない」**"
             )
+            if prev is None:
+                print("     （同条件〔同じモデル・特徴量セット〕の直近実験が無いため ΔOOF は出しません）")
             if prev is not None and oof_score is not None:
                 d = oof_score - prev
                 verdict = ("判別不能（std 未満）" if abs(d) < val_std

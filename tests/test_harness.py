@@ -1224,3 +1224,102 @@ def test_optuna_study_name_includes_condition_hash(tmp_path):
 
     src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
     assert "_signature_hash(" in src and "study_name = f\"{args.model}_{args.tag}_{sig}\"" in src
+
+
+# ──────────────────────────────────────────────────────────
+# 14. 自分が守るはずの事故で自分が壊れないこと
+# ──────────────────────────────────────────────────────────
+
+def test_foldcache_survives_corrupted_file(tmp_path, capsys):
+    """保存中に落ちて壊れた .npy を「無い」として扱うこと。
+
+    このモジュールの存在理由は「kill・クラッシュで fold の計算が失われるのを防ぐ」ことなのに、
+    保存の最中に落ちると中途半端な .npy が残り、次の `--resume` が
+    `ValueError: EOF: reading array header` で落ちていた（復旧手段は手動削除だけ）。
+    """
+    import numpy as np
+    from src.utils.foldcache import FoldCache
+
+    c = FoldCache(tag="t", seed=42, n_splits=3, cache_dir=tmp_path)
+    c.save(0, np.ones((4, 2)), np.ones((2, 2)))
+    assert c.load(0) is not None
+
+    p = c._path(0, "test")
+    p.write_bytes(p.read_bytes()[:20])          # 保存中クラッシュを再現
+    assert c.load(0) is None, "壊れたキャッシュで例外を投げている"
+    assert c.completed_folds() == [], "report() が落ちる"
+
+
+def test_foldcache_save_is_atomic(tmp_path):
+    """保存が一時ファイル + os.replace であること（中途半端な .npy を残さない）。"""
+    import numpy as np
+    from src.utils.foldcache import FoldCache
+
+    c = FoldCache(tag="t", seed=1, n_splits=2, cache_dir=tmp_path)
+    c.save(0, np.arange(6).reshape(3, 2), np.arange(4).reshape(2, 2))
+    leftovers = [f.name for f in tmp_path.iterdir() if "tmp" in f.name]
+    assert not leftovers, f"一時ファイルが残っている: {leftovers}"
+    src = Path("src/utils/foldcache.py").read_text(encoding="utf-8")
+    assert "os.replace(tmp, path)" in src
+
+
+def test_unmeasured_diagnostics_are_blank_not_zero(tmp_path, monkeypatch):
+    """fold スコアを 1 度も記録しない実験が、診断列に 0.00000 を書かないこと。
+
+    以前は空リストのとき 0.0 を渡していたため、`_fmt()` の NaN → 空欄という対策に
+    到達する前に無効化され、`log_fold_scores` を呼ばない実験が診断記録ガードに
+    **「記入済み」と数えられていた**（実測 100% すり抜け）。
+    しかも画面には測っていない 0.00000 が診断値として表示されていた。
+    """
+    import numpy as np
+    from src import experiment as ex
+
+    assert ex._fmt(float("nan")) == ""
+    arr = np.asarray([], dtype=float)
+    assert np.isnan(float(arr.mean()) if arr.size else float("nan"))
+
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    body = src.split("def end_run")[1].split("\n    def ")[0]
+    assert "if self._fold_train_scores else 0.0" not in body, \
+        "測っていない診断値に 0.0 を入れている"
+
+
+def test_delta_oof_compares_same_conditions(tmp_path, monkeypatch):
+    """ΔOOF の比較相手が同条件（同じモデル・特徴量セット）に限られること。
+
+    以前は「最後に oof_score が入っている行」を無条件に取っていたため、
+    CatBoost の直後に LightGBM を回すと**異種モデル間の差が「ΔOOF」として表示された**。
+    診断機構そのものが `G-FAIR` 違反を作っていた。
+    """
+    import csv as _csv
+    from src import experiment as ex
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        w.writerow({"experiment_id": "001", "model": "lgb", "features": "7features",
+                    "oof_score": "0.900"})
+        w.writerow({"experiment_id": "002", "model": "cb", "features": "7features",
+                    "oof_score": "0.950"})
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
+
+    assert ex._previous_experiment_scores(model="lgb", features="7features") == 0.900
+    assert ex._previous_experiment_scores(model="xgb", features="7features") is None, \
+        "条件が揃う実験が無いのに比較相手を返した"
+
+
+def test_av_check_shares_training_protocol():
+    """AV 診断が学習側と同じ early stopping / importance の定義を使うこと。
+
+    train と test を完全に同じ分布から作った帰無条件（真の AV-AUC = 0.500）の実測:
+        検証 fold で ES : 0.5166 / 0.5039 / 0.5176
+        内側分割で ES   : 0.4951 / 0.4949 / 0.4957
+    判定帯を +0.005〜+0.018 押し上げるので、境界付近では判定が逆になる。
+    importance も split ベースだと、高カーディナリティ列が上位に来やすい指標で
+    **「上位重要度特徴量を drop 検討」という破壊的な判断**を決めることになる。
+    """
+    src = Path("scripts/av_check.py").read_text(encoding="utf-8")
+    assert "_split_for_fit" in src, "検証 fold で early stopping している"
+    assert "extract_importance" in src, "importance が split ベースのまま"
+    assert "model.feature_importances_" not in src
