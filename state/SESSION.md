@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 21:29:25
+- **記録時刻**: 2026-09-02 21:31:32
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 6 件 / HEAD: bfbb0ff fix: リーク検証の空洞・最新提出の誤選択・GroupKFold の seed 無視・整形の写経
+- **git**: `main` / 未コミット 3 件 / HEAD: 85bda2f test: テストを字面 grep から振る舞い検証へ作り直し、変異注入を常設する（L-30）
 <!-- END:auto-snapshot -->

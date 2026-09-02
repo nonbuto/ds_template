@@ -201,6 +201,31 @@ metric, cv = get_metric(), get_cv()
 > HP 最適化が学習と別の指標を最適化して誰も気づかない**状態だった。
 > `EVAL_METRIC` 等の設定もコード側から一度も読まれていなかった。
 
+### `src/config.py` の設定項目
+
+`/ds-kickoff` が埋めるもの（コンペごとに必ず確認する）:
+
+| 設定 | 意味 | 既定 |
+|---|---|---|
+| `COMPETITION` | Kaggle のコンペ slug | — |
+| `TARGET_COL` / `ID_COL` | ターゲット列 / 提出 CSV の識別子列 | `target` / `id` |
+| `PROBLEM_TYPE` | `regression` / `binary_classification` / `multiclass` | 二値 |
+| `EVAL_METRIC` | 上の対応指標から 1 つ | `auc` |
+| `CV_STRATEGY` / `N_SPLITS` | 上の対応 CV から 1 つ / fold 数 | `StratifiedKFold` / 5 |
+| `GROUP_COL` | `GroupKFold` 系で**同じ値の行を同じ fold に入れる**列名 | `None` |
+| `DAILY_SUBMISSION_LIMIT` | 1 日あたりの提出上限（**コンペにより 5 のこともある**） | 10 |
+
+学習の挙動を変えるもの（**変えたら過去の実験と OOF が比較できなくなる**）:
+
+| 設定 | 意味 | 既定 |
+|---|---|---|
+| `EARLY_STOPPING_ON` | `inner` = train fold の内側で early stopping（リークなし）／`val` = 検証 fold を監視（速いが **OOF が楽観側に寄る**。実測 AUC +0.00467） | `inner` |
+| `EARLY_STOPPING_INNER_SIZE` | `inner` のときに切り出す割合 | 0.15 |
+| `RANDOM_STATE` | 既定のシード（分割・モデル共通） | 42 |
+
+> **コンペ途中で下段を変えない。** 変えるなら、それ以前の OOF は比較対象から外すこと
+> （`G-FAIR`）。どの設定で走ったかは log.csv の `git_hash` から辿れる。
+
 ---
 
 ## コーディング規約

@@ -112,7 +112,7 @@ CHECKED: dict[str, int] = {}
 
 # チェックの総数。C11 が README の申告値と突き合わせる。
 # 以前は `len(results) + 1` で数えており、**自分より後ろに追加された検査を数え落とした**。
-TOTAL_CHECKS = 15
+TOTAL_CHECKS = 16
 
 
 def check(results: list[tuple[str, str, str]]) -> None:
@@ -414,12 +414,34 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"実態とのズレ {len(drift)} 件"
                     + ("\n      " + "\n      ".join(drift) if drift else "")))
 
+    # ── C16: config の設定項目が文書化されているか ──
+    # 設定を足したのに文書に書かないと、**存在を知られないまま既定値で使われる**。
+    # とくに学習の挙動を変える設定（EARLY_STOPPING_ON など）は、知らずに切り替えると
+    # 過去の実験と OOF が比較できなくなる（`G-FAIR`）。実際に 5 件が無記載だった。
+    config_text = (ROOT / "src" / "config.py").read_text(encoding="utf-8")
+    setting_names = sorted(set(re.findall(r"^([A-Z][A-Z0-9_]{2,})\s*(?::[^=]+)?=", config_text,
+                                          re.M)))
+    # 内部実装の詳細（パス・派生値）は対象外。ユーザーが選ぶ設定だけを見る
+    # パス定数と派生値は「ユーザーが選ぶ設定」ではないので対象外
+    # （命名は `CONVENTIONS.md#パスと命名` が別途カバーしている）
+    INTERNAL = {"MLFLOW_TRACKING_URI", "EXPERIMENT_NAME", "IS_KAGGLE"}
+    docs_blob = "\n".join(text for _, text in _iter_docs())
+    def _is_setting(name: str) -> bool:
+        return (name not in INTERNAL and not name.startswith("_")
+                and not name.endswith(("_DIR", "_MD", "_PATH")))
+
+    undocumented = [n for n in setting_names if _is_setting(n) and n not in docs_blob]
+    CHECKED["C16"] = len([n for n in setting_names if _is_setting(n)])
+    results.append(("WARNING" if undocumented else "OK", "C16 config 設定の文書化",
+                    f"{CHECKED['C16']} 件中 未記載 {len(undocumented)} 件"
+                    + ("\n      " + ", ".join(undocumented) if undocumented else "")))
+
     # ── C15: ガードの空洞検知 ──
     # 「問題 0 件」と「0 件しか検査していない」は別物。後者はガードが死んでいる状態で、
     # 表示上はどちらも ✅ になる。分母を持つチェックについて、それがゼロなら ERROR にする。
     EXPECTED_NONZERO = {"C2": "アンカー参照", "C3": "指針の ID 定義", "C6": "SSoT の語句",
                         "C11": "README の自己申告値", "C13": "エージェント定義",
-                        "C14": "文書中のコマンド"}
+                        "C14": "文書中のコマンド", "C16": "config の設定項目"}
     hollow = [f"{k}（{label}）の検査対象が 0 件 —— ガードが何も見ていない"
               for k, label in EXPECTED_NONZERO.items() if CHECKED.get(k, 0) == 0]
     if len(results) + 1 != TOTAL_CHECKS:      # 自分自身を足した数
