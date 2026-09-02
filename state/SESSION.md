@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 19:10:37
-- **git**: `main` / 未コミット 2 件 / HEAD: 041bb7a test: end-to-end スモークテストを常設する（clone 直後の一気通貫）
+- **記録時刻**: 2026-09-02 20:54:53
+- **git**: `main` / 未コミット 6 件 / HEAD: adb7ae8 docs: 第4ラウンドの教訓を L-28 / L-29 として記録し、GUIDELINES から参照する
 <!-- END:auto-snapshot -->

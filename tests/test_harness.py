@@ -522,15 +522,73 @@ def test_concurrent_experiment_ids_are_unique(tmp_path):
 
     log = tmp_path / "log.csv"
     helper = Path(__file__).parent / "_concurrent_claim.py"
-    procs = [subprocess.Popen([sys.executable, str(helper), str(log)],
+    # 各プロセスは採番後 3 秒生き続ける（学習中に相当）。採番直後に終了させると、
+    # 次のプロセスが「掴んでいたプロセスが死んだ」と見て正当に再利用してしまい、
+    # 競合の有無を判定できない。
+    procs = [subprocess.Popen([sys.executable, str(helper), str(log), "3"],
                               stdout=subprocess.PIPE, text=True) for _ in range(8)]
-    ids = [p.communicate()[0].strip().splitlines()[-1] for p in procs]
+    ids = [p.stdout.readline().strip() for p in procs]
+    for p in procs:
+        p.wait()
 
     assert len(set(ids)) == 8, f"experiment_id が重複した: {sorted(ids)}"
     import csv as _csv
     with open(log, newline="") as f:
         rows = list(_csv.DictReader(f))
     assert len(rows) == 8, f"確保した行が失われた（{len(rows)} 行）"
+
+
+def test_concurrent_claim_with_reserved_row(tmp_path):
+    """**予約行があるとき**も並行実験が別々の ID を取ること。
+
+    `/ds-new-experiment` が置いた予約行を引き継ぐ経路だけ、ID を返すだけで
+    行に印を付けていなかった。ロックを抜けた瞬間に次のプロセスが同じ予約行を見つけ、
+    8 プロセス同時で**全員が `042` を名乗った**（重複 7 件）。
+    `end_run` は同じ ID の行を上書きするので、**8 実験のうち 7 件分の記録が消える**。
+    log.csv は唯一の台帳で、git 履歴にも残らない。
+    """
+    import csv as _csv
+    import subprocess
+    import sys as _sys
+    from src.experiment import LOG_CSV_COLUMNS
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+        w.writeheader()
+        w.writerow({"experiment_id": "042", "experiment_question": "特徴量Xは効くか"})
+
+    helper = Path(__file__).parent / "_concurrent_claim.py"
+    procs = [subprocess.Popen([_sys.executable, str(helper), str(log), "3"],
+                              stdout=subprocess.PIPE, text=True) for _ in range(8)]
+    ids = [p.stdout.readline().strip() for p in procs]
+    for p in procs:
+        p.wait()
+
+    assert len(set(ids)) == 8, f"予約行を取り合った: {sorted(ids)}"
+    assert "042" in ids, "予約行が誰にも引き継がれていない"
+    with open(log, newline="") as f:
+        assert len(list(_csv.DictReader(f))) == 8
+
+
+def test_dead_process_releases_its_reservation(tmp_path, monkeypatch):
+    """掴んでいたプロセスが落ちたら、その予約行を再利用できること。
+
+    生存確認をせず「印があれば飛ばす」にすると、一度クラッシュした実験の予約行が
+    永久に使えなくなり、`/ds-new-experiment` の予約が機能しなくなる。
+    """
+    import csv as _csv
+    from src import experiment as ex
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        # 存在しない pid が掴んでいる状態（= クラッシュ後）
+        w.writerow({"experiment_id": "042", "experiment_question": "Q",
+                    "notes": f"{ex.RUNNING_MARK_PREFIX} pid=999999 — end_run で結果を書き込む）"})
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
+    assert ex._claim_experiment_id("x", "lgb", "d") == "042", "落ちた実行の予約行が再利用されない"
 
 
 def test_atomic_write_survives_reader(tmp_path):
@@ -1042,3 +1100,35 @@ def test_end_to_end_pipeline():
                        capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, f"e2e 失敗:\n{r.stdout[-3000:]}\n{r.stderr[-2000:]}"
     assert "e2e 通過" in r.stdout
+
+
+@pytest.mark.parametrize("command,expected,label", [
+    (f'bash -c "{SUB} -c x -f y.csv"', True, "bash -c で包む"),
+    (f'sh -c "{SUB} -c x -f y.csv"', True, "sh -c で包む"),
+    (f'zsh -c "cd /tmp && {SUB} -c x -f y.csv"', True, "zsh -c の中の && の後"),
+    (f"bash -c 'bash -c \"{SUB} -c x\"'", True, "入れ子の -c"),
+    (f"grep -rn '{SUB}' CONVENTIONS.md", False, "grep（クォート内は見ない）"),
+    (f'python3 -c "print(1)"  # {SUB}', False, "コメント中は実行されない"),
+    (f'{SUB} -m "閉じ忘れ', True, "解釈不能な行は安全側（確認）に倒す"),
+])
+def test_submit_gate_sees_through_shell_wrappers(command, expected, label):
+    """`bash -c "…"` の引数は文字列ではなく**実行されるコマンド**なので中身を見ること。
+
+    クォート内を見ないのは意図的（ドキュメント編集を誤検知しないため）だが、
+    `sh|bash|zsh -c` だけは例外 —— そこは実行される。17 パターンのテストに
+    `-c` ラッパーが 1 件も無く、実測で 5 パターンが素通りしていた。
+    """
+    from scripts.harness.submit_gate import is_submit_command
+    assert is_submit_command(command) is expected, label
+
+
+def test_submission_count_reports_failure_as_none():
+    """提出回数が取得できなかったとき、0 ではなく None を返すこと。
+
+    以前は `returncode` を見ずに stdout だけを数えていたため、403・トークン失効・
+    オフライン・コンペ未参加のいずれでも **「本日 0/10 使用済み」という捏造値**が
+    提出ゲートに表示されていた。ゲートの存在理由は「提示された数字が記憶であって
+    実測でなかった事故を潰す」ことなので、唯一の実測数字が嘘になるのは無いより悪い。
+    """
+    from scripts.harness.deadline_status import count_todays_submissions
+    assert count_todays_submissions("this-competition-does-not-exist-xyz-000") is None

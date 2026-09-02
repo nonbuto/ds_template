@@ -12,6 +12,7 @@ import csv
 import json
 import os
 import re
+import sys
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -435,6 +436,35 @@ def _fmt(value: float) -> str:
     return "" if value != value else f"{value:.5f}"
 
 
+RUNNING_MARK_PREFIX = "（実行中"
+
+
+def _running_mark() -> str:
+    """行を「実行中」と印す。pid を含めるのは、落ちた実行の予約行を再利用できるようにするため。"""
+    return f"{RUNNING_MARK_PREFIX} pid={os.getpid()} — end_run で結果を書き込む）"
+
+
+def _is_claimed_and_alive(notes: str) -> bool:
+    """その行を掴んでいるプロセスがまだ生きているか。
+
+    死んでいれば（クラッシュ・kill）予約行を再利用できるようにする。
+    生存確認をせずに「印があれば飛ばす」にすると、一度落ちた実験の予約行が
+    永久に使えなくなり、`/ds-new-experiment` の予約が機能しなくなる。
+    """
+    if not notes.startswith(RUNNING_MARK_PREFIX):
+        return False
+    m = re.search(r"pid=(\d+)", notes)
+    if not m:
+        return True
+    try:
+        os.kill(int(m.group(1)), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True          # 別ユーザーのプロセス = 生きている
+
+
 def _claim_experiment_id(experiment_name: str, model: str, description: str) -> str:
     """次の experiment_id を**ロック下で採番し、その場で行を確保する**。
 
@@ -456,11 +486,21 @@ def _claim_experiment_id(experiment_name: str, model: str, description: str) -> 
             has_purpose = bool((r.get("experiment_question") or "").strip())
             no_score = (not (r.get("oof_score") or "").strip()
                         and not (r.get("cv_val_mean") or "").strip())
-            if has_purpose and no_score:
-                rid = (r.get("experiment_id") or "").strip()
-                if rid:
-                    print(f"ℹ️  予約行を検出しました（experiment_id={rid}）。同じ行に結果を書き込みます")
-                    return rid
+            if not (has_purpose and no_score):
+                continue
+            # **既に別プロセスが走り出している予約行は取らない。**
+            # 以前はここで印を付けずに return していたため、ロックを抜けた瞬間に
+            # 次のプロセスが同じ予約行を見つけ、8 プロセス同時で全員が同じ ID を名乗った
+            # （実測: ['042'] × 8）。end_run は同じ ID の行を上書きするので、
+            # **8 実験のうち 7 件分の記録が消える**。log.csv は唯一の台帳で git にも残らない。
+            if _is_claimed_and_alive(r.get("notes") or ""):
+                continue
+            rid = (r.get("experiment_id") or "").strip()
+            if rid:
+                r["notes"] = _running_mark()          # ← ロック区間の中で印を付ける
+                print(f"ℹ️  予約行を検出しました（experiment_id={rid}）。同じ行に結果を書き込みます",
+                      file=sys.stderr)
+                return rid
 
         ids = [int(r["experiment_id"]) for r in rows if (r.get("experiment_id") or "").isdigit()]
         exp_id = str((max(ids) + 1) if ids else 1).zfill(3)
@@ -470,7 +510,7 @@ def _claim_experiment_id(experiment_name: str, model: str, description: str) -> 
             "experiment_name": experiment_name,
             "description": description,
             "model": model,
-            "notes": "（実行中 — end_run で結果を書き込む）",
+            "notes": _running_mark(),
         })
     return exp_id
 
@@ -749,7 +789,7 @@ class ExperimentTracker:
                 for key in ("description", "notes"):
                     if not row[key] and rows[idx].get(key):
                         row[key] = rows[idx][key]
-                if row["notes"].startswith("（実行中"):
+                if row["notes"].startswith(RUNNING_MARK_PREFIX):
                     row["notes"] = self.notes   # start_run が置いたプレースホルダは残さない
                 rows[idx] = row
                 merged_into_reserved = True

@@ -51,17 +51,40 @@ def parse_deadline(text: str) -> datetime | None:
 
 
 def count_todays_submissions(competition: str) -> int | None:
-    """`kaggle competitions submissions` から本日（UTC）の提出数を数える。"""
+    """`kaggle competitions submissions` から本日（UTC）の提出数を数える。取れなければ None。
+
+    **失敗を 0 と区別する。** 以前は `returncode` を見ずに `stdout` だけを数えていたため、
+    403・トークン失効・オフライン・コンペ未参加のいずれでも stdout が空になり、
+    **「本日 0/10 使用済み」という捏造値**が提出ゲートに表示されていた。
+    呼び出し側には `used is None`（取得失敗）の分岐が用意されているのに、そこへ到達できなかった。
+    ゲートの存在理由は「提示された数字が記憶であって実測でなかった事故を潰す」ことなので、
+    **唯一の実測数字が静かに嘘になる**のは、ゲートが無いより悪い。
+
+    数える対象は CSV の日付列のみ。行全体の部分文字列一致だと、提出メッセージに
+    日付を書いた提出が二重に数えられる。
+    """
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
-        out = subprocess.run(
+        proc = subprocess.run(
             ["kaggle", "competitions", "submissions", "-c", competition, "--csv", "--page-size", "200"],
-            capture_output=True, text=True, timeout=60,
-        ).stdout
+            capture_output=True, text=True, timeout=20,
+        )
     except (subprocess.SubprocessError, FileNotFoundError):
         return None
-    # kaggle CLI は警告行を混ぜることがあるため、日付フィールドの一致だけを数える
-    return sum(1 for line in out.splitlines() if today in line)
+    if proc.returncode != 0:
+        return None
+
+    import csv as _csv
+    import io
+
+    rows = list(_csv.reader(io.StringIO(proc.stdout)))
+    # 警告行が混ざることがあるので、ヘッダらしい行（date 列を持つ）を探す
+    for i, row in enumerate(rows):
+        lowered = [c.strip().lower() for c in row]
+        if "date" in lowered:
+            col = lowered.index("date")
+            return sum(1 for r in rows[i + 1:] if len(r) > col and r[col].strip().startswith(today))
+    return None            # CSV として解釈できなかった = 取得失敗として扱う
 
 
 SUBMISSION_CACHE = Path(__file__).resolve().parents[2] / "experiments" / ".statusline_cache.json"

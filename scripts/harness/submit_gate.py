@@ -43,6 +43,9 @@ SUBCOMMANDS = {"competitions", "c"}
 # 実行を包むだけで本体が次のトークンになるもの。透過して次を見る。
 WRAPPERS = {"uv", "run", "nohup", "time", "env", "sudo", "xargs", "command", "exec",
             "poetry", "pipenv", "do", "then", "else", "elif"}
+# `-c "…"` の引数が**そのまま実行される**シェル。クォート内は通常見ないが、
+# ここだけは中身を再帰的に検査する（`bash -c "kaggle competitions submit …"` の素通し対策）。
+SHELL_WRAPPERS = {"sh", "bash", "zsh", "dash", "ksh"}
 # shlex が演算子として返すトークン。ここでコマンド位置がリセットされる。
 OPERATORS = {";", "&", "&&", "|", "||", "(", ")", "{", "}", ";;", "\n"}
 
@@ -60,7 +63,17 @@ def is_submit_command(command: str) -> bool:
 
     **誤検知と見逃しは非対称**: 誤検知は確認を 1 回求めるだけだが、見逃しは
     無確認の提出になる。判断に迷う入力は**検知側（確認を求める）に倒す**。
+
+    クォートの中身は原則見ない（`grep 'kaggle competitions submit' doc.md` を
+    誤検知しないため）。ただし **`sh -c "…"` / `bash -c "…"` の引数だけは例外** ——
+    そこは文字列ではなく**実行されるコマンド**なので、中身を再帰的に検査する。
     """
+    return _scan(command, depth=0)
+
+
+def _scan(command: str, depth: int) -> bool:
+    if depth > 3:                              # 入れ子の暴走を防ぐ
+        return True                            # 判断できない = 安全側に倒す
     for line in command.splitlines():          # 改行もコマンド区切り
         if not line.strip():
             continue
@@ -84,6 +97,15 @@ def is_submit_command(command: str) -> bool:
                     and tokens[k + 1:k + 2] and tokens[k + 1] in SUBCOMMANDS
                     and tokens[k + 2:k + 3] == ["submit"]):
                 return True
+            # `bash -c "…"` の "…" は実行されるので、中身をもう一段見る
+            if Path(tok).name in SHELL_WRAPPERS:
+                for j in range(k + 1, len(tokens)):
+                    if tokens[j] == "-c" and j + 1 < len(tokens):
+                        if _scan(tokens[j + 1], depth + 1):
+                            return True
+                        break
+                    if tokens[j] in OPERATORS:
+                        break
             # コマンド本体が来たので、次の演算子までは引数。読み飛ばす
             while k < len(tokens) and tokens[k] not in OPERATORS:
                 k += 1
