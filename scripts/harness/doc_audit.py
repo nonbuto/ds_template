@@ -115,6 +115,27 @@ CHECKED: dict[str, int] = {}
 TOTAL_CHECKS = 16
 
 
+def _count_test_cases() -> int | None:
+    """収集されるテスト件数を pytest 自身に数えさせる。取れなければ None。
+
+    定義から近似すると `parametrize` の引数がリテラルでない場合に合わない
+    （実測: 近似 148 / 実際 160）。**申告と実測を突き合わせるのが目的**なので、
+    近似で「だいたい合っている」ことにしては意味がない。収集だけなら 0.1 秒程度。
+    """
+    import re as _re
+    import subprocess
+
+    try:
+        r = subprocess.run(["uv", "run", "pytest", str(ROOT / "tests"), "-q", "--collect-only"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=120)
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return None
+    m = _re.search(r"(\d+)\s*/\s*\d+ tests collected|(\d+) tests collected", r.stdout)
+    if not m:
+        return None
+    return int(m.group(1) or m.group(2))
+
+
 def check(results: list[tuple[str, str, str]]) -> None:
     docs = dict(_iter_docs())
     CHECKED.clear()
@@ -382,11 +403,16 @@ def check(results: list[tuple[str, str, str]]) -> None:
         actual_claude = len((ROOT / "CLAUDE.md").read_text())   # C1 と同じ「文字数」で測る
         actual_skills = len(list(ROOT.glob(SKILL_GLOB)))
         n_checks = TOTAL_CHECKS       # 定数にして順序依存をなくした
+        # テスト件数は**追加のたびに必ずずれる**数字なので、実測と突き合わせる。
+        # `pytest --collect-only` は遅いので、定義の数を数える（同じ増え方をする）。
+        actual_tests = _count_test_cases()
         claims = [
             (r"固定\s*(\d+)\s*個の数値", len(CRITICAL_NUMBERS), "C4 の実測値の個数"),
             (r"\*\*(\d[\d,]*)\s*字（-\d+%）\*\*", actual_claude, "常時ロードの文字数"),
             (r"C1-C(\d+)", n_checks, "doc_audit のチェック数"),
         ]
+        if actual_tests is not None:      # pytest が動かない環境では検査しない
+            claims.append((r"ハーネスのテスト \| \*\*(\d+)\s*件", actual_tests, "テスト件数"))
         for pattern, actual, label in claims:
             m = re.search(pattern, readme)
             if m and int(m.group(1).replace(",", "")) != actual:

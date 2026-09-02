@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 22:46:33
+- **記録時刻**: 2026-09-02 22:52:52
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 6 件 / HEAD: 8c27e2c feat: NN 系を第一級モデルにし、期間配分と系統凍結を規約化（D-2 / D-4、L-34）
+- **git**: `main` / 未コミット 4 件 / HEAD: c4cff31 feat: 定石 3 件を実装する（fold 外 TE / fold 内 pseudo / 後処理）— L-35
 <!-- END:auto-snapshot -->
