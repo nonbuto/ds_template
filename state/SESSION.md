@@ -74,7 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 22:52:52
-- **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 4 件 / HEAD: c4cff31 feat: 定石 3 件を実装する（fold 外 TE / fold 内 pseudo / 後処理）— L-35
+- **記録時刻**: 2026-09-03 08:20:25
+- **git**: `main` / 未コミット 4 件 / HEAD: b6057ec docs: v7.0 の CHANGELOG を書き、README を実測に同期（テスト件数も C11 の検査対象に）
 <!-- END:auto-snapshot -->

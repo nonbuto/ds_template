@@ -31,6 +31,22 @@ ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリ�
 sys.path.insert(0, str(ROOT))
 
 SEP = "  │  "
+def _pid_alive(pid) -> bool:
+    """そのプロセスがまだ生きているか（`job_status` と同じ判定）。"""
+    import os
+
+    if not pid:
+        return True               # pid の記録が無い古い形式は生きている扱い（表示を消さない）
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except (PermissionError, TypeError, ValueError):
+        return True
+
+
+RUNNING_DIR = ROOT / "experiments" / ".running"   # 差し替え可能にする（テスト用）
 STALE_MIN = 15   # ハートビートがこれ以上古ければ「?」を付ける
 
 
@@ -66,18 +82,25 @@ def _experiment() -> str:
 
 def _jobs() -> str:
     """実行中ジョブ（無ければ空文字＝表示しない）。"""
-    d = ROOT / "experiments" / ".running"
+    d = RUNNING_DIR
     if not d.exists():
         return ""
     files = sorted(d.glob("*.json"))
     if not files:
         return ""
 
-    now, parts, stale = datetime.now(), [], False
+    now, parts, stale, dead = datetime.now(), [], False, 0
     for p in files[:2]:                       # 表示は 2 件まで
         try:
             st = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
+            continue
+        # **プロセスが生きているものだけを「実行中」と表示する。**
+        # 異常終了すると状態ファイルが残り続け、statusline だけが何時間も
+        # 「実行中」と言い続ける（`job_status` は「プロセスが存在しない」と正しく報告するのに、
+        # 2 つのツールが同じ状態ファイルを見て食い違っていた）。
+        if not _pid_alive(st.get("pid")):
+            dead += 1
             continue
         seg = f"exp{st.get('experiment_id', p.stem)}"
         folds = st.get("folds_done")
@@ -96,8 +119,9 @@ def _jobs() -> str:
             pass
         parts.append(seg)
     if not parts:
-        return ""
-    more = f"+{len(files) - len(parts)}" if len(files) > len(parts) else ""
+        # 生きているジョブは無いが、死んだ状態ファイルが残っている場合は片付けを促す
+        return f"💀残骸{dead}" if dead else ""
+    more = f"+{len(files) - len(parts) - dead}" if len(files) - dead > len(parts) else ""
     return f"▶{'⚠' if stale else ''} {' '.join(parts)}{more}"
 
 
@@ -133,8 +157,12 @@ def _deadline_and_slots() -> str:
 
 
 def main() -> int:
+    # **端末から起動されたときは stdin を読まない。** `sys.stdin.read()` は
+    # パイプが閉じられるまで戻らないので、手で叩くと固まる（submit_gate と同じ事故）。
+    # statusLine は 30 秒ごとに走るため、ここで詰まると影響が大きい。
     try:
-        sys.stdin.read()          # hook 入力は使わないが、読み捨てて詰まりを防ぐ
+        if not sys.stdin.isatty():
+            sys.stdin.read()      # hook 入力は使わないが、読み捨てて詰まりを防ぐ
     except Exception:
         pass
     try:

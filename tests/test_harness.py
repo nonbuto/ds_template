@@ -1587,6 +1587,10 @@ def test_start_run_blocks_when_visualization_is_missing(tmp_path, monkeypatch):
     plots.mkdir()
     monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
     monkeypatch.setattr(ex, "PLOTS_DIR", plots)
+    # **実リポジトリの `experiments/.running/` を汚染しない。**
+    # ここを差し替え忘れると、テストが書いたハートビートが残り、
+    # ユーザーの statusline に「9 時間実行中の実験」として出続ける（実際に出ていた）。
+    monkeypatch.setattr(ex, "RUNNING_DIR", tmp_path / "running")
     monkeypatch.delenv("DS_SKIP_VIZ_CHECK", raising=False)
 
     tracker = ex.ExperimentTracker(experiment_name="t", model="lgb", features="1f")
@@ -2328,3 +2332,86 @@ def test_clip_uses_training_range():
     pred = np.array([5.0, 20.0, 99.0])
     out, n = clip_predictions(pred, y_train=y)
     assert out.tolist() == [10.0, 20.0, 30.0] and n == 2
+
+
+# ──────────────────────────────────────────────────────────
+# 20. 常時走る仕組みが、詰まらない・嘘をつかない
+# ──────────────────────────────────────────────────────────
+
+def test_statusline_does_not_block_on_stdin(monkeypatch, capsys):
+    """端末から起動しても stdin で固まらないこと。
+
+    `sys.stdin.read()` はパイプが閉じられるまで戻らない。statusLine は **30 秒ごとに走る**
+    ので、ここで詰まると影響が大きい（submit_gate で塞いだのと同じ事故）。
+    """
+    import io
+    import sys as _sys
+
+    from scripts.harness import statusline
+
+    class NeverEnding(io.StringIO):
+        def isatty(self):
+            return True
+
+        def read(self, *a):                      # 呼ばれたら失敗させる
+            raise AssertionError("端末から起動されたのに stdin を読んでいる")
+
+    monkeypatch.setattr(_sys, "stdin", NeverEnding())
+    assert statusline.main() == 0
+    assert capsys.readouterr().out.strip(), "何も表示していない"
+
+
+def test_statusline_does_not_show_dead_jobs(tmp_path, monkeypatch):
+    """死んだプロセスの状態ファイルを「実行中」と表示しないこと。
+
+    異常終了すると状態ファイルが残り続け、statusline だけが何時間も「実行中」と言い続ける。
+    実際に**テストが書いたハートビートが 9 時間「実行中」と表示されていた**。
+    `job_status` は同じファイルを見て「プロセスが存在しない」と正しく報告しており、
+    **2 つのツールが同じ状態を見て食い違っていた**。
+    """
+    import json as _json
+    import os
+
+    from scripts.harness import statusline
+
+    running = tmp_path / "running"
+    running.mkdir()
+    monkeypatch.setattr(statusline, "RUNNING_DIR", running)
+
+    dead = {"experiment_id": "005", "started_at": "2020-01-01 00:00:00",
+            "updated_at": "2020-01-01 00:00:00", "folds_done": 0, "pid": 999999}
+    (running / "005.json").write_text(_json.dumps(dead))
+    out = statusline._jobs()
+    assert "exp005" not in out, f"死んだジョブを実行中として表示している: {out!r}"
+    assert "残骸" in out, f"残骸の存在を伝えていない: {out!r}"
+
+    alive = dict(dead, experiment_id="006", pid=os.getpid())
+    (running / "006.json").write_text(_json.dumps(alive))
+    out2 = statusline._jobs()
+    assert "exp006" in out2, f"生きているジョブが表示されない: {out2!r}"
+
+
+def test_tests_do_not_pollute_the_real_running_dir():
+    """テストが実リポジトリの `experiments/.running/` にハートビートを残さないこと。
+
+    `start_run` を呼ぶテストで `RUNNING_DIR` を差し替え忘れると、
+    ユーザーの statusline に「何時間も実行中の実験」として出続ける（実際に出ていた）。
+    """
+    src = Path("tests/test_harness.py").read_text(encoding="utf-8")
+    body = src.split("def test_start_run_blocks_when_visualization_is_missing")[1]
+    body = body.split("\ndef ")[0]
+    assert 'monkeypatch.setattr(ex, "RUNNING_DIR"' in body, \
+        "start_run を呼ぶテストが実 .running を汚染する"
+
+
+def test_mutation_check_does_not_touch_the_working_tree():
+    """変異注入が作業ツリーを書き換えないこと。
+
+    最初の実装は `ROOT / rel` を直接書き換えていた。`try/finally` で戻してはいたが、
+    **中断されると変異が残り**（実際に 1 回発生）、実行中の数分間は `src/*.py` が
+    壊れた状態になる。その間に長時間の学習や並行して読むエージェントが同じファイルを読む。
+    """
+    src = Path("tests/_mutation_check.py").read_text(encoding="utf-8")
+    assert "shutil.copytree(ROOT, work" in src, "複製せずに変異させている"
+    assert "p = work / rel" in src, "作業ツリーのファイルを直接指している"
+    assert "ROOT / rel" not in src
