@@ -34,7 +34,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
 | `doc_audit` のチェック | **C1-C16**（C4 は**固定 37 個の数値**の保存、C12 は指針の索引と本文、C13 はエージェント定義、C14 は文書中のコマンド、C15 は**ガード自身が空洞化していないか**、C16 は config 設定の文書化を検査） |
 | 規律の機械化 | hook 6 種 + statusLine + ガード 7 種 + サブエージェント 4 種（調査・提案・審査のみ／`tools` で学習実行を封じる） |
-| ハーネスのテスト | **164 件**（うち `slow` 2 件: e2e パイプライン / 変異注入）。`uv run pytest` |
+| ハーネスのテスト | **170 件**（うち `slow` 2 件: e2e パイプライン / 変異注入）。`uv run pytest` |
 | 判断の床 | 固定値の表ではなく `src/noise.py` が**その場で実測**する（行・fold・分割・提出実績の 4 経路） |
 
 > この表の数値は `uv run python -m scripts.harness.doc_audit` の C11 が実態と突き合わせる。

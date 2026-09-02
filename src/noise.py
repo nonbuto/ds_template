@@ -291,3 +291,31 @@ def empirical_lb_floor(log_rows=None, window: int = EMPIRICAL_WINDOW,
         return None
     return EmpiricalFloor(sd=sd, n=len(recent), oof_lo=float(oofs.min()),
                           oof_hi=float(oofs.max()), offset=float(np.mean(gaps)))
+
+
+def expected_false_positives(n_tests: int, sigma: float = SIGMA_MULTIPLIER) -> float:
+    """効果ゼロの候補だけを `n_tests` 件試したとき、閾値を超える期待件数。
+
+    **床は 1 回の判定を守るもので、判定を繰り返すことは守らない。**
+    2σ（片側 ≒ 2.3%）で 87 件試せば、**効果ゼロでも期待 2.0 件**が「採用推奨」に見える。
+    前コンペの FE 仮説数がちょうど 87 件だったので、これは机上の話ではない。
+
+        87 件を 2σ で判定 → 期待 2.0 件（少なくとも 1 件出る確率 86.6%）
+        87 件を 3σ で判定 → 期待 0.12 件（同 11.1%）
+
+    使い道は「何件かは偶然だと分かった上で読む」ことで、機械的に補正することではない
+    （Bonferroni で締めると、本物の弱い改善まで落ちる）。**表示して判断材料にする。**
+    """
+    from math import erf, sqrt
+
+    one_sided = 0.5 * (1.0 - erf(sigma / sqrt(2.0)))
+    return float(n_tests * one_sided)
+
+
+def multiple_testing_note(n_tests: int) -> str:
+    """多重比較の注意を 1 行で返す（`feature_study` が毎回表示する）。"""
+    if n_tests < 5:
+        return ""
+    return (f"多重比較: これまで {n_tests} 件を計測。**効果ゼロでも** "
+            f"2σ で期待 {expected_false_positives(n_tests, 2.0):.1f} 件 / "
+            f"3σ で期待 {expected_false_positives(n_tests, 3.0):.2f} 件が閾値を超えます")

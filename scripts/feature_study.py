@@ -38,13 +38,68 @@ import numpy as np
 from scripts.train import run_cv, DEFAULT_PARAMS, FEATURES as BASE_FEATURES
 from src.metrics import greater_is_better
 from src.noise import (empirical_lb_floor, fold_paired_se,
-                       min_detectable_difference, paired_se)
+                       min_detectable_difference, multiple_testing_note, paired_se)
 from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME, RANDOM_STATE
 from src.experiment import ExperimentTracker
 
 # ──────────────────────────────────────────────
 # TODO: ベース特徴量セットは scripts/train.py の FEATURES を使う（二重管理しない）
 # ──────────────────────────────────────────────
+
+
+GAP_NOTABLE = 0.0005      # 過学習の兆候（gap の拡大）。効果量とは別軸で見る
+
+
+def build_verdict(delta: float, floor: float, z: float, gap_delta: float,
+                  is_screening: bool) -> str:
+    """ΔOOF・床・gap から判定文を作る。
+
+    **関数に切り出しているのはテストのため。** main() の中に埋めると、
+    判定の正しさを「ソースの字面」でしか検査できなくなる（L-30 で繰り返した失敗）。
+
+    `is_screening`（分割 1 回）のときは**床が下限でしかない**ので、
+    「採用推奨」とは言い切らず、次に何をするかを指定する。
+    """
+    if abs(delta) < floor:
+        # **「測れていない」と「効果がない」を混同しない。**
+        # 前者は床を下げれば測れる可能性があり、後者は測った上で差が無い。
+        base = "⬜ 測れていない（床未満）"
+        if gap_delta > GAP_NOTABLE:
+            return f"{base} — ただし gap が拡大しており過学習の兆候あり"
+        return f"{base} — seed / fold を増やすか、集約へ（G-CEILING）"
+
+    if delta > 0:
+        if is_screening:
+            if z >= 3:
+                return f"🔶 候補（z={z:+.2f}）— **`--n-repeats 3` で測り直してから採否を決める**"
+            return f"🔶 弱い候補（z={z:+.2f}）— 他の候補を先に測り、余裕があれば再計測"
+        if z >= 3:
+            return "✅ 採用推奨"
+        return "🔶 採用検討（他モデル・他 seed でも確認を推奨）"
+
+    if gap_delta > GAP_NOTABLE:
+        return "❌ 棄却（過学習傾向を伴う明確な悪化）"
+    return "❌ 棄却"
+
+
+def _count_prior_feature_tests() -> int:
+    """log.csv に残っている FE 計測の件数（`feature_study` が書いた行）を数える。
+
+    **床は 1 回の判定を守るが、判定の繰り返しは守らない。** 何件試したかを知らないと、
+    「87 件中 2 件が採用推奨」が本物なのか偶然なのか区別できない。
+    """
+    import csv as _csv
+
+    from src.config import EXPERIMENTS_DIR
+
+    path = EXPERIMENTS_DIR / "log.csv"
+    if not path.exists():
+        return 0
+    try:
+        with open(path, newline="") as f:
+            return sum(1 for r in _csv.DictReader(f) if "ΔOOF=" in (r.get("notes") or ""))
+    except OSError:
+        return 0
 
 
 def _cv_stats(result: dict) -> dict:
@@ -190,30 +245,37 @@ def main():
     floor = min_detectable_difference(se)
     z = delta / se if se > 0 else float("nan")
 
+    # ── スクリーニングと採用判定を分ける ──
+    # **分割を 1 回しか引かないと、床から最大成分が抜ける。** 実測（無関係な列）:
+    #     1 分割: 行 0.00243 / fold 0.00126 / 分割 —    → 採用 0.00243
+    #     4 分割: 行 0.00243 / fold 0.00126 / 分割 0.00341 → 採用 0.00341（**40% 大きい**）
+    # かといって常に 3〜5 回引くと FE 1 列あたりの計測時間が 3〜5 倍になり、
+    # 何十件も試す運用と両立しない。**用途で分ける**のが正解:
+    #   スクリーニング（既定 1 回）= 候補を絞る。床は**下限**でしかないと明示する
+    #   採用判定（3 回以上）      = 特徴量セットに入れる決定。分割由来の分散を床に含める
+    is_screening = len(per_split) < 3
+    mode_note = (
+        "🔍 スクリーニング判定（--n-repeats=1）"
+        "\n              この床は**下限**です（分割由来の分散を含まない。実測で最大成分になりうる）。"
+        "\n              **採用を決めるときは `--n-repeats 3` 以上で測り直すこと。**"
+        if is_screening else
+        f"✅ 採用判定（{len(per_split)} 分割で計測。分割由来の分散を床に含む）"
+    )
+
     # **提出実績から測った床**も併記する。ブートストラップの床は「この CV の上で測れるか」、
     # 実績床は「**LB に現れるか**」を答える。後者は分割の引き直し・分布差・Public の
     # 標本ゆらぎを含むので、提出する価値があるかの判断ではこちらが現実の壁になる。
+    # これまでに何件 FE を計測したかを log.csv から数える（notes に "ΔOOF=" が入る）
+    n_prior_tests = _count_prior_feature_tests()
+    mt_note = multiple_testing_note(n_prior_tests + 1)
+
     lb_floor = empirical_lb_floor()
     lb_note = (f"{lb_floor}\n 今回の ΔOOF はその {lb_floor.ratio(delta):.1f} 倍"
                + ("  ← 床未満。LB には出ない公算が大きい" if lb_floor.ratio(delta) < 1 else "")
                if lb_floor else
                "LB 反映の床: まだ測れません（OOF と LB が揃った提出が 8 件未満）")
 
-    GAP_NOTABLE = 0.0005      # 過学習の兆候（gap の拡大）。効果量とは別軸で見る
-
-    if abs(delta) < floor:
-        # **「測れていない」と「効果がない」を混同しない。**
-        # 前者は床を下げれば測れる可能性があり、後者は測った上で差が無い。
-        base_note = "⬜ 測れていない（床未満）"
-        if gap_delta > GAP_NOTABLE:
-            verdict = f"{base_note} — ただし gap が拡大しており過学習の兆候あり"
-        else:
-            verdict = f"{base_note} — seed / fold を増やすか、集約へ（G-CEILING）"
-    elif delta > 0:
-        verdict = "✅ 採用推奨" if z >= 3 else "🔶 採用検討（他モデル・他 seed でも確認を推奨）"
-    else:
-        verdict = ("❌ 棄却（過学習傾向を伴う明確な悪化）" if gap_delta > GAP_NOTABLE
-                   else "❌ 棄却")
+    verdict = build_verdict(delta, floor, z, gap_delta, is_screening)
 
     gap_warning = ""
     if gap_delta > 0.005:
@@ -283,6 +345,8 @@ def main():
  [この 2 本で実測した床]（固定閾値ではない → src/noise.py）
  対応差の床 : 行 1σ={se_rows:.5f} / fold 1σ={se_folds:.5f} / 分割 1σ={se_splits:.5f} → 採用 1σ={se:.5f}
  分割ごとのΔ: {split_deltas}
+ 計測の位置づけ: {mode_note}
+ {mt_note}
  判定の境界 : 2σ={floor:.5f}   z={z:+.2f}
  {lb_note}
 

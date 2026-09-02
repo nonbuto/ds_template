@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 08:20:25
-- **git**: `main` / 未コミット 4 件 / HEAD: b6057ec docs: v7.0 の CHANGELOG を書き、README を実測に同期（テスト件数も C11 の検査対象に）
+- **記録時刻**: 2026-09-03 08:27:15
+- **git**: `main` / 未コミット 3 件 / HEAD: bc8580c fix: 常時走る仕組みの 3 件（statusline のハング・幽霊ジョブ・変異注入の作業ツリー汚染）
 <!-- END:auto-snapshot -->

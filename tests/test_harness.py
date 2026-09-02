@@ -2415,3 +2415,88 @@ def test_mutation_check_does_not_touch_the_working_tree():
     assert "shutil.copytree(ROOT, work" in src, "複製せずに変異させている"
     assert "p = work / rel" in src, "作業ツリーのファイルを直接指している"
     assert "ROOT / rel" not in src
+
+
+# ──────────────────────────────────────────────────────────
+# 21. 床が「1 回の判定」しか守らないことへの対処
+# ──────────────────────────────────────────────────────────
+
+def test_screening_and_adoption_are_distinguished():
+    """分割 1 回の計測を「採用推奨」と言い切らないこと。
+
+    分割を 1 回しか引かないと床から**最大成分が抜ける**。実測（無関係な列）:
+        1 分割: 行 0.00243 / fold 0.00126 / 分割 —      → 採用 0.00243
+        4 分割: 行 0.00243 / fold 0.00126 / 分割 0.00341 → 採用 0.00341（**40% 大きい**）
+    かといって常に 3〜5 回引くと FE 1 列の計測時間が 3〜5 倍になり、
+    何十件も試す運用と両立しない。**用途で分ける**のが正解。
+    """
+    from scripts.feature_study import build_verdict
+
+    # 同じ入力でも、スクリーニングか採用判定かで結論が変わる
+    strong = dict(delta=0.005, floor=0.001, z=5.0, gap_delta=0.0)
+    screening = build_verdict(**strong, is_screening=True)
+    adoption = build_verdict(**strong, is_screening=False)
+
+    assert "採用推奨" not in screening, f"床が下限なのに言い切っている: {screening}"
+    assert "--n-repeats 3" in screening, f"次に何をするかを指定していない: {screening}"
+    assert "採用推奨" in adoption, f"分割を引き直したのに採用と言わない: {adoption}"
+
+    # 床未満なら、どちらのモードでも「測れていない」
+    for mode in (True, False):
+        v = build_verdict(delta=0.0001, floor=0.001, z=0.2, gap_delta=0.0, is_screening=mode)
+        assert "測れていない" in v and "効果がない" not in v
+
+    # 悪化は gap の拡大を併記して棄却
+    v = build_verdict(delta=-0.005, floor=0.001, z=-5.0, gap_delta=0.002, is_screening=False)
+    assert "棄却" in v and "過学習" in v
+
+
+@pytest.mark.parametrize("n_tests,sigma,expected_range", [
+    (87, 2.0, (1.5, 2.5)),     # 前コンペの FE 仮説数はちょうど 87 件だった
+    (87, 3.0, (0.05, 0.3)),
+    (10, 2.0, (0.1, 0.4)),
+])
+def test_expected_false_positives(n_tests, sigma, expected_range):
+    """多重比較の期待偽陽性数が正しく計算されること。
+
+    **床は 1 回の判定を守るもので、判定の繰り返しは守らない。**
+    2σ で 87 件試せば効果ゼロでも期待 2.0 件が「採用推奨」に見える。
+    """
+    from src.noise import expected_false_positives
+
+    got = expected_false_positives(n_tests, sigma)
+    lo, hi = expected_range
+    assert lo <= got <= hi, f"n={n_tests}, {sigma}σ → {got:.2f}（期待 {lo}〜{hi}）"
+
+
+def test_multiple_testing_note_appears_only_when_relevant():
+    """多重比較の注意が、件数が積み上がってから出ること。"""
+    from src.noise import multiple_testing_note
+
+    assert multiple_testing_note(3) == "", "件数が少ないうちから出している"
+    note = multiple_testing_note(87)
+    assert "87 件" in note and "2.0 件" in note
+
+
+def test_feature_study_counts_prior_tests(tmp_path, monkeypatch):
+    """これまでの FE 計測件数を log.csv から数えられること。"""
+    import csv as _csv
+    import importlib
+
+    import src.config as cfg
+    from src.experiment import LOG_CSV_COLUMNS
+
+    with open(tmp_path / "log.csv", "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+        w.writeheader()
+        for i in range(7):
+            w.writerow({"experiment_id": f"{i:03d}", "notes": f"H-{i} ΔOOF=+0.00001 vs base"})
+        w.writerow({"experiment_id": "900", "notes": "普通の学習実験（FE 計測ではない）"})
+
+    monkeypatch.setattr(cfg, "EXPERIMENTS_DIR", tmp_path)
+    fs = importlib.reload(importlib.import_module("scripts.feature_study"))
+    try:
+        assert fs._count_prior_feature_tests() == 7
+    finally:
+        monkeypatch.undo()
+        importlib.reload(fs)
