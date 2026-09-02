@@ -1820,9 +1820,32 @@ def test_fold_scores_are_recorded_for_paired_comparison():
 
     assert "fold_val_scores" in LOG_CSV_COLUMNS
     src = Path("src/experiment.py").read_text(encoding="utf-8")
-    assert '";".join(_fmt(v) for v in self._fold_val_scores)' in src
     assert "fold_paired_se" in src, "診断が fold 対応差の床を使っていない"
     assert "abs(d) < val_std" not in src, "val std を床に使う旧判定が残っている"
+
+    # **実際に記録して読み戻せること**を見る（字面ではなく振る舞い）
+    import csv as _csv
+    import tempfile
+    from pathlib import Path as _Path
+    from src import experiment as ex
+
+    tmp = _Path(tempfile.mkdtemp()) / "log.csv"
+    with open(tmp, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS)
+        w.writeheader()
+        w.writerow({"experiment_id": "001", "model": "lgb", "features": "7f",
+                    "oof_score": "0.90000",
+                    "fold_val_scores": ";".join(ex._fmt(v, digits=8)
+                                                for v in (0.901234567, 0.902345678))})
+    old = ex.LOG_CSV_PATH
+    try:
+        ex.LOG_CSV_PATH = tmp
+        folds = ex._previous_fold_scores(model="lgb", features="7f")
+    finally:
+        ex.LOG_CSV_PATH = old
+    assert folds is not None and len(folds) == 2
+    # 丸めで差が消えていないこと（5 桁だと対応差の SE が 0 に潰れる）
+    assert abs((folds[1] - folds[0]) - 0.001111111) < 1e-7, f"精度が足りない: {folds}"
 
 
 # ──────────────────────────────────────────────────────────
@@ -1954,3 +1977,136 @@ def test_submit_gate_reports_floor_ratio(tmp_path, monkeypatch):
         f"ベストより悪い提出が警告されない: {worse}"
     assert any("🟢" in line for line in high) and not any("🟡" in line for line in high), \
         f"床を超える改善なのに警告が出ている: {high}"
+
+
+# ──────────────────────────────────────────────────────────
+# 18. 測定装置（分割の引き直し）とアンサンブル器
+# ──────────────────────────────────────────────────────────
+
+def test_split_seed_is_wired_through(tmp_path, monkeypatch):
+    """`split_seed` が実際に分割を変えること（引数はあるが効かない、を防ぐ）。
+
+    `get_cv(seed=)` は前ラウンドで追加したのに、**呼び出し 3 箇所すべてが引数なし**で、
+    271 実験すべてが単一の分割（seed=42）に条件付いていた。
+    行のブートストラップは分割由来の分散を再現しないので、
+    「OOF 有意なのに LB に再現しない」の構造的な原因になる。
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.datasets import make_classification
+
+    from scripts import train as t
+    from src import metrics as m
+
+    X, y = make_classification(n_samples=400, n_features=5, n_informative=3, random_state=0)
+    cols = [f"f{i}" for i in range(5)]
+    df = pd.DataFrame(X, columns=cols)
+    df["target"] = y
+    df.to_pickle(tmp_path / "train_features.pkl")
+    df[cols].to_pickle(tmp_path / "test_features.pkl")
+    monkeypatch.setattr(t, "PROCESSED_DATA_DIR", tmp_path)
+
+    params = t.build_params("lgb", 2) | {"n_estimators": 15}
+    a = t.run_cv("lgb", params, seed=0, features=cols, split_seed=1)
+    b = t.run_cv("lgb", params, seed=0, features=cols, split_seed=2)
+    assert not np.allclose(a["oof_preds"], b["oof_preds"]), "split_seed を変えても分割が同じ"
+
+    # fold 数も効くこと
+    c = t.run_cv("lgb", params, seed=0, features=cols, n_splits=3)
+    assert len(c["val_scores"]) == 3
+    assert len(a["val_scores"]) == m.N_SPLITS
+
+    for path in ("scripts/train.py", "scripts/feature_study.py"):
+        src = Path(path).read_text(encoding="utf-8")
+        assert "split_seed" in src, f"{path} が split_seed を扱っていない"
+
+
+def test_feature_study_includes_split_variance():
+    """`feature_study` が分割由来の分散を床に含めること。
+
+    実測: **完全に無関係な列**の ΔOOF が分割次第で −0.00008〜+0.01481 まで動き、
+    分割 1σ=0.00341 が行 1σ=0.00243・fold 1σ=0.00126 を上回った。
+    **最も見落とされやすい成分が、実は最大だった。**
+    """
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "--n-repeats" in src and "se_splits" in src
+    assert "np.nanmax([se_rows, se_folds, se_splits])" in src, "分割の床が採用されていない"
+
+
+def test_zero_floor_is_not_reported_as_a_result():
+    """床がゼロ同然に潰れたとき「測れた」と言わないこと。
+
+    記録の丸めや fold 数の不足で対応差がすべて同一になると SE が 0 近くに潰れ、
+    z が発散して「z=+68 で改善」のような無意味な断定が出る（実際に出した）。
+    """
+    from src.noise import verdict
+
+    assert "床が算出できません" in verdict(0.00009, 1.3e-9)
+    assert "測れていない" in verdict(0.00009, 0.00035)
+
+
+def test_fold_scores_keep_enough_precision():
+    """fold スコアが対応差を計算できる精度で保存されること。
+
+    表示用の 5 桁で保存すると、差が小さいときに全部 0 になり SE が潰れる。
+    """
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    assert "_fmt(v, digits=8)" in src, "fold スコアを丸めて保存している"
+    from src.experiment import _fmt
+    assert _fmt(0.123456789, digits=8) == "0.12345679"
+
+
+def test_hillclimb_uses_replacement_and_bagging():
+    """Caruana 型の選択が、非復元・等重みの `greedy_ensemble` より表現力を持つこと。
+
+    `greedy_ensemble` は非復元 + 等重み平均しか作れない。
+    Playground の定石は復元あり hillclimb + サブセット bagging で、
+    **選ばれた回数がそのまま重みになる**。
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    from src.utils.ensemble import hillclimb
+
+    rng = np.random.default_rng(0)
+    n = 1500
+    y = rng.integers(0, 2, n)
+    oofs = {f"m{i}": np.clip(y * 0.5 + rng.normal(0.25, s, n), 0, 1)
+            for i, s in enumerate((0.30, 0.33, 0.36, 0.50, 0.70))}
+
+    weights, ens, score = hillclimb(oofs, y, roc_auc_score, n_iter=30, n_bags=6, verbose=False)
+    assert abs(sum(weights.values()) - 1.0) < 1e-9
+    assert score >= max(roc_auc_score(y, v) for v in oofs.values()), "単体ベストを下回った"
+    # 等重みでない = 復元選択が効いている
+    positive = [w for w in weights.values() if w > 0]
+    assert len(set(round(w, 6) for w in positive)) > 1, "等重みしか作れていない"
+
+
+def test_signed_stack_can_use_negative_coefficients():
+    """符号制約なしスタッキングが、simplex では表現できない結合を作れること。
+
+    `optimize_weights` は非負かつ合計 1 なので、**弱いメンバーを引き算に使う経路が
+    構造的にふさがれている**。前コンペで終盤に唯一 LB で確認できた改善
+    （累計 +0.00035、2σ 超え）は、まさにこの結合方式の変更によるものだった。
+    """
+    import numpy as np
+    from src.utils.ensemble import signed_stack
+
+    rng = np.random.default_rng(0)
+    n = 1200
+    y = rng.integers(0, 2, n)
+    signal = y * 0.5 + rng.normal(0.25, 0.30, n)
+    bias = rng.normal(0, 1, n)
+    oofs = {"good": np.clip(signal, 0, 1),
+            "biased": np.clip(signal + 0.8 * bias, 0, 1),   # 誤差を引き算で消せる
+            "noise": np.clip(bias, 0, 1)}
+
+    coefs, oof, test, score = signed_stack(oofs, None, y, verbose=False)
+    assert any(c < 0 for c in coefs.values()), "負の係数を一度も使っていない"
+    assert oof.shape == (n,) and test is None
+
+
+def test_blend_exposes_new_modes():
+    """`blend.py` から新しいアンサンブル器を呼べること（実装しても導線が無いと使われない）。"""
+    src = Path("scripts/blend.py").read_text(encoding="utf-8")
+    assert '"hillclimb"' in src and '"stack"' in src
+    assert "signed_stack(" in src and "hillclimb(" in src

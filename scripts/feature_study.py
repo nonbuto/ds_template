@@ -39,7 +39,7 @@ from scripts.train import run_cv, DEFAULT_PARAMS, FEATURES as BASE_FEATURES
 from src.metrics import greater_is_better
 from src.noise import (empirical_lb_floor, fold_paired_se,
                        min_detectable_difference, paired_se)
-from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME
+from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME, RANDOM_STATE
 from src.experiment import ExperimentTracker
 
 # ──────────────────────────────────────────────
@@ -76,7 +76,16 @@ def main():
                         help="追加する特徴量の列名。カンマ区切りで複数指定する場合は --allow-batch が必要")
     parser.add_argument("--model", type=str, default="lgb_balanced",
                         choices=["lgb", "lgb_balanced", "cb", "xgb"])
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=RANDOM_STATE,
+                        help="モデルの seed（初期化・サンプリング）")
+    parser.add_argument("--split-seed", type=int, default=None,
+                        help="分割の seed（省略時は RANDOM_STATE）")
+    parser.add_argument("--n-repeats", type=int, default=1,
+                        help="**分割を引き直す回数**。2 以上にすると split_seed を振って繰り返し、"
+                             "分割由来の分散を床に含める（`G-FULLCV`）。既定 1 では"
+                             "「この 1 つの分割の上での差」しか測れない")
+    parser.add_argument("--n-splits", type=int, default=None,
+                        help="fold 数（省略時は config の N_SPLITS）")
     parser.add_argument("--hypothesis-id", type=str, default="",
                         help="対応するFE_HYPOTHESES.mdの仮説ID（例: H-007）。log.csvに記録される")
     parser.add_argument("--params", type=str, default="",
@@ -112,22 +121,37 @@ def main():
         with open(args.params) as f:
             params.update(json.load(f))
 
-    print(f"\n【ベーススコア計算中】 特徴量数: {len(BASE_FEATURES)}")
-    base_result = run_cv(args.model, params, seed=args.seed, features=BASE_FEATURES)
-    base_oof = base_result["oof_score"]
-    base_stats = _cv_stats(base_result)
-    print(f"  Base OOF: {base_oof:.5f}")
-    _print_cv_stats("Base", base_stats)
-
     new_features = BASE_FEATURES + new_cols
-    print(f"\n【+{args.new_feature} スコア計算中】 特徴量数: {len(new_features)}")
     if is_batch:
-        print(f"  ⚠️ 一括投入モード（{len(new_cols)}列）: 理由={args.batch_reason}")
+        print(f"\n  ⚠️ 一括投入モード（{len(new_cols)}列）: 理由={args.batch_reason}")
         print("     → これはスクリーニングです。採用・棄却の判断は LOO 分解の後に行ってください")
-    new_result = run_cv(args.model, params, seed=args.seed, features=new_features)
-    new_oof = new_result["oof_score"]
+
+    # ── 分割を引き直して繰り返す ──
+    # **モデル seed だけを振っても分割は毎回同じ**なので、行のブートストラップでは
+    # 分割由来の分散が床に入らない。`--n-repeats` を 2 以上にすると分割 seed を振り、
+    # 「別の切り方でも同じ向きに動くか」を確かめられる（`G-FULLCV`）。
+    split_seeds = [args.split_seed if args.split_seed is not None else RANDOM_STATE]
+    if args.n_repeats > 1:
+        split_seeds = [(args.split_seed or RANDOM_STATE) + i for i in range(args.n_repeats)]
+
+    base_runs, new_runs = [], []
+    for i, ss in enumerate(split_seeds, 1):
+        tag = f"（分割 {i}/{len(split_seeds)}, split_seed={ss}）" if len(split_seeds) > 1 else ""
+        print(f"\n【ベーススコア計算中】 特徴量数: {len(BASE_FEATURES)} {tag}")
+        base_runs.append(run_cv(args.model, params, seed=args.seed, features=BASE_FEATURES,
+                                split_seed=ss, n_splits=args.n_splits))
+        print(f"  Base OOF: {base_runs[-1]['oof_score']:.5f}")
+        print(f"【+{args.new_feature} スコア計算中】 特徴量数: {len(new_features)} {tag}")
+        new_runs.append(run_cv(args.model, params, seed=args.seed, features=new_features,
+                               split_seed=ss, n_splits=args.n_splits))
+        print(f"  New  OOF: {new_runs[-1]['oof_score']:.5f}")
+
+    base_result, new_result = base_runs[0], new_runs[0]
+    base_oof = float(np.mean([r["oof_score"] for r in base_runs]))
+    new_oof = float(np.mean([r["oof_score"] for r in new_runs]))
+    base_stats = _cv_stats(base_result)
+    _print_cv_stats("Base", base_stats)
     new_stats = _cv_stats(new_result)
-    print(f"  New  OOF: {new_oof:.5f}")
     _print_cv_stats("New", new_stats)
     metric_dir = "大きいほど良い" if greater_is_better() else "小さいほど良い"
 
@@ -151,9 +175,18 @@ def main():
     se_rows = paired_se(base_result["y_true"][both],
                         new_result["oof_preds"][both], base_result["oof_preds"][both])
     se_folds = fold_paired_se(new_result["val_scores"], base_result["val_scores"])
-    # 2 つの床のうち**大きいほう**を採る。行のゆらぎと fold のゆらぎは別の不確実性で、
-    # 片方だけを見ると、もう片方に由来する差を「測れた」と誤認する。
-    se = float(np.nanmax([se_rows, se_folds]))
+    # **分割を引き直したときのばらつき**（最も見落とされやすい成分）。
+    # 行のブートストラップも fold 対応差も、分割が固定されている限りこれを再現しない。
+    per_split = [(n["oof_score"] - b["oof_score"]) * (1 if greater_is_better() else -1)
+                 for b, n in zip(base_runs, new_runs)]
+    se_splits = (float(np.std(per_split, ddof=1) / np.sqrt(len(per_split)))
+                 if len(per_split) > 1 else float("nan"))
+
+    # 3 つの床のうち**大きいほう**を採る。行・fold・分割は別の不確実性で、
+    # どれか 1 つだけを見ると、他に由来する差を「測れた」と誤認する。
+    se = float(np.nanmax([se_rows, se_folds, se_splits]))
+    split_deltas = (", ".join(f"{d:+.5f}" for d in per_split) if len(per_split) > 1
+                    else "（--n-repeats 2 以上で分割を引き直せます）")
     floor = min_detectable_difference(se)
     z = delta / se if se > 0 else float("nan")
 
@@ -248,7 +281,8 @@ def main():
  素の差     : {raw_delta:+.5f}（{metric_dir}）
 
  [この 2 本で実測した床]（固定閾値ではない → src/noise.py）
- 対応差の床 : 行 1σ={se_rows:.5f} / fold 1σ={se_folds:.5f} → 採用 1σ={se:.5f}
+ 対応差の床 : 行 1σ={se_rows:.5f} / fold 1σ={se_folds:.5f} / 分割 1σ={se_splits:.5f} → 採用 1σ={se:.5f}
+ 分割ごとのΔ: {split_deltas}
  判定の境界 : 2σ={floor:.5f}   z={z:+.2f}
  {lb_note}
 

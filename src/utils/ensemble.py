@@ -320,3 +320,147 @@ def load_predictions(pred_files: list[Path]) -> list[np.ndarray]:
         predictions.append(pred)
         print(f"  ✅ {path.name}: shape={pred.shape}")
     return predictions
+
+
+# ──────────────────────────────────────────────────────────
+# Caruana 型の ensemble selection と、符号制約なしスタッキング
+# ──────────────────────────────────────────────────────────
+
+def hillclimb(
+    oofs: dict[str, np.ndarray],
+    y: np.ndarray,
+    metric_fn,
+    n_iter: int = 100,
+    n_bags: int = 20,
+    bag_frac: float = 0.5,
+    seed: int = 42,
+    verbose: bool = True,
+) -> tuple[dict[str, float], np.ndarray, float]:
+    """Caruana の ensemble selection（**復元ありの前進選択 + サブセット bagging**）。
+
+    `greedy_ensemble()` との違いは 3 点で、いずれも Playground の定石:
+
+    1. **復元あり** —— 同じモデルを何度でも選べる。選ばれた回数がそのまま重みになるので、
+       等重み平均しか作れない非復元版より表現力が高い。
+    2. **サブセット bagging** —— 毎回モデルの一部（`bag_frac`）だけを候補にして
+       選択を繰り返し、得られた重みを平均する。**選択の過学習**を抑えるための仕掛けで、
+       同一 OOF 上で数百候補から選ぶ場面（`G-OVERFIT`(a)）では必須。
+    3. **改善が止まっても続ける** —— 1 回の非改善で打ち切らず `n_iter` まで回す。
+
+    Args:
+        oofs: `{名前: OOF 予測}`。1 次元（二値の陽性確率 / 回帰の予測値）。
+        metric_fn: **大きいほど良い**向きに揃えた指標（`blend.py` の `_ascending_metric()`）。
+        n_iter: 1 bag あたりの選択回数。
+        n_bags: bag の数。1 にすると単一パスの貪欲選択になる。
+        bag_frac: 各 bag で候補にするモデルの割合。
+
+    Returns:
+        `(重み辞書, アンサンブル OOF, スコア)`。重みは合計 1。
+    """
+    names = list(oofs)
+    if not names:
+        raise ValueError("oofs が空です")
+    mat = np.column_stack([np.asarray(oofs[n], dtype=float) for n in names])
+    rng = np.random.default_rng(seed)
+    n_pick = max(2, int(round(len(names) * bag_frac)))
+
+    counts_total = np.zeros(len(names))
+    for bag in range(max(1, n_bags)):
+        cand = rng.choice(len(names), size=min(n_pick, len(names)), replace=False)
+        counts = np.zeros(len(names))
+        current = None
+        for step in range(n_iter):
+            best_j, best_score = None, -np.inf
+            for j in cand:
+                trial = (mat[:, j] if current is None
+                         else (current * counts.sum() + mat[:, j]) / (counts.sum() + 1))
+                score = metric_fn(y, trial)
+                if score > best_score:
+                    best_j, best_score = j, score
+            if best_j is None:
+                break
+            current = (mat[:, best_j] if current is None
+                       else (current * counts.sum() + mat[:, best_j]) / (counts.sum() + 1))
+            counts[best_j] += 1
+        if counts.sum() > 0:
+            counts_total += counts / counts.sum()
+
+    weights = counts_total / counts_total.sum()
+    ens = mat @ weights
+    score = metric_fn(y, ens)
+    if verbose:
+        used = {names[i]: round(float(w), 4) for i, w in enumerate(weights) if w > 0}
+        print(f"  hillclimb: {len(used)}/{len(names)} モデル採用（{n_bags} bag 平均）"
+              f"  score={score:.5f}")
+    return {names[i]: float(w) for i, w in enumerate(weights)}, ens, float(score)
+
+
+def signed_stack(
+    oofs: dict[str, np.ndarray],
+    tests: dict[str, np.ndarray] | None,
+    y: np.ndarray,
+    alphas=(0.01, 0.1, 1.0, 10.0, 100.0),
+    seed: int = 42,
+    verbose: bool = True,
+):
+    """**符号制約なし**の線形スタッキング（分類は L2 ロジスティック、回帰は Ridge）。
+
+    `optimize_weights()` は非負かつ合計 1（simplex）に制約するので、
+    **弱いメンバーを「引き算」に使う経路が構造的にふさがれている**。
+    前コンペで終盤に唯一 LB で確認できた改善（OOF +0.00012 → LB +0.00017、
+    累計 +0.00035 で 2σ 超え）は、まさに simplex から符号制約なしへ結合方式を
+    変えたことによるものだった。**その手法がテンプレートに無かった。**
+
+    メタ予測は `cross_val_predict` で fold 外から作る（in-sample だと必ず楽観的に出る）。
+    正則化の強さは fold 外スコアで選ぶ。
+
+    Returns:
+        `(係数辞書, OOF 予測, test 予測 or None, スコア)`
+    """
+    from sklearn.linear_model import LogisticRegression, RidgeCV
+    from sklearn.model_selection import cross_val_predict
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    from src.metrics import get_cv, get_metric, greater_is_better, is_regression
+
+    names = list(oofs)
+    X = np.column_stack([np.asarray(oofs[n], dtype=float) for n in names])
+    metric = get_metric()
+    sign = 1.0 if greater_is_better() else -1.0
+
+    def _make(alpha: float):
+        if is_regression():
+            return make_pipeline(StandardScaler(), RidgeCV(alphas=[alpha]))
+        return make_pipeline(StandardScaler(),
+                             LogisticRegression(C=1.0 / alpha, max_iter=2000,
+                                                random_state=seed))
+
+    best = None
+    for alpha in alphas:
+        pipe = _make(alpha)
+        if is_regression():
+            pred = cross_val_predict(pipe, X, y, cv=get_cv())
+        else:
+            pred = cross_val_predict(pipe, X, y, cv=get_cv(), method="predict_proba")[:, 1]
+        score = sign * metric(y, pred)
+        if best is None or score > best[0]:
+            best = (score, alpha, pred)
+
+    _, alpha, oof_pred = best
+    final = _make(alpha).fit(X, y)
+    est = final[-1]
+    coefs = np.ravel(getattr(est, "coef_", np.zeros(len(names))))
+
+    test_pred = None
+    if tests and all(n in tests for n in names):
+        X_test = np.column_stack([np.asarray(tests[n], dtype=float) for n in names])
+        test_pred = (final.predict(X_test) if is_regression()
+                     else final.predict_proba(X_test)[:, 1])
+
+    score = metric(y, oof_pred)
+    if verbose:
+        neg = sum(1 for c in coefs if c < 0)
+        print(f"  signed_stack: alpha={alpha}（fold 外で選択）  score={score:.5f}"
+              f"  負の係数 {neg}/{len(coefs)} 本 ← simplex では表現できない部分")
+    return {names[i]: float(c) for i, c in enumerate(coefs)}, oof_pred, test_pred, float(score)

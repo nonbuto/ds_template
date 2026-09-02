@@ -585,13 +585,13 @@ def _ensure_log_csv() -> None:
     print(f"🔧 log.csv に列を追加しました（既存 {n} 行は保持）: {', '.join(missing)}")
 
 
-def _fmt(value: float) -> str:
+def _fmt(value: float, digits: int = 5) -> str:
     """診断列の書式。測れなかった値（NaN）は "nan" ではなく**空欄**にする。
 
     "nan" を書くと診断記録ガードは「記入済み」と数えてしまい、記入率が実態より高く出る
     （ガードが空洞化する典型）。空欄なら未記入として正しく数えられる。
     """
-    return "" if value != value else f"{value:.5f}"
+    return "" if value != value else f"{value:.{digits}f}"
 
 
 RUNNING_MARK_PREFIX = "（実行中"
@@ -915,7 +915,9 @@ class ExperimentTracker:
             "cv_val_std": _fmt(val_std),
             # fold 平均だけでは「同じ fold で比べた差のばらつき」が出せない。
             # 生の fold スコアを残すことで、次の実験が対応差の SE を計算できる（`src/noise.py`）
-            "fold_val_scores": ";".join(_fmt(v) for v in self._fold_val_scores),
+            # **表示用の 5 桁で保存しない。** 対応差は元の差が小さいので、丸めると
+            # 差が全部 0 になり SE が 0 に潰れ、「z=+68 で改善」のような無意味な断定が出る。
+            "fold_val_scores": ";".join(_fmt(v, digits=8) for v in self._fold_val_scores),
             "oof_score": f"{oof_score:.5f}" if oof_score is not None else "",
             "submit_score": "",          # /ds-kaggle-submit スキルが追記
             "lb_rank": "",               # /ds-kaggle-submit スキルが追記

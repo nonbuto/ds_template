@@ -24,7 +24,8 @@ import pandas as pd
 from src.metrics import get_metric, greater_is_better, is_regression
 
 from src.config import OOF_DIR, PROCESSED_DATA_DIR, TARGET_COL
-from src.utils.ensemble import correlation_check, optimize_weights, greedy_ensemble
+from src.utils.ensemble import (correlation_check, greedy_ensemble, hillclimb,
+                                optimize_weights, signed_stack)
 
 
 def _ascending_metric():
@@ -52,14 +53,20 @@ def parse_npy_args(args_list: list[str]) -> dict[str, np.ndarray]:
 def main():
     parser = argparse.ArgumentParser(description="アンサンブル・ブレンドスクリプト")
     parser.add_argument("--mode", type=str, required=True,
-                        choices=["corr", "optimize", "greedy"],
-                        help="実行モード: corr（相関確認）/ optimize（重み最適化）/ greedy（Greedy HC）")
+                        choices=["corr", "optimize", "greedy", "hillclimb", "stack"],
+                        help="実行モード: corr（相関確認）/ optimize（simplex 重み最適化）/ "
+                             "greedy（非復元の貪欲選択）/ hillclimb（Caruana: 復元あり + bagging）/ "
+                             "stack（符号制約なし線形スタッキング）")
     parser.add_argument("--oofs", nargs="+", required=True,
                         help="OOF予測ファイル（形式: モデル名=ファイルパス）")
     parser.add_argument("--tests", nargs="+", default=[],
                         help="Test予測ファイル（形式: モデル名=ファイルパス）")
     parser.add_argument("--corr-threshold", type=float, default=0.998,
                         help="相関確認のスキップ閾値（デフォルト: 0.998）")
+    parser.add_argument("--n-iter", type=int, default=100,
+                        help="hillclimb の 1 bag あたり選択回数")
+    parser.add_argument("--n-bags", type=int, default=20,
+                        help="hillclimb の bag 数（選択の過学習を抑える）")
     parser.add_argument("--n-seeds", type=int, default=1,
                         help="重み探索を独立に何本まわして平均するか（G-CEILING の重み bagging）。"
                              "天井帯では 8〜12 本を推奨")
@@ -164,7 +171,46 @@ def main():
         return
 
     # ──────────────────────────────────────────────
-    # STEP 3: Greedy Hill Climbing
+    # Caruana 型 ensemble selection（復元あり + サブセット bagging）
+    # ──────────────────────────────────────────────
+    if args.mode == "hillclimb":
+        print("\n【Caruana ensemble selection】")
+        weights, ens_oof, _ = hillclimb(oofs, y, _ascending_metric(),
+                                        n_iter=args.n_iter, n_bags=args.n_bags)
+        final_score = get_metric()(y, ens_oof)          # 表示は素の指標値
+        for name, w in sorted(weights.items(), key=lambda t: -t[1]):
+            if w > 0:
+                print(f"  {name:20s}: weight={w:.4f}  (単体OOF={get_metric()(y, oofs[name]):.5f})")
+        print(f"\nアンサンブル OOF: {final_score:.5f}")
+        out_oof = OOF_DIR / f"oof_{args.out_prefix}_hc.npy"
+        np.save(out_oof, ens_oof)
+        if tests and all(n in tests for n in weights):
+            ens_test = np.column_stack([tests[n] for n in weights]) @ np.array(
+                [weights[n] for n in weights])
+            np.save(OOF_DIR / f"test_{args.out_prefix}_hc.npy", ens_test)
+            print(f"保存: {out_oof.name}, test_{args.out_prefix}_hc.npy")
+        else:
+            print(f"保存: {out_oof.name}（--tests が無いため test 予測は作りません）")
+        return
+
+    # ──────────────────────────────────────────────
+    # 符号制約なしスタッキング（simplex では表現できない結合）
+    # ──────────────────────────────────────────────
+    if args.mode == "stack":
+        print("\n【符号制約なしスタッキング】")
+        coefs, ens_oof, ens_test, final_score = signed_stack(oofs, tests, y)
+        for name, c in sorted(coefs.items(), key=lambda t: -abs(t[1])):
+            print(f"  {name:20s}: coef={c:+.4f}")
+        print(f"\nスタッキング OOF: {final_score:.5f}（fold 外で算出）")
+        np.save(OOF_DIR / f"oof_{args.out_prefix}_stack.npy", ens_oof)
+        if ens_test is not None:
+            np.save(OOF_DIR / f"test_{args.out_prefix}_stack.npy", ens_test)
+        print(f"保存: oof_{args.out_prefix}_stack.npy"
+              + ("" if ens_test is not None else "（--tests が無いため test 予測は作りません）"))
+        return
+
+    # ──────────────────────────────────────────────
+    # STEP 3: Greedy Hill Climbing（非復元・等重み。互換のため残す）
     # ──────────────────────────────────────────────
     if args.mode == "greedy":
         print("\n【STEP 3: Greedy Hill Climbing】")

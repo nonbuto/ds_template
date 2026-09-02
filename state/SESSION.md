@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 22:18:59
+- **記録時刻**: 2026-09-02 22:28:09
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 10 件 / HEAD: 5214763 fix: 判断の床を固定値の表から実測へ置き換える（L-31 / L-32）
+- **git**: `main` / 未コミット 8 件 / HEAD: 0f34fce feat: 提出実績から「LB に現れるための床」を測り、判断が出る場所すべてに通す（L-33）
 <!-- END:auto-snapshot -->

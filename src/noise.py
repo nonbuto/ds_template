@@ -55,6 +55,7 @@ from src.metrics import get_metric, needs_proba, shape_for_metric
 
 DEFAULT_N_BOOT = 400
 SIGMA_MULTIPLIER = 2.0          # 「突破」と呼ぶための倍率（2σ ≒ 95%）
+ZERO_FLOOR_EPS = 1e-7           # これ未満の SE は「潰れている」とみなし判定を出さない
 
 
 def auc_se(auc: float, n_pos: int, n_neg: int) -> float:
@@ -168,6 +169,12 @@ def verdict(delta: float, se: float, sigma: float = SIGMA_MULTIPLIER) -> str:
     """
     if not np.isfinite(se) or se <= 0:
         return "床を推定できませんでした（n が小さい / 指標が計算できない）"
+    # **床がゼロ同然のときに「測れた」と言わない。** 記録の丸めや fold 数の不足で
+    # 対応差がすべて同一になると SE が 0 近くに潰れ、z が発散して
+    # 「z=+68 で改善」のような無意味な断定が出る（実際に出した）。
+    if se < ZERO_FLOOR_EPS:
+        return (f"床が算出できません（SE={se:.2e} ≈ 0）。fold 数を増やすか、"
+                "記録の精度を確認してください")
     z = delta / se
     floor = min_detectable_difference(se, sigma)
     if abs(delta) < floor:

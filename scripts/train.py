@@ -258,14 +258,24 @@ def extract_importance(model, features: list[str]) -> "np.ndarray | None":
     return None
 
 
-def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None):
+def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None,
+           split_seed: int | None = None, n_splits: int | None = None):
     """1回分のCV学習を実行し、スコアとOOF/test予測を返す（log.csv記録なし）。
 
     multi-seed検証など、複数回まとめて呼び出して自前で集計したい場合に使う。
     単発のCV学習で log.csv に記録したい場合は main() を使う。
 
+    Args:
+        seed: **モデルの** seed（初期化・サンプリング）。
+        split_seed: **分割の** seed。省略すると `RANDOM_STATE` 固定。
+            モデル seed だけを振っても、**分割は毎回同じ**なので
+            「この分割の上でたまたま良い」構成を選び続けることになる。
+            前コンペで「OOF 有意なのに LB に再現しない」が 6 回続いた構造的な原因
+            （行のブートストラップは分割由来の分散を再現しない → `src/noise.py`）。
+        n_splits: fold 数。省略すると `N_SPLITS`。
+
     Returns:
-        dict: train_scores, val_scores, oof_score, oof_preds, test_preds
+        dict: train_scores, val_scores, oof_score, oof_preds, test_preds, y_true, covered
     """
     features = features or FEATURES
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
@@ -280,7 +290,8 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
 
     seeded_params = {**params, "random_state": seed} if model_name != "cb" else {**params, "random_seed": seed}
 
-    cv = get_cv()          # 分割器は CV_STRATEGY から。seed は RANDOM_STATE に従う
+    k = n_splits or N_SPLITS
+    cv = get_cv(n_splits=k, seed=split_seed)   # 分割器は CV_STRATEGY から
     groups = get_groups(train)   # GroupKFold 系のみ。他は None
     metric = get_metric()
     n_cls = _resolve_n_classes(y)
@@ -302,7 +313,7 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
         model, val_pred = TRAIN_FN[model_name](X_tr, y_tr, X_val, y_val, seeded_params)
         oof_preds[val_idx] = val_pred
         covered[val_idx] = True
-        test_preds += _predict(model, X_test) / N_SPLITS
+        test_preds += _predict(model, X_test) / k
 
         val_score = metric(y_val, shape_for_metric(val_pred))
         tr_pred = model.predict_proba(X_tr) if _has_proba(model) else model.predict(X_tr)
@@ -352,6 +363,13 @@ def main():
                         help="best_params JSON ファイルパス（省略時はデフォルトパラメータを使用）")
     parser.add_argument("--resume", action="store_true",
                         help="fold 単位のキャッシュを使い、中断した学習を途中から再開する")
+    parser.add_argument("--n-splits", type=int, default=N_SPLITS,
+                        help="fold 数（既定は config の N_SPLITS）。10-fold にすると "
+                             "各モデルが 90%% を学習に使え、床も下がる")
+    parser.add_argument("--split-seed", type=int, default=None,
+                        help="**分割の** seed（既定は RANDOM_STATE 固定）。"
+                             "モデル seed だけ振っても分割は同じままなので、"
+                             "「この分割の上でたまたま良い」構成を選び続けることになる")
     args = parser.parse_args()
 
     assert FEATURES, "FEATURES リストが空です。scripts/train.py の TODO を埋めてください。"
@@ -384,11 +402,13 @@ def main():
         model=args.model,
         features=f"{len(FEATURES)}features",
     )
-    tracker.start_run(description=f"{args.model} CV学習（数値7カラムベースライン）")
+    split_note = (f"{args.n_splits}-fold"
+                  + (f" / split_seed={args.split_seed}" if args.split_seed is not None else ""))
+    tracker.start_run(description=f"{args.model} CV学習（{len(FEATURES)}特徴量 / {split_note}）")
     tracker.log_params(params)
 
     # CV学習
-    cv = get_cv()          # 分割器は src.config の CV_STRATEGY から決まる
+    cv = get_cv(n_splits=args.n_splits, seed=args.split_seed)
     groups = get_groups(train)   # GroupKFold 系のみ。他は None
     metric = get_metric()  # 指標は EVAL_METRIC から決まる（optimize_hp と共有）
     n_cls = _resolve_n_classes(y)
@@ -404,9 +424,11 @@ def main():
     # 中断・クラッシュで既に終わった fold の計算が失われるのを防ぐ（CONVENTIONS の実行規約）。
     # signature に特徴量と HP を渡す。tag だけだと「モデル名 + 特徴量の本数」しか
     # 区別せず、列を入れ替えても HP を変えても古い fold が再利用される。
+    # 分割の条件もキャッシュのシグネチャに入れる（fold 数や分割 seed が変われば別物）
     cache = FoldCache(tag=f"{args.model}_{len(FEATURES)}f", seed=RANDOM_STATE,
-                      n_splits=N_SPLITS, enabled=args.resume,
-                      signature={"features": FEATURES, "params": params})
+                      n_splits=args.n_splits, enabled=args.resume,
+                      signature={"features": FEATURES, "params": params,
+                                 "n_splits": args.n_splits, "split_seed": args.split_seed})
     if args.resume:
         print(cache.report())
 
@@ -425,7 +447,7 @@ def main():
 
         oof_preds[val_idx] = val_pred
         covered[val_idx] = True
-        test_preds += fold_test_pred / N_SPLITS   # テスト予測（フォールド平均）
+        test_preds += fold_test_pred / args.n_splits   # テスト予測（フォールド平均）
 
         val_score = metric(y_val, shape_for_metric(val_pred))
         # キャッシュ再利用時は train を再計算できない。**以前は val と同じ値を入れていた**が、
