@@ -1024,3 +1024,21 @@ def test_train_passes_cache_signature():
     for path in ("scripts/train.py", "experiments/runs/_TEMPLATE_exp000_s0_example.py"):
         src = Path(path).read_text(encoding="utf-8")
         assert "signature={" in src, f"{path} が FoldCache に条件を渡していない"
+
+
+# ──────────────────────────────────────────────────────────
+# 12. end-to-end —— clone 直後の状態でパイプラインが通ること
+# ──────────────────────────────────────────────────────────
+
+@pytest.mark.slow
+def test_end_to_end_pipeline():
+    """合成データで preprocess → train → blend を通す。
+
+    個々の関数が正しくても**繋がっていない**ことがある。実際、
+    「AUC 設定なのにハードラベルを提出」「clone 直後は N_CLASSES=3 で動かない」
+    「blend が train.py の出力を撥ねる」は、どれも単体テストでは見えなかった。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / "tests" / "_e2e_pipeline.py"), str(ROOT)],
+                       capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, f"e2e 失敗:\n{r.stdout[-3000:]}\n{r.stderr[-2000:]}"
+    assert "e2e 通過" in r.stdout
