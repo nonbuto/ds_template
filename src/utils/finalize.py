@@ -35,6 +35,24 @@ class RunOutputs:
     submission: Optional[Path]
 
 
+def _assert_row_alignment(n_sample: int, test: np.ndarray) -> None:
+    """test 予測の行数が `sample_submission.csv` と一致することを確かめる。
+
+    提出 CSV は `sample[ID_COL]` と test 予測を**位置で**貼り合わせている。
+    前処理に `sort_values` / `merge` / 重複除去が入ると行の対応が崩れ、
+    **エラーを出さないまま全行ずれた提出ファイル**ができる。スコアは出るので気づけない
+    （`PLAYBOOK.md` の L-29 が並べた「静かに間違う」型）。
+    行数の一致は最低限の防波堤で、これだけでも並べ替え以外の事故は止まる。
+    """
+    n_test = len(np.asarray(test))
+    if n_test != n_sample:
+        raise ValueError(
+            f"test 予測の行数（{n_test:,}）が sample_submission.csv（{n_sample:,}）と一致しません。\n"
+            "   前処理で行を落とした・並べ替えた可能性があります。"
+            "提出ファイルは ID と予測を位置で貼り合わせるため、このまま出すと全行ずれます。"
+        )
+
+
 def _resolve_submit_mode(submit: str) -> str:
     """`"auto"` を、評価指標とタスク種別から具体的な提出形式に落とす。
 
@@ -76,6 +94,7 @@ def save_run_outputs(
     submit: Literal["auto", "label", "proba", "value"] = "auto",
     make_submission: bool = True,
     is_ensemble: bool = False,
+    save_npy: bool = True,
 ) -> RunOutputs:
     """OOF・test 予測・提出 CSV をまとめて保存する。
 
@@ -91,6 +110,7 @@ def save_run_outputs(
             実験でのみ使う**（提出候補になりうる実験では必ず True のままにする）。
         is_ensemble: 派生アンサンブルなら True。ファイル名に `_ens_` を入れて
             プールの自己参照混入を防ぐ（→ `CONVENTIONS.md` の OOF 命名規約）。
+        save_npy: False にすると npy を書かない（既存の npy から提出だけ作る場合）。
 
     Returns:
         RunOutputs: 保存した 3 つのパス（submission を作らない場合は None）。
@@ -99,8 +119,9 @@ def save_run_outputs(
     tag = f"{'ens_' if is_ensemble else ''}{model}"
     oof_path = OOF_DIR / f"oof_{exp_id}_{tag}.npy"
     test_path = OOF_DIR / f"test_{exp_id}_{tag}.npy"
-    np.save(oof_path, oof)
-    np.save(test_path, test)
+    if save_npy:
+        np.save(oof_path, oof)
+        np.save(test_path, test)
 
     sub_path: Optional[Path] = None
     sample_path = RAW_DATA_DIR / "sample_submission.csv"
@@ -112,6 +133,7 @@ def save_run_outputs(
     mode = _resolve_submit_mode(submit)
     if make_submission:
         sample = pd.read_csv(sample_path)
+        _assert_row_alignment(len(sample), test)
         sub = pd.DataFrame({
             ID_COL: sample[ID_COL],
             TARGET_COL: _to_submission_values(test, mode),

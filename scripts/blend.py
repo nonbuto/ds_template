@@ -21,7 +21,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from src.metrics import get_metric, greater_is_better
+from src.metrics import get_metric, greater_is_better, is_regression
 
 from src.config import OOF_DIR, PROCESSED_DATA_DIR, TARGET_COL
 from src.utils.ensemble import correlation_check, optimize_weights, greedy_ensemble
@@ -74,7 +74,10 @@ def main():
     # e2e が blend を通していなかったため、この不整合が長く残っていた。
     from sklearn.preprocessing import LabelEncoder
     y_raw = train[TARGET_COL]
-    y = LabelEncoder().fit_transform(y_raw) if y_raw.dtype == object else y_raw.values
+    if is_regression():
+        y = y_raw.to_numpy(dtype=float)
+    else:
+        y = LabelEncoder().fit_transform(y_raw) if y_raw.dtype == object else y_raw.values
 
     print("\nOOF ファイル読み込み:")
     oofs = parse_npy_args(args.oofs)
@@ -83,7 +86,10 @@ def main():
     # **train.py は二値でも (n, 2) の確率行列を保存する**ので、そのまま渡すと
     # 「1 次元でない」と撥ねられていた —— テンプレートが出力したファイルを
     # テンプレートのブレンドが受け取れない状態だった。二値は陽性列に落として受け入れる。
-    n_classes = len(np.unique(y))
+    # **回帰では「ユニーク値の数」をクラス数と読んではいけない。** 連続値なら行数に近い値になり、
+    # 以前は `n_classes > 2` が必ず真になって、Stage 6 が回帰コンペで入口ごと落ちていた
+    # （しかもエラー文は「回帰は対応している」と言っていた）。
+    n_classes = 1 if is_regression() else len(np.unique(y))
 
     def _as_1d(name: str, arr: np.ndarray) -> np.ndarray:
         arr = np.asarray(arr)
@@ -142,7 +148,11 @@ def main():
         for name, w in zip(names, w_opt):
             single = get_metric()(y, oofs[name])
             print(f"  {name:20s}: weight={w:.3f}  (単体OOF={single:.5f})")
-        print(f"\nブレンドOOF: {best_score:.5f}")
+        # `_ascending_metric()` は探索用に符号を反転している。**表示と保存には素の値を使う**
+        # —— 反転値をそのまま出すと「単体 0.94 → ブレンド −0.73」のように、
+        # 同じ画面に向きの違う 2 つの数字が並ぶ（RMSE コンペで実際にそうなっていた）。
+        blend_oof_score = get_metric()(y, oofs_matrix @ w_opt)
+        print(f"\nブレンドOOF: {blend_oof_score:.5f}")
 
         if tests_matrix is not None:
             blend_test = tests_matrix @ w_opt
@@ -158,9 +168,10 @@ def main():
     # ──────────────────────────────────────────────
     if args.mode == "greedy":
         print("\n【STEP 3: Greedy Hill Climbing】")
-        selected, ens_oof, ens_test, final_score = greedy_ensemble(
+        selected, ens_oof, ens_test, _ = greedy_ensemble(
             oofs=oofs, tests=tests, y=y, metric_fn=_ascending_metric(),
         )
+        final_score = get_metric()(y, ens_oof)      # 表示・ファイル名は素の指標値
         out_oof = OOF_DIR / f"oof_{args.out_prefix}_greedy.npy"
         out_test = OOF_DIR / f"test_{args.out_prefix}_greedy.npy"
         np.save(out_oof, ens_oof)
