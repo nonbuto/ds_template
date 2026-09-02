@@ -87,6 +87,10 @@ argument-hint: <実験名>
 > v6 でオンデマンドになったため、ここで明示的に読み込む）:
 > `#スクリプトの標準構成` / `#ExperimentTracker の使い方` / `#実験名の命名規則` / `#ブランチ管理`
 >
+> あわせて `CONVENTIONS.md#ディレクトリ規約` / `CONVENTIONS.md#スクリプト構成` /
+> `CONVENTIONS.md#コーディング規約` / `CONVENTIONS.md#実験管理（log.csv）` を確認する
+> （成果物の置き場・命名・記録列は、実験を書き始める前に揃える）。
+>
 > **実験スクリプトは必ず `ExperimentTracker` を経由させる。** 使い捨てスクリプトが tracker を
 > 経由しないと `cv_train_mean` / `cv_val_std` が記録されず、`G-DIAG` の CV 内部診断が機能しない
 > （過去コンペでは記入率 28% / 21% まで落ちた）。

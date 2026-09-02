@@ -33,9 +33,13 @@ ALWAYS_LOADED = ["CLAUDE.md"] + sorted(
 # 文字数 +1,898 で通過していた）。コンテキストの費用は改行ではなく中身の量なので、
 # 文字数で測る。**上限は分割のたびに締め直す** —— 余白が広いと強制力が失われ、
 # 「まだ入る」で少しずつ膨らむ。実測 + 数%の余白を上限にし、超えたら L1/L2/L3 へ出す。
-ALWAYS_LOADED_BUDGET = 27_000
+#
+# 出典: Claude Code 自身が CLAUDE.md に対して **15,000 字**で警告を出す
+# （"Large CLAUDE.md file detected"）。テンプレートはさらに厳しく、
+# 憲法として必要な最小限（規約・コマンド・指針の索引）だけを置く。
+ALWAYS_LOADED_BUDGET = 5_000
 
-DOC_FILES = ["CLAUDE.md", "CONVENTIONS.md", "PLAYBOOK.md"]
+DOC_FILES = ["CLAUDE.md", "GUIDELINES.md", "CONVENTIONS.md", "PLAYBOOK.md"]
 SKILL_GLOB = ".claude/skills/*/SKILL.md"
 
 # ── C4: 失ってはいけない実測値（Phase 0 で凍結）────────────────
@@ -65,7 +69,7 @@ SSOT_MAP = {
     "feat(expNNN)": "CONVENTIONS.md",
     "ExperimentTracker(": "CONVENTIONS.md",
     "本日 X/5 回目の提出": ".claude/skills/ds-kaggle-submit/SKILL.md",
-    "Public LB Top-10 ∪ OOF Top-10": "CLAUDE.md",
+    "Public LB Top-10 ∪ OOF Top-10": "GUIDELINES.md",
 }
 
 # ── C7: コンペ識別子を書いてよいのは PLAYBOOK の教訓アーカイブのみ ──
@@ -124,8 +128,10 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"未解決 {len(unresolved)} 件" + ("\n      " + "\n      ".join(unresolved[:8]) if unresolved else "")))
 
     # ── C3: 恒久 ID の解決 / 旧番号の残存 ──
+    # 指針の本文（= ID の定義）は GUIDELINES.md が SSoT。CLAUDE.md には索引だけを置く。
     claude = docs.get("CLAUDE.md", "")
-    defined = {m.group(1) for m in re.finditer(r"^#{1,6}.*?\b(G-[A-Z][A-Z-]+)", claude, re.M)}
+    guidelines = docs.get("GUIDELINES.md", "")
+    defined = {m.group(1) for m in re.finditer(r"^#{1,6}.*?\b(G-[A-Z][A-Z-]+)", guidelines, re.M)}
     used, undefined = set(), []
     for rel, text in docs.items():
         for m in re.finditer(r"\b(G-[A-Z][A-Z-]+)\b", text):
@@ -219,6 +225,24 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"どこからも参照されない節 {len(orphans)} 件"
                     + ("\n      " + "\n      ".join(orphans) if orphans else "")))
 
+    # ── C12: 指針の索引と本文の一致 ──
+    # L0 は索引だけを持ち、本文は GUIDELINES.md にある。両者がずれると
+    # 「索引に載っているのに本文が無い（読めない指針）」「本文はあるのに索引に無い
+    # （存在を知られない指針）」が起きる。分離した構造ではこれが最も壊れやすい。
+    idx_section = re.search(r"## 判断指針の索引.*?(?=\n## |\Z)", claude, re.S)
+    idx_ids = set(re.findall(r"`(G-[A-Z][A-Z-]+)`", idx_section.group(0))) if idx_section else set()
+    body_ids = defined
+    missing_body = sorted(idx_ids - body_ids)     # 索引にあるが本文が無い
+    missing_idx = sorted(body_ids - idx_ids)      # 本文はあるが索引に無い
+    detail = []
+    if missing_body:
+        detail.append(f"索引にあるが GUIDELINES.md に本文が無い: {', '.join(missing_body)}")
+    if missing_idx:
+        detail.append(f"本文はあるが CLAUDE.md の索引に無い: {', '.join(missing_idx)}")
+    results.append(("ERROR" if detail else "OK", "C12 指針の索引と本文",
+                    f"索引 {len(idx_ids)} / 本文 {len(body_ids)}"
+                    + ("\n      " + "\n      ".join(detail) if detail else "")))
+
     # ── C11: README の自己申告値 vs 実測 ──
     # README は「テンプレートが何であるか」の対外的な宣言。実態からずれると、
     # 次にこの repo を開いた人（未来の自分）が誤った前提で作業を始める。
@@ -228,7 +252,8 @@ def check(results: list[tuple[str, str, str]]) -> None:
         readme = readme_path.read_text()
         actual_claude = len((ROOT / "CLAUDE.md").read_text())   # C1 と同じ「文字数」で測る
         actual_skills = len(list(ROOT.glob(SKILL_GLOB)))
-        n_checks = len(results) + 1                     # 自分自身を含めた総チェック数
+        n_checks = len(results) + 1   # 自分自身を含めた総数。**新しい検査は C11 より前に置く**
+                                      # （後ろに置くと C11 が数え落として README がずれる）
         claims = [
             (r"固定\s*(\d+)\s*個の数値", len(CRITICAL_NUMBERS), "C4 の実測値の個数"),
             (r"\*\*(\d[\d,]*)\s*字（-\d+%）\*\*", actual_claude, "常時ロードの文字数"),
@@ -244,6 +269,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
     results.append(("WARNING" if drift else "OK", "C11 README の同期",
                     f"実態とのズレ {len(drift)} 件"
                     + ("\n      " + "\n      ".join(drift) if drift else "")))
+
 
 
 def main() -> int:

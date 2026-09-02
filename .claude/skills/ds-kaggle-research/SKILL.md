@@ -7,6 +7,9 @@ description: コンペ序盤（Stage 1.5 の主軸アーキテクチャ決定前
 
 ## このスキルの役割
 
+> **この局面で読む指針**（`GUIDELINES.md`）: `G-PERSIST`（「飽和」を宣言せず問いを立て直す。
+> 強制 brainstorm の発動条件）・`G-INFOCEIL`（情報天井の判定後はモデルではなく情報源を増やす）。
+
 LB 上位者のコードや公開予測ファイルを系統的に収集・分析する。
 「なぜあのスコアが出るのか」を逆算して、自前の実験仮説に接続することが目的。
 
@@ -200,3 +203,6 @@ def vote3(row):
   - 例: `/kaggle/input/datasets/<user>/<slug>/` → `<user>/<slug>`
 - `kaggle datasets download` は zip で落ちる。`--unzip` フラグは古いバージョンでは使えないため Python の `zipfile` で解凍する
 - 公開予測を pseudo source に使うと自前モデルが蒸留になりうる（`PLAYBOOK.md#pseudo-源泉の品質とリーク診断` を参照）
+- 上位カーネルを自環境で再現するときは `PLAYBOOK.md#kaggle-notebook-環境サポート` /
+  `PLAYBOOK.md#データ読み込みパターン` / `PLAYBOOK.md#notebook提出コンペ向けフロー` に従う
+  （環境検出とデータ読み込みの差異でスコアがずれるのを防ぐ）

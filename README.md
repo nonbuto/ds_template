@@ -28,9 +28,9 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 
 | 項目 | 現在値 |
 |---|---|
-| 毎セッション自動ロード（CLAUDE.md） | **26,105 字（-53%）**（上限 27,000 字 / v5 は約 56,000 字） |
-| ドキュメント階層 | L0 CLAUDE.md / L1 CONVENTIONS.md / L2 PLAYBOOK.md / L3 `.claude/skills/` |
-| `doc_audit` のチェック | **C1-C11**（うち C4 は固定 37 個の数値が消えたら ERROR） |
+| 毎セッション自動ロード（CLAUDE.md） | **3,243 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
+| ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
+| `doc_audit` のチェック | **C1-C12**（C4 は固定 37 個の数値、C12 は指針の索引と本文の一致を検査） |
 | 規律の機械化 | hook 6 種（SessionStart / PreToolUse / PostToolUse / Stop / PreCompact / PostCompact）+ ガード 6 種 |
 
 > この表の数値は `uv run python -m scripts.doc_audit` の C11 が実態と突き合わせる。

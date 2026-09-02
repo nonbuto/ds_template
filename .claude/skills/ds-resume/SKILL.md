@@ -7,6 +7,9 @@ description: 新しいセッションを開始するときは必ずこれを最�
 
 ## このスキルの役割
 
+> **この局面で読む指針**（`GUIDELINES.md`）: `G-PURPOSE`（次の一手は、直前の実験から
+> 「何が分かったか」に接続してから決める）。
+
 新しいセッションを始めるとき、または文脈が途切れたと感じたときに呼ぶ。
 複数のファイルを手動で読む代わりに、このスキルが「現在地」を1画面に集約する。
 
@@ -29,6 +32,9 @@ description: 新しいセッションを開始するときは必ずこれを最�
    ステータス集計は `grep -c '^| H-' FE_HYPOTHESES.md` と `grep -c '❌' FE_HYPOTHESES.md` で行う）
 4. `COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
 5. `TODO_TEMPLATE.md` — 未完了項目（完了済みは `docs/TODO_ARCHIVE.md` にあり、通常は読まない）
+
+> サイクル上の現在地は `CONVENTIONS.md#学習サイクルの-11-ステップ`、
+> 次のステージへ進んでよいかは `CONVENTIONS.md#作業ステージのゲート条件` で確認する。
 
 > **規約（パス・命名・log.csv 列・コミット形式・ExperimentTracker の使い方）は `CONVENTIONS.md` にある。**
 > 毎セッション自動ロードされないので、該当する作業に入るときに必ずその節を Read すること。
