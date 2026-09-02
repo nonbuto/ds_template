@@ -264,9 +264,27 @@ N_SPLITS     = 5
 | 項目 | 情報源 | 決定方法 |
 |---|---|---|
 | `TARGET_COL` | `sample_submission.csv` のヘッダー | 2 列目（ID 以外）。Q3 で検出・確認済み |
-| `EVAL_METRIC` | Kaggle の Evaluation ページ | 下記コマンドで取得（取得不可なら Q2 の回答から） |
+| `EVAL_METRIC` | Kaggle の Evaluation ページ | 下記コマンドで取得（取得不可なら Q2 の回答から）。**下の変換表でテンプレートの値に直す** |
 | `PROBLEM_TYPE` | `EVAL_METRIC` + ターゲット値域 | auc/logloss→分類、rmse/mae→回帰、確率列が 3+→multiclass |
 | `CV_STRATEGY` | Q4 の CV 設計判断 | StratifiedKFold が既定。時系列→TimeSeriesSplit、グループ構造→GroupKFold |
+
+> **⚠️ `EVAL_METRIC` は Kaggle の表記のまま書かない。** `src/metrics.py` が実際にこの値を読んで
+> 指標関数を決めるため、対応外の値を書くと学習が `ValueError` で止まる。変換して書くこと:
+>
+> | Kaggle の表記 | テンプレートの値 |
+> |---|---|
+> | AreaUnderROCCurve / ROC AUC | `auc` |
+> | LogLoss / MultiClassLogLoss | `logloss` |
+> | CategorizationAccuracy | `accuracy` |
+> | BalancedAccuracy | `balanced_accuracy` |
+> | MeanFScore / F1 | `f1` |
+> | RootMeanSquaredError (RMSE/RMSLE) | `rmse` |
+> | MeanAbsoluteError | `mae` |
+> | R2 / CoefficientOfDetermination | `r2` |
+>
+> **有効値の定義元は `src/metrics.py` の `_METRICS`。** 上表に無い指標のコンペなら、
+> そこへ追加してから設定する（未対応の値は選択肢を示して失敗するので黙って壊れることはない）。
+> `CV_STRATEGY` の有効値も同様に `get_cv()` が定義元（GroupKFold / StratifiedGroupKFold も使える）。
 
 ```bash
 # 評価指標の取得（取得できれば EVAL_METRIC / PROBLEM_TYPE の根拠にする）

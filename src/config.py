@@ -24,8 +24,10 @@ else:
 COMPETITION = "your-competition-name"
 TARGET_COL = "target"
 PROBLEM_TYPE = "binary_classification"   # "regression" | "binary_classification" | "multiclass"
-EVAL_METRIC = "auc"                       # "rmse" | "auc" | "logloss" | "balanced_accuracy"
-CV_STRATEGY = "StratifiedKFold"           # "KFold" | "StratifiedKFold" | "TimeSeriesSplit"
+EVAL_METRIC = "auc"                       # 有効値は src/metrics.py の _METRICS が定義元:
+                                          # auc / logloss / accuracy / balanced_accuracy / f1 / rmse / mae / r2
+CV_STRATEGY = "StratifiedKFold"           # StratifiedKFold / KFold / TimeSeriesSplit /
+                                          # GroupKFold / StratifiedGroupKFold（src/metrics.py の get_cv）
 N_SPLITS = 5
 
 # ===== データディレクトリ =====

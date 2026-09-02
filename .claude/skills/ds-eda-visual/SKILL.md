@@ -221,7 +221,7 @@ data/output/plots/
 
 ### フェーズ7: セッションの記録（2ファイルを更新）
 
-#### 7-A: `EDA_SUMMARY.md` に発見を記録
+#### 7-A: `state/EDA_SUMMARY.md` に発見を記録
 
 ```markdown
 ## EDA セッションサマリー（YYYY-MM-DD）
@@ -248,7 +248,7 @@ data/output/plots/
 - ...
 ```
 
-#### 7-B: `FEATURE_REPORT.md` の「生変数サマリー」を記入
+#### 7-B: `state/FEATURE_REPORT.md` の「生変数サマリー」を記入
 
 フェーズ3のループで確認した各変数を、`state/FEATURE_REPORT.md` の「生変数サマリー」テーブルに追記する:
 
@@ -263,7 +263,7 @@ data/output/plots/
 
 → **state/FEATURE_REPORT.md の「生変数サマリー」が埋まることで、FE段階でどの変数が未探索かが一目で分かる。**
 
-#### 7-C: `SESSION.md` を更新
+#### 7-C: `state/SESSION.md` を更新
 
 - `現在のステージ`: Stage 2 — EDA 完了
 - `次にやること`: 「/ds-fe-hypothesis で H-NNN〜H-MMM を順番に検証する」

@@ -362,3 +362,36 @@ def test_blend_rejects_multiclass_clearly():
     body = (ROOT / "scripts" / "blend.py").read_text(encoding="utf-8")
     assert "二値分類・回帰" in body, "多クラスを検知して止める処理が無い"
     assert "LabelEncoder" in body, "ラベルエンコードを通していない（文字列ラベルで落ちる）"
+
+
+def test_config_values_are_valid_for_metrics():
+    """`src/config.py` の設定値が `src/metrics.py` で実際に使えること。
+
+    `/ds-kickoff` が Kaggle の表記（AreaUnderROCCurve 等）をそのまま書くと、
+    学習の開始時に ValueError で止まる。設定と実装の乖離をここで捕まえる。
+    """
+    from src import config as cfg
+    from src.metrics import _METRICS, get_cv, get_metric
+
+    assert cfg.EVAL_METRIC.lower() in _METRICS, (
+        f"EVAL_METRIC='{cfg.EVAL_METRIC}' は未対応。有効値: {sorted(_METRICS)}")
+    assert callable(get_metric()), "指標関数を作れない"
+    assert get_cv() is not None, f"CV_STRATEGY='{cfg.CV_STRATEGY}' から分割器を作れない"
+    assert cfg.PROBLEM_TYPE in {"regression", "binary_classification", "multiclass"}, (
+        f"PROBLEM_TYPE='{cfg.PROBLEM_TYPE}' が想定外")
+
+
+def test_skills_reference_existing_files():
+    """スキルが言及するファイルパスが実在すること。
+
+    state/ や docs/ へ移設したときに、スキル側の記述が取り残されると
+    「README を頼りに探した人が見つけられない」状態になる。
+    """
+    import re
+    missing = []
+    for skill in sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md")):
+        text = skill.read_text(encoding="utf-8")
+        for m in re.finditer(r"`((?:scripts|src|state|docs|tests)/[\w/.]+|[A-Z_]+\.md)`", text):
+            if not (ROOT / m.group(1)).exists():
+                missing.append(f"{skill.parent.name}: {m.group(1)}")
+    assert not missing, f"スキルが存在しないファイルを参照している: {sorted(set(missing))}"
