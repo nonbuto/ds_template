@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 19:05:53
-- **git**: `main` / 未コミット 6 件 / HEAD: 877052a fix: ハーネスの警告経路・fail open・定義の散在・死んだ仕組み（MEDIUM-4〜LOW-8）
+- **記録時刻**: 2026-09-02 19:07:19
+- **git**: `main` / 未コミット 5 件 / HEAD: 05e2cd4 fix: 深刻度4（設計上の限界）—— OOF を楽観側に寄せる 3 経路と、実行できなかった集約戦略
 <!-- END:auto-snapshot -->

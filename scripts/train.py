@@ -383,8 +383,11 @@ def main():
 
     # fold 単位のチェックポイント（--resume 時のみ有効）。
     # 中断・クラッシュで既に終わった fold の計算が失われるのを防ぐ（CONVENTIONS の実行規約）。
+    # signature に特徴量と HP を渡す。tag だけだと「モデル名 + 特徴量の本数」しか
+    # 区別せず、列を入れ替えても HP を変えても古い fold が再利用される。
     cache = FoldCache(tag=f"{args.model}_{len(FEATURES)}f", seed=RANDOM_STATE,
-                      n_splits=N_SPLITS, enabled=args.resume)
+                      n_splits=N_SPLITS, enabled=args.resume,
+                      signature={"features": FEATURES, "params": params})
     if args.resume:
         print(cache.report())
 

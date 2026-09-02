@@ -33,6 +33,22 @@ import numpy as np
 from src.config import OOF_DIR
 
 
+def _signature_hash(signature: object) -> str:
+    """条件（特徴量リスト・HP 等）を 8 桁の短いハッシュにする。
+
+    JSON にできないオブジェクトは `repr` で落とす（型が変われば文字列も変わるので、
+    「条件が変わったことを検知する」目的には足りる）。
+    """
+    import hashlib
+    import json
+
+    try:
+        text = json.dumps(signature, sort_keys=True, default=repr, ensure_ascii=False)
+    except TypeError:
+        text = repr(signature)
+    return hashlib.sha256(text.encode()).hexdigest()[:8]
+
+
 class FoldCache:
     """fold ごとの val 予測・test 予測をディスクに保存し、再実行時に再利用する。
 
@@ -40,10 +56,22 @@ class FoldCache:
         tag: 特徴量セットと HP を一意に表す識別子。
             **条件が変われば必ず変える**（古い fold が混ざると不公正比較になる → `G-FAIR`）。
         seed: 乱数シード。`multiseed.run_multiseed()` と組み合わせて使える。
+        signature: 特徴量リストや HP など、**条件が変わったことを機械が判定できる材料**。
+            渡すとその内容のハッシュが tag に足される。
+
+    Note:
+        呼び出し側は tag を `f"{model}_{len(FEATURES)}f"` の形で作りがちだが、
+        それはモデル名と**特徴量の本数**しか区別しない。列を入れ替えても、HP を変えても、
+        本数が同じなら**前回の予測がそのまま再利用される** —— `--resume` を付けた瞬間に
+        別条件の結果が混ざり、しかも表示上は普通に完走する。
+        `signature` を渡せば条件が変わった時点で別のキャッシュになる。
     """
 
     def __init__(self, tag: str, seed: int, n_splits: int,
-                 cache_dir: Optional[Path] = None, enabled: bool = True) -> None:
+                 cache_dir: Optional[Path] = None, enabled: bool = True,
+                 signature: Optional[object] = None) -> None:
+        if signature is not None:
+            tag = f"{tag}_{_signature_hash(signature)}"
         self.tag = tag
         self.seed = seed
         self.n_splits = n_splits

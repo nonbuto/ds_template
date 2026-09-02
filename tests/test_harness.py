@@ -994,3 +994,33 @@ def test_imputation_statistics_come_from_train_only():
     src = Path("scripts/preprocess.py").read_text(encoding="utf-8")
     assert "medians = train[NUMERIC_COLS].median()" in src
     assert "concat" not in src, "train と test を連結してから統計量を取っている"
+
+
+def test_foldcache_signature_separates_conditions(tmp_path):
+    """特徴量や HP が変わったら別のキャッシュになること。
+
+    tag を `f"{model}_{len(FEATURES)}f"` で作ると、モデル名と**特徴量の本数**しか
+    区別しない。列を入れ替えても HP を変えても本数が同じなら前回の予測が再利用され、
+    `--resume` を付けた瞬間に別条件の結果が混ざる（しかも表示上は普通に完走する）。
+    """
+    import numpy as np
+    from src.utils.foldcache import FoldCache
+
+    def cache(features, lr):
+        return FoldCache(tag="lgb_2f", seed=42, n_splits=3, cache_dir=tmp_path,
+                         signature={"features": features, "params": {"lr": lr}})
+
+    base = cache(["a", "b"], 0.05)
+    base.save(0, np.ones((4, 2)), np.ones((2, 2)))
+
+    assert base.load(0) is not None
+    assert cache(["a", "c"], 0.05).load(0) is None, "列を変えたのに再利用された"
+    assert cache(["a", "b"], 0.10).load(0) is None, "HP を変えたのに再利用された"
+    assert cache(["a", "b"], 0.05).load(0) is not None, "同条件なのに再利用されない"
+
+
+def test_train_passes_cache_signature():
+    """学習スクリプトがキャッシュに条件を渡していること。"""
+    for path in ("scripts/train.py", "experiments/runs/_TEMPLATE_exp000_s0_example.py"):
+        src = Path(path).read_text(encoding="utf-8")
+        assert "signature={" in src, f"{path} が FoldCache に条件を渡していない"

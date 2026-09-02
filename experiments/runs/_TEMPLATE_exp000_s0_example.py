@@ -91,7 +91,8 @@ def main() -> None:
     train_scores, val_scores = [], []
 
     cache = FoldCache(tag=f"{args.model}_{len(FEATURES)}f", seed=RANDOM_STATE,
-                      n_splits=N_SPLITS, enabled=args.resume)
+                      n_splits=N_SPLITS, enabled=args.resume,
+                      signature={"features": FEATURES, "params": params})
     if args.resume:
         print(cache.report())
 
