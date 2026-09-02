@@ -10,7 +10,7 @@
   - log.csv の `duration_sec` 実測から、同じモデルの所要時間を引いて ETA を出す
 
 使い方:
-    uv run python -m scripts.job_status
+    uv run python -m scripts.harness.job_status
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
-from scripts.deadline_status import runtime_stats  # noqa: E402
+from scripts.harness.deadline_status import runtime_stats  # noqa: E402
 from src.experiment import RUNNING_DIR  # noqa: E402
 
 STALE_MINUTES = 15   # これ以上ハートビートが更新されないならハングを疑う

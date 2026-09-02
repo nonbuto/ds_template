@@ -19,8 +19,8 @@ AI の自己申告・記憶に依存しないことが唯一の設計目的。
      → tracker を経由せず log.csv へ直接追記する使い捨て実験スクリプトもカバーする
 
 使い方（`src` を import するため -m 形式で起動する）:
-    uv run python -m scripts.viz_guard            # 2つのガードを判定（常に exit 0）
-    uv run python -m scripts.viz_guard --window 5 # 判定窓（実験数）を変える
+    uv run python -m scripts.harness.viz_guard            # 2つのガードを判定（常に exit 0）
+    uv run python -m scripts.harness.viz_guard --window 5 # 判定窓（実験数）を変える
 """
 
 import argparse

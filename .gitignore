@@ -39,7 +39,11 @@ experiments/mlflow/
 # 外部 blending 出力ディレクトリ（コンペ調査用）
 /outputs/
 
-# .claude 内のセッション状態
+# .claude 内のセッション状態・個人設定
+# settings.local.json は「その環境の許可設定」であり配布物ではない。
+# ここに書かないと、clone した環境で個人の許可リストが追跡対象になる
+# （このリポジトリでは長らくユーザーのグローバル gitignore に偶然救われていた）。
+.claude/settings.local.json
 .claude/projects/
 .claude/scheduled_tasks.lock
 

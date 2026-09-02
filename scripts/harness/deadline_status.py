@@ -7,8 +7,8 @@
 5 時間規模の学習ジョブを開始しかけ、締切直前まで気づかない一歩手前だった。
 
 使い方:
-    uv run python -m scripts.deadline_status
-    uv run python -m scripts.deadline_status --deadline "2026-08-31 23:59"  # 手動指定
+    uv run python -m scripts.harness.deadline_status
+    uv run python -m scripts.harness.deadline_status --deadline "2026-08-31 23:59"  # 手動指定
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ DAILY_LIMIT = 10  # Kaggle の 1 日あたり提出上限（コンペにより�
 
 def read_deadline_from_competition_md() -> str | None:
     """COMPETITION.md の基本情報テーブルから締切を読む（`| 締め切り | ... |` 行）。"""
-    path = Path(__file__).resolve().parent.parent / "COMPETITION.md"
+    path = Path(__file__).resolve().parents[2] / "COMPETITION.md"
     if not path.exists():
         return None
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -71,7 +71,7 @@ def runtime_stats() -> list[tuple[str, int, float]]:
     import csv
     from statistics import median
 
-    path = Path(__file__).resolve().parent.parent / "experiments" / "log.csv"
+    path = Path(__file__).resolve().parents[2] / "experiments" / "log.csv"
     if not path.exists():
         return []
     try:

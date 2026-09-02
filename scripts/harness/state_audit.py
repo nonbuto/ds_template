@@ -9,8 +9,8 @@
 観測できる、という `G-MECH` の設計原則どおり、観測可能な側だけで測る。
 
 使い方:
-    uv run python -m scripts.state_audit
-    uv run python -m scripts.state_audit --window 10   # 何実験ぶん遡って見るか
+    uv run python -m scripts.harness.state_audit
+    uv run python -m scripts.harness.state_audit --window 10   # 何実験ぶん遡って見るか
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
 from src.experiment import LOG_CSV_PATH  # noqa: E402

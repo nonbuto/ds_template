@@ -29,11 +29,16 @@ Claude Code と連携するデータサイエンス・テンプレート。**こ
 
 ---
 
-## コマンド（すべて `uv run python -m scripts.<名前>`）
+## コマンド
+
+**コンペ用**（`uv run python -m scripts.<名前>`）——「実験・学習・提出物を作る」もの
 
 - `preprocess` 生データ → 特徴量 pickle（スキーマ・リーク・欠損の検証も走る）／ `train --model lgb`
   CV 学習 → OOF + test + 提出 CSV を 1 回で（`--resume` で中断再開）／ `feature_study` 1 列 ΔOOF 計測
 - `optimize_hp --n-trials 25 --tag working` Optuna（study は SQLite に永続化され追加試行できる）
+
+**ハーネス用**（`uv run python -m scripts.harness.<名前>`）——「規律を守らせる・現在地を知らせる」もの
+
 - `doc_audit` ドキュメント階層の検査（**編集したら必ず実行**）／ `session_audit` 規律ガード一式
 - `deadline_status` 現在 UTC・締切・本日の提出枠・実行時間の実測／ `job_status` 実行中ジョブの生存と ETA
 

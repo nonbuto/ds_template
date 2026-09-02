@@ -7,7 +7,7 @@ AI への指示ではなく**観測可能な結果の側から**測る（`G-MECH
 判定するもの（すべてファイル・git の実態から）:
   1. 未コミットの実験スクリプト（`experiments/runs/exp*.py`）
   2. log.csv に OOF が記録済みなのに、その実験 ID を含むコミットが存在しない
-  3. 状態ファイルの停滞（`scripts/state_audit.py`）
+  3. 状態ファイルの停滞（`scripts/harness/state_audit.py`）
   4. 4 つの規律ガード（可視化・診断記録・推論成果物・Public 過剰浮上）
 
 **ブロックはしない。** Stop hook でブロックすると停止と再開のループを招くため、
@@ -15,7 +15,7 @@ AI への指示ではなく**観測可能な結果の側から**測る（`G-MECH
 可視化ガード（`start_run()`）と、不可逆な提出ゲートだけ。
 
 使い方（hook 経由。手動でも実行できる）:
-    uv run python -m scripts.session_audit
+    uv run python -m scripts.harness.session_audit
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
 from src.experiment import (  # noqa: E402
@@ -102,7 +102,7 @@ def build_report() -> str | None:
         )
 
     try:
-        from scripts.state_audit import build_report as _state_report
+        from scripts.harness.state_audit import build_report as _state_report
         stale = _state_report()
     except Exception:
         stale = None

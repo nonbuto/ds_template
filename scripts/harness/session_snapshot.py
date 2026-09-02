@@ -11,7 +11,7 @@
 人・AI が書いた各セクション（ステージ・次にやること・方針）には触れない。
 
 使い方（hook 経由。手動でも実行できる）:
-    uv run python -m scripts.session_snapshot
+    uv run python -m scripts.harness.session_snapshot
 """
 
 from __future__ import annotations
@@ -22,13 +22,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
 from src.experiment import LOG_CSV_PATH, RUNNING_DIR  # noqa: E402
 
 SESSION_MD = ROOT / "SESSION.md"
-BEGIN = "<!-- BEGIN:auto-snapshot (scripts/session_snapshot.py が生成・手で編集しない) -->"
+BEGIN = "<!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->"
 END = "<!-- END:auto-snapshot -->"
 RECENT = 3
 
@@ -63,7 +63,7 @@ def build_block() -> str:
     running = sorted(RUNNING_DIR.glob("*.json")) if RUNNING_DIR.exists() else []
     if running:
         ids = ", ".join(f"exp{p.stem}" for p in running)
-        lines.append(f"- **実行中のジョブ**: {ids} → `uv run python -m scripts.job_status` で確認")
+        lines.append(f"- **実行中のジョブ**: {ids} → `uv run python -m scripts.harness.job_status` で確認")
 
     branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]) or "?"
     dirty = len([l for l in _run(["git", "status", "--short"]).splitlines() if l])

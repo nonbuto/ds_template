@@ -12,8 +12,8 @@
 ここで集計する。テンプレートの原則どおり、自己申告ではなく**結果の側から**測る。
 
 使い方:
-    uv run python -m scripts.hook_status
-    uv run python -m scripts.hook_status --tail 20   # 直近の発火を時系列で見る
+    uv run python -m scripts.harness.hook_status
+    uv run python -m scripts.harness.hook_status --tail 20   # 直近の発火を時系列で見る
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 LOG_PATH = ROOT / "experiments" / ".hook_log"
 
 EXPECTED = ["SessionStart", "PreToolUse", "PostToolUse", "Stop", "PreCompact", "PostCompact"]

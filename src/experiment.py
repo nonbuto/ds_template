@@ -322,7 +322,7 @@ def _heartbeat_write(exp_id: str, **fields) -> None:
     """実行中ジョブの状態を書く（存在＝実行中、更新時刻＝生存確認）。
 
     「まだ動いていますか」「また止まってませんか」を人が尋ねずに済むようにする。
-    ハートビートが古ければハングまたはクラッシュと判定できる（`scripts/job_status.py`）。
+    ハートビートが古ければハングまたはクラッシュと判定できる（`scripts/harness/job_status.py`）。
     """
     try:
         RUNNING_DIR.mkdir(parents=True, exist_ok=True)

@@ -13,8 +13,8 @@ AI がゼロ文脈で走り出さないようにする。
 **`MAX_LINES` 行以内に収める。** 出力はそのままコンテキストを消費する。
 
 使い方（hook 経由。手動でも実行できる）:
-    uv run python -m scripts.session_brief
-    uv run python -m scripts.session_brief --event PostCompact
+    uv run python -m scripts.harness.session_brief
+    uv run python -m scripts.harness.session_brief --event PostCompact
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
 from src.experiment import LOG_CSV_PATH  # noqa: E402
@@ -110,11 +110,11 @@ def build_brief(event: str = "SessionStart") -> str:
     if running:
         ids = ", ".join(f"exp{p.stem}" for p in running)
         out.append(f"【実行中のジョブ】{ids}"
-                   f" → `uv run python -m scripts.job_status`（生存・進捗・ETA）")
+                   f" → `uv run python -m scripts.harness.job_status`（生存・進捗・ETA）")
 
     # ── 規律監査（Stop hook と同じ判定を再利用）──
     try:
-        from scripts.session_audit import build_report
+        from scripts.harness.session_audit import build_report
         report = build_report()
     except Exception:
         report = None

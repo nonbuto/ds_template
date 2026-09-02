@@ -349,7 +349,7 @@ Final 2 が確定しました。最後に Kaggle の Web サイトで選択し�
 実験の進行状況と残り枠を見て「**今この瞬間に最も価値のある 1 本**」を毎回選ぶ。
 
 **カウントは UTC 基準**（枠リセットは UTC 00:00 = JST 09:00）。自己申告に頼らず
-`uv run python -m scripts.deadline_status` で確認し、SESSION.md・log.csv の日時には
+`uv run python -m scripts.harness.deadline_status` で確認し、SESSION.md・log.csv の日時には
 タイムゾーンを明記する。**30 分超のジョブを始める前と、前回の時刻確認から 30 分以上
 経っている場合は必ず再実行する**（古い残り時間の見積もりで長時間ジョブを開始する事故を防ぐ）。
 

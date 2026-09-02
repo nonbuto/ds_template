@@ -68,7 +68,7 @@ argument-hint: "<改善の説明>"
 本体ファイル（CLAUDE.md / CONVENTIONS.md / PLAYBOOK.md / skills）を編集したら、**必ず実行する**:
 
 ```bash
-uv run python -m scripts.doc_audit
+uv run python -m scripts.harness.doc_audit
 ```
 
 C1-C11 を検査する。特に注意すべき失敗の型:

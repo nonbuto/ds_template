@@ -15,7 +15,7 @@ CLAUDE.md「Kaggle提出ルール」は **提出前に「対象ファイル名�
 
 使い方（hook 経由。手動確認もできる）:
     echo '{"tool_name":"Bash","tool_input":{"command":"kaggle competitions submit -c x -f y.csv -m z"}}' \
-      | uv run python -m scripts.submit_gate
+      | uv run python -m scripts.harness.submit_gate
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
-from scripts.deadline_status import (  # noqa: E402
+from scripts.harness.deadline_status import (  # noqa: E402
     DAILY_LIMIT,
     count_todays_submissions,
     parse_deadline,
@@ -177,7 +177,7 @@ def main() -> int:
         print("hook 入力（JSON）が stdin に無いため何もしません。"
               "手動確認は次のように渡してください:\n"
               '  echo \'{"tool_name":"Bash","tool_input":{"command":"..."}}\''
-              " | uv run python -m scripts.submit_gate", file=sys.stderr)
+              " | uv run python -m scripts.harness.submit_gate", file=sys.stderr)
         return 0
     try:
         payload = json.load(sys.stdin)

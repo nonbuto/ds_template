@@ -9,8 +9,8 @@ SSoT 原則を守れているかを機械的に検証する。
     数値の grep なら 100% 検知できる（C4 がこのチェッカーの主役）。
 
 使い方:
-    uv run python -m scripts.doc_audit                    # 検査
-    uv run python -m scripts.doc_audit --baseline-write   # 現状をベースラインとして保存
+    uv run python -m scripts.harness.doc_audit                    # 検査
+    uv run python -m scripts.harness.doc_audit --baseline-write   # 現状をベースラインとして保存
 """
 
 import argparse
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 BASELINE_PATH = ROOT / "experiments" / "doc_audit_baseline.json"
 
 # ── 4 層の定義 ──────────────────────────────────────────────
@@ -290,7 +290,7 @@ def main() -> int:
 
     icon = {"OK": "✅", "WARNING": "⚠️ ", "ERROR": "❌"}
     print("=" * 72)
-    print(" ドキュメント階層 検査（scripts/doc_audit.py）")
+    print(" ドキュメント階層 検査（scripts/harness/doc_audit.py）")
     print("=" * 72)
     for level, name, msg in results:
         print(f"{icon[level]} {name}: {msg}")

@@ -28,7 +28,18 @@
 
 ## スクリプト構成
 
-**`scripts/`（テンプレート本体・再利用可能）**
+**スクリプトは 2 系統に分ける**（判定基準: 「実験・学習・提出物を作る」= コンペ用 ／
+「規律を守らせる・現在地を知らせる」= ハーネス用）:
+
+| 置き場所 | 起動 | 役割 |
+|---|---|---|
+| `scripts/` | `uv run python -m scripts.<名前>` | コンペ用。前処理・学習・FE計測・HP探索・提出物生成 |
+| `scripts/harness/` | `uv run python -m scripts.harness.<名前>` | ハーネス用。hook から呼ばれるものと、規律・現在地の診断ツール |
+
+`__init__.py` は置かない（名前空間パッケージ）。ハーネス側の `ROOT` は
+`Path(__file__).resolve().parents[2]` でリポジトリルートを指す（1 階層深いため）。
+
+**`scripts/`（コンペ用）**
 
 | ファイル | Stage | 役割 |
 |---|---|---|
@@ -40,17 +51,17 @@
 | `scripts/blend.py` | 6 | アンサンブル・ブレンド |
 | `scripts/visualize.py` | 2 | EDA可視化→`data/output/plots/`に画像保存 |
 | `scripts/feature_report.py` | 随時 | 特徴量重要度・ΔOOF棒グラフを画像生成 |
-| `scripts/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
+| `scripts/harness/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
 | `scripts/av_check.py` | 4 | AV診断（train/test 分布シフトの検出） |
-| `scripts/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
-| `scripts/viz_guard.py` | 随時 | 可視化・診断記録・推論成果物の機械チェック |
-| `scripts/state_audit.py` | 随時 | 状態ファイルの停滞を検知（log.csv の実験時刻 vs mtime） |
-| `scripts/session_brief.py` | hook | SessionStart / PostCompact で現在地を提示 |
-| `scripts/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
-| `scripts/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
-| `scripts/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
-| `scripts/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
-| `scripts/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
+| `scripts/harness/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
+| `scripts/harness/viz_guard.py` | 随時 | 可視化・診断記録・推論成果物の機械チェック |
+| `scripts/harness/state_audit.py` | 随時 | 状態ファイルの停滞を検知（log.csv の実験時刻 vs mtime） |
+| `scripts/harness/session_brief.py` | hook | SessionStart / PostCompact で現在地を提示 |
+| `scripts/harness/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
+| `scripts/harness/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
+| `scripts/harness/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
+| `scripts/harness/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
+| `scripts/harness/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
 
 **`src/`（コア）**: `config.py`（パス・コンペ設定）、`experiment.py`（`ExperimentTracker` と各ガード）、
 `hp_spaces.py`（Optuna 探索空間）、`validation.py`（スキーマ・リーク・欠損の検証。`preprocess.py` が呼ぶ）
@@ -146,7 +157,7 @@ save_run_outputs(exp_id=exp_id, model="lgb_h012", oof=oof, test=test, oof_score=
 `log_fold_scores()` が fold 進捗で更新、`end_run()` が削除する。
 
 ```bash
-uv run python -m scripts.job_status   # 生存・fold 進捗・ETA・ハング検知
+uv run python -m scripts.harness.job_status   # 生存・fold 進捗・ETA・ハング検知
 ```
 
 「まだ動いていますか」「また止まってませんか」を人が尋ねずに済ませるための機構。
@@ -289,21 +300,21 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 
 | hook | 実行するもの | 何をするか |
 |---|---|---|
-| `SessionStart` | `scripts/session_brief.py` | 現在地（ステージ・次アクション・直近の実験・要対応）を提示。`/ds-resume` の機械部分。行数上限は同ファイルの `MAX_LINES`（毎セッションのコンテキストを消費するため） |
-| `PreToolUse` (Bash) | `scripts/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
-| `PostToolUse` (Bash) | `scripts/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
-| `Stop` | `scripts/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
-| `PreCompact` | `scripts/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
-| `PostCompact` | `scripts/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
+| `SessionStart` | `scripts/harness/session_brief.py` | 現在地（ステージ・次アクション・直近の実験・要対応）を提示。`/ds-resume` の機械部分。行数上限は同ファイルの `MAX_LINES`（毎セッションのコンテキストを消費するため） |
+| `PreToolUse` (Bash) | `scripts/harness/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
+| `PostToolUse` (Bash) | `scripts/harness/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
+| `Stop` | `scripts/harness/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
+| `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
+| `PostCompact` | `scripts/harness/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
 
 **ガードの手動実行**:
 
 ```bash
-uv run python -m scripts.viz_guard        # 可視化・診断記録・推論成果物・Public過剰浮上
-uv run python -m scripts.state_audit      # 状態ファイルの停滞（log.csv の実験時刻 vs mtime）
-uv run python -m scripts.session_audit    # 上記すべて + コミット規律
-uv run python -m scripts.session_brief    # 現在地ブリーフ
-uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェック）
+uv run python -m scripts.harness.viz_guard        # 可視化・診断記録・推論成果物・Public過剰浮上
+uv run python -m scripts.harness.state_audit      # 状態ファイルの停滞（log.csv の実験時刻 vs mtime）
+uv run python -m scripts.harness.session_audit    # 上記すべて + コミット規律
+uv run python -m scripts.harness.session_brief    # 現在地ブリーフ
+uv run python -m scripts.harness.doc_audit        # ドキュメント階層（11 チェック）
 ```
 
 **設計上の約束**:
@@ -315,6 +326,9 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
   過去コンペの事故はすべて「提示された数字が記憶であって実測でなかった」ことが原因だった
 - 提出コマンドの検知は **shlex でコマンド位置を判定**する。文字列として含むだけの
   Bash（ドキュメント編集・grep）を誤検知しない（導入時に実際に自分をブロックした）
+- **`settings.json` は共有（hook 定義・git 管理下）、`settings.local.json` は個人の許可設定で
+  git 管理外**（`.gitignore` 済み）。ローカル設定を追跡すると、個人の許可リストや
+  そのセッション固有のパスが配布物に混入する
 - hook が落ちても作業は止めない（入力が読めない・API 取得失敗時は素通しする）
 - **ハーネスはブランチに閉じている。** `.claude/settings.json` も `scripts/*.py` も git 管理下なので、
   **別ブランチに切り替えると hook 構成ごと入れ替わる**（コンペブランチには存在しないことがある）。
@@ -326,7 +340,7 @@ uv run python -m scripts.doc_audit        # ドキュメント階層（11 チェ
 - **各 hook は先頭で発火時刻を `experiments/.hook_log` へ追記する。**
   「登録した hook が本当に発火しているか」は設定ファイルを見ても分からない——とくに
   ①走行中セッションに設定変更が反映されるか ②**自動圧縮**でも `PreCompact` / `PostCompact` が
-  呼ばれるか、の 2 点。推測で埋めず `uv run python -m scripts.hook_status` で実測を見る
+  呼ばれるか、の 2 点。推測で埋めず `uv run python -m scripts.harness.hook_status` で実測を見る
 - **`PreCompact` と `PostCompact` は対で使う**。長時間セッション（夜間の学習を回し続ける等）では
   新セッションが滅多に始まらない代わりに圧縮が繰り返し起きる。圧縮は数万トークンを要約へ潰すので、
   直後にブリーフ十数行を戻す費用は失うものの 1% 未満——**「コンテキスト節約 vs 文脈欠如」は
@@ -425,7 +439,7 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 | `success_criteria` | `/ds-new-experiment` | どんな結果なら成功か |
 | `abort_criteria` | `/ds-new-experiment` | どんな結果なら中止するか |
 | `cv_val_mean` / `oof_score` | 学習完了時 | OOFスコア |
-| `duration_sec` | 学習完了時（自動） | `start_run` → `end_run` の実測秒数。**30分ルールの推定はこの実測から取る**（`uv run python -m scripts.deadline_status` がモデル別中央値を表示） |
+| `duration_sec` | 学習完了時（自動） | `start_run` → `end_run` の実測秒数。**30分ルールの推定はこの実測から取る**（`uv run python -m scripts.harness.deadline_status` がモデル別中央値を表示） |
 | `submit_score` | `/ds-kaggle-submit` | LBスコア |
 | `oof_lb_gap` | `/ds-kaggle-submit` | OOF tuned − LB（正=OOF過大評価、負=OOF過小評価）。乖離が大きい実験は汎化リスクあり |
 | `learning` | `/ds-kaggle-submit` | この実験から何を学んだか |
@@ -535,7 +549,7 @@ SESSION.md は「今どこにいるか」を1画面で示すライブダッシ�
 `/ds-resume` が 80 行超過を検知したら、完了済みエントリを削除して収める。
 
 **例外**: `<!-- BEGIN:auto-snapshot -->` 〜 `<!-- END:auto-snapshot -->` のブロックは
-上限の対象外。PreCompact hook（`scripts/session_snapshot.py`）が**追記ではなく置換**するため
+上限の対象外。PreCompact hook（`scripts/harness/session_snapshot.py`）が**追記ではなく置換**するため
 蓄積せず、内容も直近の実験・実行中ジョブ・git 状態に限定され行数が構造的に有界だから。
 手で編集しない（次回の圧縮で上書きされる）。
 
@@ -583,7 +597,7 @@ CLAUDE.md「テンプレート改善プロトコル」の振り分け表。**判
 - [ ] 回帰・分類の両方に対応（またはどちらか明記）
 - [ ] 新依存関係を `pyproject.toml` に追加済み
 - [ ] カスタマイズ箇所を `# TODO:` コメントで明示
-- [ ] `uv run python -m scripts.doc_audit` が ERROR 0（C7 がコンペ識別子の混入を検出する）
+- [ ] `uv run python -m scripts.harness.doc_audit` が ERROR 0（C7 がコンペ識別子の混入を検出する）
 
 ---
 
@@ -695,4 +709,4 @@ v5 までの `指針#N` は v6 で恒久 ID に置き換えた。**この表は 
 
 **なぜ番号をやめたか**: 指針を統合・並べ替えるたびに `#N` の参照が全ファイルで壊れ、v5 では
 「ヘッダーが `#1-22` のまま」「`#20` と `#17` の取り違え」等のバグが 8 件蓄積していた。
-恒久 ID なら統合しても参照が壊れず、未定義 ID は `scripts/doc_audit.py` の C3 が機械的に検出する。
+恒久 ID なら統合しても参照が壊れず、未定義 ID は `scripts/harness/doc_audit.py` の C3 が機械的に検出する。
