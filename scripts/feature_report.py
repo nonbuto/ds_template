@@ -22,7 +22,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from src.config import PLOTS_DIR, OOF_DIR, PARAMS_DIR, PROCESSED_DATA_DIR
+from src.config import (PLOTS_DIR, OOF_DIR, PARAMS_DIR, PROCESSED_DATA_DIR,
+                        FEATURE_REPORT_MD, FE_HYPOTHESES_MD)
 from src.utils.plot_style import setup_japanese_font
 
 setup_japanese_font()
@@ -161,7 +162,7 @@ def sync_feature_set(report_md: Path) -> bool:
               "end_run(feature_names=...) を渡すと保存されます")
         return False
 
-    adopted, rejected, untested = _count_hypotheses(Path("FE_HYPOTHESES.md"))
+    adopted, rejected, untested = _count_hypotheses(FE_HYPOTHESES_MD)
     features = snap.get("features", [])
     preview = "、".join(features[:12]) + ("…" if len(features) > 12 else "")
     body = "\n".join([
@@ -206,11 +207,11 @@ def main():
     args = parser.parse_args()
 
     if args.sync:
-        sync_feature_set(Path("FEATURE_REPORT.md"))
+        sync_feature_set(FEATURE_REPORT_MD)
         return
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-    feature_report_md = Path("FEATURE_REPORT.md")
+    feature_report_md = FEATURE_REPORT_MD
     train_path = PROCESSED_DATA_DIR / "train_features.pkl"
 
     # 重要度ファイルの自動検索

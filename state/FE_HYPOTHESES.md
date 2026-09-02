@@ -31,7 +31,7 @@
 <!-- 例: | H-001 | 睡眠×ストレスの交互作用 | ❌ | 冗長 | LGB（NN未評価） | -->
 
 **棄却理由の分類**: `冗長` / `因果誤り` / `n不足` / `モデル依存逆転` / `効果量不足`
-**集計は grep で行う**（全文 Read しない）: `grep -c '^| H-' FE_HYPOTHESES.md` ／ `grep -c '❌' FE_HYPOTHESES.md`
+**集計は grep で行う**（全文 Read しない）: `grep -c '^| H-' state/FE_HYPOTHESES.md` ／ `grep -c '❌' state/FE_HYPOTHESES.md`
 
 ---
 

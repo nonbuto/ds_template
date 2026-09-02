@@ -52,6 +52,8 @@ data/output/params/optuna_studies/
 
 # 実行中ジョブのハートビート（プロセス固有。共有しない）
 experiments/.running/
+# statusLine が読む提出枠キャッシュ（deadline_status が API を叩いたついでに書く）
+experiments/.statusline_cache.json
 # fold 単位チェックポイント（再開用の一時成果物）
 data/output/oof/_foldcache/
 # hook 発火の実測ログ（scripts/hook_status.py が読む）

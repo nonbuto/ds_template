@@ -1,6 +1,6 @@
 ---
 name: ds-kickoff
-description: コンペ参加直後に1回だけ呼ぶ。データを見る前に「そのデータが何者か」を理解するためのスキル。評価指標・データ種別（合成/実データ）・外部データ有無・CV設計の初期判断を COMPETITION.md と src/config.py に記録する。EDA や最初の実験を始める前に必ず実施すること。
+description: コンペ参加直後に1回だけ呼ぶ。データを見る前に「そのデータが何者か」を理解するためのスキル。評価指標・データ種別（合成/実データ）・外部データ有無・CV設計の初期判断を state/COMPETITION.md と src/config.py に記録する。EDA や最初の実験を始める前に必ず実施すること。
 argument-hint: "<コンペ名 or URL>"
 ---
 
@@ -76,7 +76,7 @@ except ImportError:
 "
 ```
 
-→ 結果（CUDA/MPS/CPU・GPU有無）を `COMPETITION.md` の「実行環境」に記録する
+→ 結果（CUDA/MPS/CPU・GPU有無）を `state/COMPETITION.md` の「実行環境」に記録する
 → ローカルGPUが無い・弱い場合、NN 系や multi-fold × multi-seed の重い学習は
   **Kaggle Notebook GPU**（`PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ`）を主実行環境として計画する
 → 以降、**推定30分超の実験は毎回「ローカル vs Kaggle GPU」の選択肢を提示する**（CLAUDE.md 環境・ツール参照）
@@ -160,7 +160,7 @@ sample_submission.csv のヘッダー: id,<col>
 - 列挙された変数が **粗い形 (binary 等) でしかない** 場合 → 詳細データ拡張の検討
 - ドメイン専門家がいる場合は **ML パイプラインを動かす前** にヒアリングする
 
-→ 列挙された変数を `COMPETITION.md` の「ドメイン知識先行リスト」セクションに記録する
+→ 列挙された変数を `state/COMPETITION.md` の「ドメイン知識先行リスト」セクションに記録する
 
 **Q6: 外部データインベントリ（強制）**
 
@@ -177,7 +177,7 @@ sample_submission.csv のヘッダー: id,<col>
 > **「後で見る」は許可しない。** すべて 3 択のいずれかに分類する。
 > 教訓 (過去事例): ダウンロード済みの外部時系列データがコンペ最終日まで未使用で放置され、+1σ LB 改善を取り逃しかけた
 
-→ 判定結果を `COMPETITION.md` の「外部データインベントリ」セクションに表形式で記録する
+→ 判定結果を `state/COMPETITION.md` の「外部データインベントリ」セクションに表形式で記録する
 
 **Q7: このコンペで何を重視しますか？（コンペ戦略軸）**
 
@@ -190,7 +190,7 @@ sample_submission.csv のヘッダー: id,<col>
 - **新手法の習得**: 特定アーキテクチャ・手法の実戦練習を優先する
 - **プロセス検証**: テンプレート・ワークフローの改善検証を優先する
 
-→ 回答を `COMPETITION.md` の「コンペ戦略軸」セクションに記録する
+→ 回答を `state/COMPETITION.md` の「コンペ戦略軸」セクションに記録する
 → **AI はこの戦略軸を終盤まで保持する義務がある**: Final 2 選定時に必ず再掲し、
   スコア期待値と戦略軸が対立する場合は「スコア軸では A、戦略軸では B」と両論併記して
   ユーザーの判断を仰ぐ（AI が一方の軸だけで推奨を組み立てない）
@@ -199,7 +199,7 @@ sample_submission.csv のヘッダー: id,<col>
 
 ### フェーズ2: キックオフサマリーの記録（実行層）
 
-フェーズ1の回答を `COMPETITION.md` の先頭に記録する:
+フェーズ1の回答を `state/COMPETITION.md` の先頭に記録する:
 
 ```markdown
 ## Kickoff サマリー
@@ -294,7 +294,7 @@ config を以下で自動補完します（COMPETITION は設定済み）:
 
 ### フェーズ4: SESSION.md の初期化と次ステップへの接続（実行層）
 
-`src/config.py` 更新後、`SESSION.md` を初期化する:
+`src/config.py` 更新後、`state/SESSION.md` を初期化する:
 
 - `現在のステージ`: Stage 0 — Kickoff 完了
 - `次にやること`:
@@ -319,7 +319,7 @@ src/config.py を更新しました:
   EVAL_METRIC  = "<評価指標>"
   CV_STRATEGY  = "<CV戦略>"
 
-SESSION.md を初期化しました。
+state/SESSION.md を初期化しました。
 
 次のステップ:
   Stage 1: /ds-new-experiment で最小ベースライン実験を開始する

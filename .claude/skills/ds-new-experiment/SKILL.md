@@ -74,7 +74,7 @@ argument-hint: <実験名>
 ```
 この実験の推定実行時間: 約 XX 分（根拠: fold数 × モデル × データ規模、類似実験の実績）
 実行環境の選択肢:
-  A) ローカル実行（COMPETITION.md 記録のHW: 例 MPS）
+  A) ローカル実行（state/COMPETITION.md 記録のHW: 例 MPS）
   B) Kaggle Notebook GPU（手順: PLAYBOOK.md#kaggle-gpu-ワークフローcsv提出コンペ）
 どちらで実行しますか？
 ```
@@ -123,7 +123,7 @@ argument-hint: <実験名>
    - `experiment_name`, `experiment_question`（Q1の回答）, `success_criteria`（Q2）, `abort_criteria`（Q3）を記録
    - スコア列は空欄のまま（`/ds-kaggle-submit` で埋める）
 
-6. **`SESSION.md` を更新する**（セッション引き継ぎのため）
+6. **`state/SESSION.md` を更新する**（セッション引き継ぎのため）
    - `現在のステージ`: 現在の Stage 番号と状況
    - `最後に完了したこと`: 今回の実験開始を記録（スコアは後で埋める）
    - `次にやること`: 「<実験名> の学習を実行する」を先頭に記載
@@ -153,7 +153,7 @@ argument-hint: <実験名>
   メッセージ形式は CONVENTIONS.md#コミット規約 を参照。
   ※ tracker.end_run() がコミットメッセージ案を自動出力します
 
-SESSION.md を更新しました。次のセッションで /ds-resume を実行すると
+state/SESSION.md を更新しました。次のセッションで /ds-resume を実行すると
 この実験の目的と次のアクションが復元されます。
 
 実験完了後は `/ds-kaggle-submit` で提出・振り返りを行い、

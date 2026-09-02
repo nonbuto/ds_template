@@ -21,6 +21,8 @@
 | `experiments/` | log.csv + MLflowアーティファクト |
 | `scripts/` | 再利用可能なスクリプト（後述） |
 | `experiments/runs/` | 実験ごとの1回限りスクリプト |
+| `state/` | **コンペごとに育つ作業記録**（SESSION / COMPETITION / FE_HYPOTHESES / FEATURE_REPORT / EDA_SUMMARY / KAGGLE_RESEARCH）。パスは `src.config` の `STATE_DIR` から取る |
+| `docs/` | テンプレート改善の記録（TODO_TEMPLATE / TODO_ARCHIVE） |
 
 > `data/output/` 直下にファイルを置かない。役割別サブディレクトリを必ず使う。
 
@@ -59,7 +61,7 @@
 | `scripts/harness/session_brief.py` | hook | SessionStart / PostCompact で現在地を提示 |
 | `scripts/harness/session_audit.py` | hook | Stop でコミット規律・状態鮮度・3ガードを監査 |
 | `scripts/harness/submit_gate.py` | hook | PreToolUse で Kaggle 提出にユーザー承認を要求 |
-| `scripts/harness/session_snapshot.py` | hook | PreCompact で SESSION.md へ状態を退避 |
+| `scripts/harness/session_snapshot.py` | hook | PreCompact で state/SESSION.md へ状態を退避 |
 | `scripts/harness/job_status.py` | 随時 | 実行中ジョブの生存・fold 進捗・ETA を表示 |
 | `scripts/harness/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
 
@@ -239,7 +241,7 @@ matplotlib で日本語ラベルを描くと文字化け（tofu 表示）する�
 2. 提出ファイルは `submission_path()` 生成のものか確認する（→ `CONVENTIONS.md#提出ファイルの命名規約`）
 3. 提出後 `kaggle competitions submissions | head -3` で LB スコアを確認する
 4. log.csv の `submit_score` と `oof_lb_gap`（= `oof_score` − `submit_score`）を更新する
-5. SESSION.md のスコアテーブルを更新する（**OOF-LB 乖離列を必ず記入**）+ 本日の提出数を記録する
+5. state/SESSION.md のスコアテーブルを更新する（**OOF-LB 乖離列を必ず記入**）+ 本日の提出数を記録する
 6. `git commit` で LB 結果を記録する
 
 スキルが提供するフローをAIが代替する。チェックリストの省略は禁止。
@@ -295,7 +297,15 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 
 ## hook とガードの一覧
 
-`.claude/settings.json` に 6 つの hook を登録している。規律は AI への指示ではなく
+`.claude/settings.json` に **`statusLine`（ステータスバー）と 6 つの hook** を登録している。
+
+**`statusLine`** は毎ターン（`refreshInterval` 秒ごとにも）呼ばれるため、
+**同期ネットワーク呼び出しを一切しない**。提出枠は `deadline_status` が Kaggle API を
+叩いたついでに書いたキャッシュ（`experiments/.statusline_cache.json`・TTL 10 分）を読むだけで、
+無い/古い場合は「提出—」と表示する。失敗しても例外を投げず短い文字列を返す
+（ここで落ちると毎ターンエラーが出る）。
+
+規律は AI への指示ではなく
 **観測可能な結果の側から**測る（CLAUDE.md `G-MECH`）。
 
 | hook | 実行するもの | 何をするか |
@@ -304,7 +314,7 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `PreToolUse` (Bash) | `scripts/harness/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
 | `PostToolUse` (Bash) | `scripts/harness/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
 | `Stop` | `scripts/harness/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
-| `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を SESSION.md へ退避 |
+| `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を state/SESSION.md へ退避 |
 | `PostCompact` | `scripts/harness/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
 
 **ガードの手動実行**:
@@ -344,8 +354,8 @@ uv run python -m scripts.harness.doc_audit        # ドキュメント階層（1
 - **`PreCompact` と `PostCompact` は対で使う**。長時間セッション（夜間の学習を回し続ける等）では
   新セッションが滅多に始まらない代わりに圧縮が繰り返し起きる。圧縮は数万トークンを要約へ潰すので、
   直後にブリーフ十数行を戻す費用は失うものの 1% 未満——**「コンテキスト節約 vs 文脈欠如」は
-  釣り合っておらず、再注入する側が明確に得**。`PreCompact` が SESSION.md へ恒久記録し、
-  `PostCompact` が読み直す（注入が効かなかった場合の保険として SESSION.md 側が残る）
+  釣り合っておらず、再注入する側が明確に得**。`PreCompact` が state/SESSION.md へ恒久記録し、
+  `PostCompact` が読み直す（注入が効かなかった場合の保険として state/SESSION.md 側が残る）
 
 ---
 
@@ -365,7 +375,7 @@ CLAUDE.md「セッションの作法」が求める対応表。**スキル呼び
 | EDA | `ds-eda-visual` の「問い → 発見 → FE 仮説の種」3 段階 |
 | 最終日 | `ds-kaggle-submit` フェーズ5: Final 2 Persona 投票 |
 | 学習完了・OOF 判明直後 | 「OOF=X、前ベスト比 ΔOOF=±X。commit しますか？」を**能動提示**（→ `G-STEPWISE`） |
-| 実験 3 回完了ごと | SESSION.md の「直近の実験」を更新し、次の方向を問いかける |
+| 実験 3 回完了ごと | state/SESSION.md の「直近の実験」を更新し、次の方向を問いかける |
 | FE 棄却 3 連続 | Discussion 調査を提案し「未試行の情報次元」を自発的に列挙（→ `G-PERSIST`） |
 
 **スキルを呼ぶべき節目**（AI は能動的に提案する）: セッション開始 `/ds-resume`（**必須**・文脈リセット防止）／ `/ds-kickoff`（参加直後 1 回）／ **主軸アーキテクチャ決定の前 `/ds-kaggle-research`**（Stage 1.5 の前提入力。序盤の外部調査を省くと伸びしろの所在に気づくのが遅れる）／ FE 棄却 3 連続・LB プラトー時 `/ds-kaggle-research`／ 振り返り `/ds-template-update`。**AI から起動できないのは `/ds-kaggle-submit` だけ**（不可逆な外部作用のため `disable-model-invocation` を維持。他は読み取り・記録のみなので AI 起動可）。submit がヒットしたら黙って止まらず理由を明示し、代替（下記の手動チェックリスト）を提示する。
@@ -380,8 +390,8 @@ CLAUDE.md「セッションの作法」が求める対応表。**スキル呼び
 
 | # | ステップ | 移行の条件（次に進んでよい判断） |
 |---|---|---|
-| 1 | `/ds-resume` | **新セッション開始時は必ず呼ぶ。** SESSION.md + log.csv + FE_HYPOTHESES.md 索引で現在地を復元 |
-| 2 | `/ds-kickoff` | 「そのデータが何者か」を文脈から理解（参加直後に一度だけ）→ COMPETITION.md に記録 |
+| 1 | `/ds-resume` | **新セッション開始時は必ず呼ぶ。** state/SESSION.md + log.csv + state/FE_HYPOTHESES.md 索引で現在地を復元 |
+| 2 | `/ds-kickoff` | 「そのデータが何者か」を文脈から理解（参加直後に一度だけ）→ state/COMPETITION.md に記録 |
 | 3 | `/ds-new-experiment` | 最小ベースライン（前処理不要な数値カラムのみ・デフォルト HP） |
 | 4 | `/ds-kaggle-submit` | LB 提出で **CV/LB 相関を確立**。以降すべての改善はこの基準点からの Δ で判断する |
 | 5 | `/ds-kaggle-research` | 上位解法のアーキテクチャ分布を調べる（フェーズ0）。**主軸決定の前提入力にする** |
@@ -401,13 +411,13 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 
 | Stage | 目的 | 完了条件 | スキル・ツール |
 |---|---|---|---|
-| **0. Kickoff** | データの文脈理解 | `COMPETITION.md` にデータ種別・外部データ有無・評価指標特性・CV設計の初期判断を記録済み | `/ds-kickoff` |
+| **0. Kickoff** | データの文脈理解 | `state/COMPETITION.md` にデータ種別・外部データ有無・評価指標特性・CV設計の初期判断を記録済み | `/ds-kickoff` |
 | **1. 最小ベースライン** | CV/LB相関の確立 | 前処理不要な数値カラムのみ・デフォルトHPでモデルを学習し、LBに提出してCV/LB相関を確認済み。以降すべての改善はこの基準点からのΔで判断する | `/ds-new-experiment` + `/ds-kaggle-submit` |
 | **1.5. 早期アーキテクチャサーベイ** | 主軸アーキテクチャの決定 | 候補アーキテクチャ（Tree/NN/Linear等）を最小特徴量セット + 作業用HPで評価し、OOFとpub_oof_gapを記録。「主軸アーキテクチャ」を1つ決定済み。手順は `PLAYBOOK.md#早期アーキテクチャサーベイの手順stage-15` に従い実施 | `/ds-new-experiment` |
 | **2. EDA** | 問いとFE仮説の種を獲得 | `/ds-eda-visual` で「問い→発見→FE仮説の種」の対話完了。合成データの場合は元データとの分布比較も含む | `/ds-eda-visual` |
 | **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減。**不安定な大型アーキでは単一 fold・サブサンプルでの HP 選定を禁止**（→ `G-FULLCV`）。study は SQLite に永続化され同じ tag で追加試行できる（→ `CONVENTIONS.md#optuna-study-の永続化と命名`） | Optuna（軽量） |
-| **4. 段階的FE** | 有効な特徴量の特定 | `FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
-| **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
+| **4. 段階的FE** | 有効な特徴量の特定 | `state/FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
+| **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを state/SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
 | **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
 
 **Stage 6 の判断原則**（実行手順は L2、ここは着手可否の判断材料）:
@@ -444,8 +454,8 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 | `oof_lb_gap` | `/ds-kaggle-submit` | OOF tuned − LB（正=OOF過大評価、負=OOF過小評価）。乖離が大きい実験は汎化リスクあり |
 | `learning` | `/ds-kaggle-submit` | この実験から何を学んだか |
 
-> **ベスト実験の管理は SESSION.md のスコアテーブルで一元化する。** log.csv にベストフラグ列（`is_best` 等）を持たない
-> — フラグ方式は過去コンペで 100 実験超のうちほぼ全行が未記入となり形骸化した。二重管理をやめ、SESSION.md の上書き更新に集約する。
+> **ベスト実験の管理は state/SESSION.md のスコアテーブルで一元化する。** log.csv にベストフラグ列（`is_best` 等）を持たない
+> — フラグ方式は過去コンペで 100 実験超のうちほぼ全行が未記入となり形骸化した。二重管理をやめ、state/SESSION.md の上書き更新に集約する。
 
 **列を追加するとき**: `LOG_CSV_COLUMNS`（`src/experiment.py`）に足すだけでよい。
 `_ensure_log_csv()` が既存ファイルのヘッダを見て不足列を空値で補い、行を保ったまま移行する。
@@ -499,26 +509,26 @@ CLAUDE.md「思考の外部化の原則」が求める記録を、どのファ�
 
 | 記録すべきもの | どこに | スキル |
 |---|---|---|
-| 「何を知りたいか」「ドメイン知識」 | EDA_SUMMARY.md | `/ds-eda-visual` |
-| 各変数の特性・ΔOOF・採否 | FEATURE_REPORT.md | `/ds-eda-visual` · `/ds-fe-hypothesis` が記入を促す。**「現在の特徴量セット」節は機械生成**（`end_run(feature_names=...)` → `scripts.feature_report --sync`）。採否の表は自由形式の検証でも確定時に手動更新する — 過去コンペでは 3 週間超の FE 成果が未反映のまま「今どれがベースか」を追えなくなった |
-| 特徴量の仮説・因果・棄却理由 | FE_HYPOTHESES.md | `/ds-fe-hypothesis` |
+| 「何を知りたいか」「ドメイン知識」 | state/EDA_SUMMARY.md | `/ds-eda-visual` |
+| 各変数の特性・ΔOOF・採否 | state/FEATURE_REPORT.md | `/ds-eda-visual` · `/ds-fe-hypothesis` が記入を促す。**「現在の特徴量セット」節は機械生成**（`end_run(feature_names=...)` → `scripts.feature_report --sync`）。採否の表は自由形式の検証でも確定時に手動更新する — 過去コンペでは 3 週間超の FE 成果が未反映のまま「今どれがベースか」を追えなくなった |
+| 特徴量の仮説・因果・棄却理由 | state/FE_HYPOTHESES.md | `/ds-fe-hypothesis` |
 | 実験の目的・成功基準・撤退基準 | experiments/log.csv | `/ds-new-experiment` |
 | 実験から何を学んだか | experiments/log.csv | `/ds-kaggle-submit` |
-| テンプレートへの汎用的な気づき | TODO_TEMPLATE.md | `/ds-template-update` |
-| **現在地・次のアクション・未解決の問い** | **SESSION.md** | **`/ds-new-experiment` · `/ds-kaggle-submit` が自動更新** |
+| テンプレートへの汎用的な気づき | docs/TODO_TEMPLATE.md | `/ds-template-update` |
+| **現在地・次のアクション・未解決の問い** | **state/SESSION.md** | **`/ds-new-experiment` · `/ds-kaggle-submit` が自動更新** |
 
 ---
 
 ## SESSION.md の構成と上限
 
-**SESSION.md の更新タイミング（自動）:**
+**state/SESSION.md の更新タイミング（自動）:**
 - `/ds-kickoff` 実行時 → Stage 0 完了・次のアクション（最小ベースライン）を記録
 - `/ds-eda-visual` 実行時 → Stage 2 完了・次のFE仮説リストを記録
 - `/ds-fe-hypothesis` 実行時（新規） → 仮説登録・次のアクション（実装→計測）を記録
 - `/ds-new-experiment` 実行時 → 実験開始・次のアクションを記録
 - `/ds-kaggle-submit` 実行時 → LBスコア・OOF-LB乖離・**本日の提出数（例: 3/10）**・学び・次の方向性を記録
 
-SESSION.md は「今どこにいるか」を1画面で示すライブダッシュボード。
+state/SESSION.md は「今どこにいるか」を1画面で示すライブダッシュボード。
 **アペンドではなく各セクションを上書き更新する**（蓄積禁止）。
 
 **固定構成**（この順序を守り、追加セクションを作らない）:
@@ -554,7 +564,7 @@ SESSION.md は「今どこにいるか」を1画面で示すライブダッシ�
 手で編集しない（次回の圧縮で上書きされる）。
 
 **禁止パターン**: 「最後に完了したこと」を複数回追記する / 複数のスコアテーブルを並存させる /
-過去セッションの履歴を蓄積する（git history に残るため SESSION.md には不要）。
+過去セッションの履歴を蓄積する（git history に残るため state/SESSION.md には不要）。
 
 ---
 
@@ -685,7 +695,7 @@ OOF=0.91688  model=lgb  features=fe_v7_interaction
 ## 付録A. 旧番号と恒久 ID の対応表
 
 v5 までの `指針#N` は v6 で恒久 ID に置き換えた。**この表は v6 限りの移行用**（v7 で削除する）。
-過去の SESSION.md・log.csv・FE_HYPOTHESES.md に残る旧番号を読むときに使う。
+過去の state/SESSION.md・log.csv・state/FE_HYPOTHESES.md に残る旧番号を読むときに使う。
 
 | 恒久 ID | 旧番号 | 主題 |
 |---|---|---|

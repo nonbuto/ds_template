@@ -30,11 +30,11 @@ DEFAULT_WINDOW = 10   # 直近 N 実験のあいだに更新されたかを見�
 
 # (ファイル名, 何を記録する場所か, 更新するスキル)
 WATCHED: list[tuple[str, str, str]] = [
-    ("SESSION.md", "現在地・次のアクション", "/ds-new-experiment · /ds-kaggle-submit"),
-    ("FEATURE_REPORT.md", "各変数の特性・ΔOOF・採否", "/ds-eda-visual · /ds-fe-hypothesis"),
-    ("FE_HYPOTHESES.md", "仮説の因果・棄却理由", "/ds-fe-hypothesis"),
-    ("EDA_SUMMARY.md", "EDA の問いと発見", "/ds-eda-visual"),
-    ("KAGGLE_RESEARCH.md", "外部調査の知見", "/ds-kaggle-research"),
+    ("state/SESSION.md", "現在地・次のアクション", "/ds-new-experiment · /ds-kaggle-submit"),
+    ("state/FEATURE_REPORT.md", "各変数の特性・ΔOOF・採否", "/ds-eda-visual · /ds-fe-hypothesis"),
+    ("state/FE_HYPOTHESES.md", "仮説の因果・棄却理由", "/ds-fe-hypothesis"),
+    ("state/EDA_SUMMARY.md", "EDA の問いと発見", "/ds-eda-visual"),
+    ("state/KAGGLE_RESEARCH.md", "外部調査の知見", "/ds-kaggle-research"),
 ]
 
 

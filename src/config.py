@@ -58,13 +58,23 @@ PLOTS_DIR       = OUTPUT_DIR / "plots"         # EDA・可視化画像（Claude 
 # 実験スクリプトの保管先
 RUNS_DIR = EXPERIMENTS_DIR / "runs"
 
+# コンペごとに育つ作業記録（テンプレート文書と分けてルートを散らかさない）。
+# **パスはここから import する**（CLAUDE.md 絶対規約: ハードコード禁止）。
+STATE_DIR         = ROOT_DIR / "state"
+SESSION_MD        = STATE_DIR / "SESSION.md"
+COMPETITION_MD    = STATE_DIR / "COMPETITION.md"
+FE_HYPOTHESES_MD  = STATE_DIR / "FE_HYPOTHESES.md"
+FEATURE_REPORT_MD = STATE_DIR / "FEATURE_REPORT.md"
+EDA_SUMMARY_MD    = STATE_DIR / "EDA_SUMMARY.md"
+KAGGLE_RESEARCH_MD = STATE_DIR / "KAGGLE_RESEARCH.md"
+
 # 乱数シード
 RANDOM_STATE = 42
 
 # 必要なディレクトリが存在しない場合は作成
 # RAW_DATA_DIR: Kaggle環境では /kaggle/input/<comp>/ が存在しない可能性があるので作成しない
 _dirs_to_create = [
-    PROCESSED_DATA_DIR, EXPERIMENTS_DIR,
+    PROCESSED_DATA_DIR, EXPERIMENTS_DIR, STATE_DIR,
     SUBMISSIONS_DIR, OOF_DIR, MODELS_DIR, PARAMS_DIR, PLOTS_DIR, RUNS_DIR,
 ]
 if not IS_KAGGLE:

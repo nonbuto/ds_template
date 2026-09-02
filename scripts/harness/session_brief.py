@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
+from src.config import SESSION_MD  # noqa: E402
 from src.experiment import LOG_CSV_PATH  # noqa: E402
 
 MAX_LINES = 30
@@ -67,7 +68,7 @@ def _is_placeholder(line: str) -> bool:
 def build_brief(event: str = "SessionStart") -> str:
     out: list[str] = [f"━━━ セッション現在地（{event} hook · 機械生成）━━━"]
 
-    session_md = ROOT / "SESSION.md"
+    session_md = SESSION_MD
     if session_md.exists():
         text = session_md.read_text(encoding="utf-8")
         stage = [l for l in _section(text, "現在のステージ") if not _is_placeholder(l)]

@@ -1,4 +1,9 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "[ -f scripts/harness/statusline.py ] && uv run python -m scripts.harness.statusline || true",
+    "refreshInterval": 30
+  },
   "hooks": {
     "SessionStart": [
       {

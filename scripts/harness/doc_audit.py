@@ -74,7 +74,7 @@ SSOT_MAP = {
 
 # ── C7: コンペ識別子を書いてよいのは PLAYBOOK の教訓アーカイブのみ ──
 COMPETITION_TOKENS = re.compile(r"s6e[0-9]|playground-series")
-COMPETITION_ALLOWED = ["PLAYBOOK.md", "TODO_TEMPLATE.md", "README.md"]
+COMPETITION_ALLOWED = ["PLAYBOOK.md", "docs/TODO_TEMPLATE.md", "README.md"]
 
 
 def _iter_docs():

@@ -30,6 +30,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 | 項目 | 現在値 |
 |---|---|
 | 毎セッション自動ロード（CLAUDE.md） | **3,342 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
+| ルート直下 | テンプレート文書 6 件のみ（CLAUDE / GUIDELINES / CONVENTIONS / PLAYBOOK / README / CHANGELOG）。コンペごとに育つ記録は `state/`、改善の記録は `docs/` |
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
 | `doc_audit` のチェック | **C1-C12**（C4 は固定 37 個の数値、C12 は指針の索引と本文の一致を検査） |
 | 規律の機械化 | hook 6 種（SessionStart / PreToolUse / PostToolUse / Stop / PreCompact / PostCompact）+ ガード 6 種 |
@@ -66,7 +67,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 3. **Kaggle からデータを取得**（`data/raw/` へ）
 4. **Python 基本環境を構築**（`uv sync`。**Python 3.12** を `.python-version` で固定）
 5. `src/config.py` の `COMPETITION` を自動設定
-6. `SESSION.md` / `experiments/log.csv` を初期化
+6. `state/SESSION.md` / `experiments/log.csv` を初期化
 
 ### Step 2: `/ds-kickoff` でコンペ文脈を記録 & config を自動補完
 
@@ -74,7 +75,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 /ds-kickoff
 ```
 
-- データ種別・評価指標・外部データ・CV 設計を対話で記録 → `COMPETITION.md`
+- データ種別・評価指標・外部データ・CV 設計を対話で記録 → `state/COMPETITION.md`
 - `src/config.py` の残り項目を自動補完（手作業不要）
 - データ未取得なら自動ダウンロード（セーフティネット）
 
@@ -213,19 +214,19 @@ uv run python scripts/feature_report.py
 
 | スキル | タイミング | 役割 |
 |---|---|---|
-| `/ds-resume` | **毎セッション開始時（必須）** | SESSION.md + log.csv + FE_HYPOTHESES.md を読み「今どこにいるか」を1画面で復元 |
-| `/ds-kickoff` | コンペ参加直後（1回のみ） | データ種別・外部データ有無・CV設計の初期判断を COMPETITION.md に記録 |
+| `/ds-resume` | **毎セッション開始時（必須）** | state/SESSION.md + log.csv + state/FE_HYPOTHESES.md を読み「今どこにいるか」を1画面で復元 |
+| `/ds-kickoff` | コンペ参加直後（1回のみ） | データ種別・外部データ有無・CV設計の初期判断を state/COMPETITION.md に記録 |
 | `/ds-new-experiment` | 実験開始前 | 目的・成功基準・撤退基準を言語化してからブランチとインフラを整備 |
 | `/ds-kaggle-submit` | 提出前後 | 提出前確認 → LBスコア取得 → OOF/LB乖離分析 → 学びを log.csv に記録 |
 | `/ds-eda-visual` | Stage 2 | 「問い→可視化→発見→FE仮説の種」の対話型EDA |
 | `/ds-fe-hypothesis` | Stage 4 | FE仮説の立案・実装後可視化確認・検証・棄却理由の構造化 |
 | `/ds-kaggle-research` | **Stage 1.5 の前（序盤調査）**・FE棄却3連続後・Stage 6 外部予測活用時 | 上位解法のアーキテクチャ分布調査（フェーズ0）／ Kaggle Discussion / Dataset / Kernel を CLI で系統的に調査 |
-| `/ds-template-update` | 随時 | テンプレート改善アイデアを TODO_TEMPLATE.md に記録 |
+| `/ds-template-update` | 随時 | テンプレート改善アイデアを docs/TODO_TEMPLATE.md に記録 |
 
 > `/ds-kaggle-setup` は上表に含まれない。**repo を clone する側**なので repo 内には置けず、
 > `~/.claude/skills/` の個人スキルとして持つ（新コンペの Step 1 で使う）。
 >
-> `/ds-eda-report` は v6 で削除済み。機能は `/ds-eda-visual` と `FEATURE_REPORT.md` に統合済み。
+> `/ds-eda-report` は v6 で削除済み。機能は `/ds-eda-visual` と `state/FEATURE_REPORT.md` に統合済み。
 
 ---
 
@@ -235,12 +236,12 @@ uv run python scripts/feature_report.py
 ├── CLAUDE.md              # L0 原則: 判断の憲法（恒久ID G-XXX・ステージ定義）※毎セッション自動ロード
 ├── CONVENTIONS.md         # L1 規約: パス・命名・log.csv列・コミット形式 ※引くときだけ読む
 ├── PLAYBOOK.md            # L2 手順+史料: 実行レシピ + 教訓アーカイブ(L-NN) ※局面参照
-├── COMPETITION.md         # コンペ固有メモ（/ds-kickoff が生成・更新）
-├── FE_HYPOTHESES.md       # FE仮説の立案・検証・棄却記録（/ds-fe-hypothesis が管理）
-├── FEATURE_REPORT.md      # 特徴量の生きたレポート（EDA・FE段階を通じて記入）
-├── EDA_SUMMARY.md         # EDA対話の発見まとめ（/ds-eda-visual が生成）
-├── SESSION.md             # セッション現在地・次のアクション（/ds-resume で参照）
-├── TODO_TEMPLATE.md       # テンプレート改善タスク（/ds-template-update が追記）
+├── state/COMPETITION.md         # コンペ固有メモ（/ds-kickoff が生成・更新）
+├── state/FE_HYPOTHESES.md       # FE仮説の立案・検証・棄却記録（/ds-fe-hypothesis が管理）
+├── state/FEATURE_REPORT.md      # 特徴量の生きたレポート（EDA・FE段階を通じて記入）
+├── state/EDA_SUMMARY.md         # EDA対話の発見まとめ（/ds-eda-visual が生成）
+├── state/SESSION.md             # セッション現在地・次のアクション（/ds-resume で参照）
+├── docs/TODO_TEMPLATE.md       # テンプレート改善タスク（/ds-template-update が追記）
 │
 ├── scripts/               # 汎用骨格スクリプト（コンペ開始時に TODO を埋めて使う）
 │   ├── doc_audit.py       # ドキュメント階層の検査（SSoT・行数予算・実測値の保存）
@@ -290,7 +291,7 @@ uv run python scripts/feature_report.py
 | **可視化は画像ファイルで保存** | Claude Code は marimo のレンダリングを認識できない。`data/output/plots/` に `.png` を保存し、Read ツールで読んで対話する |
 | **FEは1列ずつ計測** | 複数列を一度に追加すると「どれが効いたか」が分からなくなる。`feature_study.py` で1列ずつΔOOFを計測する |
 | **実験の目的を先に記録** | 結果が出てから目的を決めると合理化が起きる。`/ds-new-experiment` で「何を明らかにするか」を先に log.csv に記録する |
-| **SESSION.md は上書き原則** | 履歴を追記すると80行を超えて読めなくなる。各セクションは常に最新1件だけ上書きし、詳細は git log で追跡する |
+| **state/SESSION.md は上書き原則** | 履歴を追記すると80行を超えて読めなくなる。各セクションは常に最新1件だけ上書きし、詳細は git log で追跡する |
 | **OOF最大化を第一目標・pub_oof_gap最小化を第二目標** | OOF→Private 相関が極めて高い（r≈0.998）。gap最大化は Private で逆効果（r≈−0.51）と実証済み |
 | **Stage 1.5 でアーキテクチャを早期決定** | FE探索後のアーキテクチャ乗り換えは探索効率が大幅に落ちる。最小特徴量の段階で公正比較して主軸を固める |
 | **IS_KAGGLE 自動検出** | ローカルと Kaggle Notebook でパスが異なる。`/kaggle/input` の存在確認で自動切り替えし、コードの分岐を最小化する |

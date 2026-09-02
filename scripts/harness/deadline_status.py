@@ -24,7 +24,8 @@ DAILY_LIMIT = 10  # Kaggle の 1 日あたり提出上限（コンペにより�
 
 def read_deadline_from_competition_md() -> str | None:
     """COMPETITION.md の基本情報テーブルから締切を読む（`| 締め切り | ... |` 行）。"""
-    path = Path(__file__).resolve().parents[2] / "COMPETITION.md"
+    from src.config import COMPETITION_MD
+    path = COMPETITION_MD
     if not path.exists():
         return None
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -59,6 +60,41 @@ def count_todays_submissions(competition: str) -> int | None:
         return None
     # kaggle CLI は警告行を混ぜることがあるため、日付フィールドの一致だけを数える
     return sum(1 for line in out.splitlines() if today in line)
+
+
+SUBMISSION_CACHE = Path(__file__).resolve().parents[2] / "experiments" / ".statusline_cache.json"
+CACHE_TTL_SEC = 600   # statusLine が読む側の許容鮮度
+
+
+def write_submission_cache(competition: str, used: int, limit: int) -> None:
+    """Kaggle API を叩いたついでに提出枠をキャッシュする。
+
+    `statusline.py` は毎ターン呼ばれるため**同期ネットワーク呼び出しができない**。
+    API を叩くのはこちら（deadline_status / submit_gate）だけにし、
+    statusLine はこのキャッシュを読むだけにする。
+    """
+    import json
+    try:
+        SUBMISSION_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        SUBMISSION_CACHE.write_text(json.dumps({
+            "competition": competition, "used": used, "limit": limit,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }), encoding="utf-8")
+    except Exception:
+        pass          # キャッシュの失敗で本処理を止めない
+
+
+def read_submission_cache(ttl_sec: int = CACHE_TTL_SEC) -> dict | None:
+    """鮮度内のキャッシュを返す。無い・古い・壊れている場合は None。"""
+    import json
+    try:
+        d = json.loads(SUBMISSION_CACHE.read_text(encoding="utf-8"))
+        at = datetime.strptime(d["at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - at).total_seconds() > ttl_sec:
+            return None
+        return d
+    except Exception:
+        return None
 
 
 def runtime_stats() -> list[tuple[str, int, float]]:
@@ -130,6 +166,7 @@ def main() -> None:
         if used is None:
             print(f"本日の提出   : 取得失敗（kaggle CLI を確認）  コンペ: {competition}")
         else:
+            write_submission_cache(competition, used, args.limit)
             left = args.limit - used
             mark = "🔴" if left == 0 else ("🟡" if left <= 2 else "🟢")
             print(f"{mark} 本日の提出   : {used}/{args.limit} 使用済み（残り {left} 枠）  コンペ: {competition}")

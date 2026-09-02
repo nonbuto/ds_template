@@ -53,7 +53,7 @@ kaggle kernels pull <user>/<slug> -p /tmp/research_<slug>
 **このサマリーから導く判断:**
 - 上位で頻出するアーキテクチャは **Stage 1.5 のサーベイ候補に必ず含める**（自前の思い込みで候補を絞らない）
 - 上位が単一 GBDT ではなく NN / stacking を使っているなら、それが「伸びしろの所在」のシグナル
-- 結果を SESSION.md の「次にやること」に「Stage 1.5 候補: LGB / CatBoost / <上位由来アーキテクチャ>」として記録
+- 結果を state/SESSION.md の「次にやること」に「Stage 1.5 候補: LGB / CatBoost / <上位由来アーキテクチャ>」として記録
 
 > **注意**: このフェーズはコードを丸写しするためではない。「どの方向に伸びしろがあるか」を掴むため。
 > 上位解法の実装詳細は Stage 1.5 で公正比較しながら自前で再現・検証する。
@@ -186,10 +186,10 @@ def vote3(row):
 5. ファイル内容を分析
    └── 特徴量エンジニアリングの違い・公開予測 CSV の利用可否を判断
 
-6. 新発見を **`KAGGLE_RESEARCH.md` に日付見出しで追記**（上書きせず蓄積）
+6. 新発見を **`state/KAGGLE_RESEARCH.md` に日付見出しで追記**（上書きせず蓄積）
    └── 「なぜそのスコアが出るか」のメカニズムを1〜3行で言語化
-   └── SESSION.md には `KAGGLE_RESEARCH.md` への 1 行リンクだけを残す
-       （SESSION.md は 80 行上限のため、詳細を置くと「直近の実験」の更新で流れて失われる）
+   └── state/SESSION.md には `state/KAGGLE_RESEARCH.md` への 1 行リンクだけを残す
+       （state/SESSION.md は 80 行上限のため、詳細を置くと「直近の実験」の更新で流れて失われる）
    └── FE 仮説に変換できるものは `/ds-fe-hypothesis` で H-NNN として登録し、両者を相互参照する
 ```
 

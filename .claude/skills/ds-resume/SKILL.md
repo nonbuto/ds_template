@@ -1,6 +1,6 @@
 ---
 name: ds-resume
-description: 新しいセッションを開始するときは必ずこれを最初に実行する。SESSION.md・log.csv・FE_HYPOTHESES.md を読み込み「今どこにいるか・次に何をするか」を1画面で復元する。「前回どこまで進んだか」「次に何をすべきか」が不明なときも呼ぶ。作業を始める前の必須ルーティン。
+description: 新しいセッションを開始するときは必ずこれを最初に実行する。state/SESSION.md・log.csv・state/FE_HYPOTHESES.md を読み込み「今どこにいるか・次に何をするか」を1画面で復元する。「前回どこまで進んだか」「次に何をすべきか」が不明なときも呼ぶ。作業を始める前の必須ルーティン。
 ---
 
 # /ds-resume スキル
@@ -26,12 +26,12 @@ description: 新しいセッションを開始するときは必ずこれを最�
 
 以下のファイルをすべて読み込む:
 
-1. `SESSION.md` — 現在地スナップショット（最優先）
+1. `state/SESSION.md` — 現在地スナップショット（最優先）
 2. `experiments/log.csv` — 直近5件の実験記録
-3. `FE_HYPOTHESES.md` — **仮説 50 件超なら「索引」セクションのみ Read**（全文 Read 禁止。
-   ステータス集計は `grep -c '^| H-' FE_HYPOTHESES.md` と `grep -c '❌' FE_HYPOTHESES.md` で行う）
-4. `COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
-5. `TODO_TEMPLATE.md` — 未完了項目（完了済みは `docs/TODO_ARCHIVE.md` にあり、通常は読まない）
+3. `state/FE_HYPOTHESES.md` — **仮説 50 件超なら「索引」セクションのみ Read**（全文 Read 禁止。
+   ステータス集計は `grep -c '^| H-' state/FE_HYPOTHESES.md` と `grep -c '❌' state/FE_HYPOTHESES.md` で行う）
+4. `state/COMPETITION.md` — コンペ基本情報（Stage 0 の記録）
+5. `docs/TODO_TEMPLATE.md` — 未完了項目（完了済みは `docs/TODO_ARCHIVE.md` にあり、通常は読まない）
 
 > サイクル上の現在地は `CONVENTIONS.md#学習サイクルの-11-ステップ`、
 > 次のステージへ進んでよいかは `CONVENTIONS.md#作業ステージのゲート条件` で確認する。
@@ -61,12 +61,12 @@ git status --short
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  /ds-resume — セッション復元ブリーフィング
- （SESSION.md + log.csv より自動生成）
+ （state/SESSION.md + log.csv より自動生成）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【現在のステージ】
   Stage X — <ステージ名>
-  状況: <SESSION.md の「フェーズ内の状況」>
+  状況: <state/SESSION.md の「フェーズ内の状況」>
 
 【スコア状況】
   | 指標 | OOF tuned | LB | OOF-LB乖離 | 実験ID |
@@ -83,14 +83,14 @@ git status --short
   次の未検証候補: H-<NNN> <タイトル>
 
 【前回セッションで決めた次のアクション】
-  1. <SESSION.md の「次にやること」より>
+  1. <state/SESSION.md の「次にやること」より>
   2. ...
 
 【未解決の問い・ブロッカー】
-  - <SESSION.md より>
+  - <state/SESSION.md より>
 
 【今サイクルの重要方針】
-  - <SESSION.md の「重要な方針」より>
+  - <state/SESSION.md の「重要な方針」より>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 続けますか？ 上記の「次のアクション」から始めてよいですか？
@@ -103,27 +103,27 @@ git status --short
 ブリーフィングを出力した後:
 
 1. **「前回の続きから始めてよいですか？」** と確認する
-2. ユーザーが変更や補足を言ったら、SESSION.md の「次にやること」または「未解決の問い」を更新する
+2. ユーザーが変更や補足を言ったら、state/SESSION.md の「次にやること」または「未解決の問い」を更新する
 3. ユーザーが「はい」または「続けて」と言ったら、「次のアクション」の1番目を実行し始める
 
 ---
 
 ## 注意事項
 
-- SESSION.md が存在しない（プロジェクト開始直後）場合は「SESSION.md がまだ作成されていません。`/ds-kickoff` から始めてください」と案内する
+- state/SESSION.md が存在しない（プロジェクト開始直後）場合は「state/SESSION.md がまだ作成されていません。`/ds-kickoff` から始めてください」と案内する
 - log.csv が存在しない場合は「実験記録がありません。最初の実験を始めましょう」と案内する
-- FE_HYPOTHESES.md が存在しない場合は仮説セクションを省略する
+- state/FE_HYPOTHESES.md が存在しない場合は仮説セクションを省略する
 - 状態ファイルの内容が古い可能性があることをユーザーに伝え、「追加の変更があれば教えてください」と促す
 
-**SESSION.md オーバーフロー検知（必須チェック）:**
+**state/SESSION.md オーバーフロー検知（必須チェック）:**
 
-フェーズ1で SESSION.md を読み込んだ後、行数を確認する:
+フェーズ1で state/SESSION.md を読み込んだ後、行数を確認する:
 ```bash
-wc -l SESSION.md
+wc -l state/SESSION.md
 ```
 - **80行超**: 蓄積が起きているサイン。ブリーフィング冒頭に以下を表示する:
   ```
-  ⚠️ SESSION.md が XX 行あります（上限80行）。
+  ⚠️ state/SESSION.md が XX 行あります（上限80行）。
   古いエントリを削除して整理しますか？
   ```
   ユーザーが「はい」と言ったら、完了済みエントリを削除して 80 行以内に収める

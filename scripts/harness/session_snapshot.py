@@ -25,9 +25,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
+from src.config import SESSION_MD  # noqa: E402
 from src.experiment import LOG_CSV_PATH, RUNNING_DIR  # noqa: E402
 
-SESSION_MD = ROOT / "SESSION.md"
 BEGIN = "<!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->"
 END = "<!-- END:auto-snapshot -->"
 RECENT = 3
