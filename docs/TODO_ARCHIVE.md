@@ -1092,3 +1092,27 @@ FE_HYPOTHESES.md は 2,300行超・101仮説。資産としては価値がある
 - **説明**: `TODO_TEMPLATE.md` 1,075 行のうち 66 件が DONE で、実際に読むべき未完了は 3 件だった（`/ds-resume` が毎セッション読むファイル）。`README.md` 581 行のうち約 280 行がバージョン履歴だった。`CLAUDE.md` は上限 650 行に張り付き、退避ポリシーが無かった。
 - **対応**: `docs/TODO_ARCHIVE.md` と `CHANGELOG.md` へ分離。CLAUDE.md に「1 行入れるなら 1 行出す」の退避ポリシーと「ガード側を緩めない」を明記。README 側は履歴分離で `doc_audit` C11 の検査対象が消えたため「現在の構成」表を新設して検知を回復した。
 - **状態**: [DONE]（2026-09-02）
+
+---
+
+## [2026-07-04] HIGH — FE仮説の採否は「ΔOOF・CV内部診断（train/val/std/gap）・importance」の3点セットで総合判断する（旧: ΔOOF閾値だけの判断はPrivate shakedownリスクがある）
+
+- **背景（ΔOOF+gapの2点）**: s6e7でH-008(bmi_extreme_flag, ΔOOF=-0.00009)とH-009の一案(bmi_bin7, ΔOOF=-0.00020)は、どちらも`scripts/feature_study.py`のΔOOF閾値判定では「⬜ノイズ範囲/❌棄却」の同列に分類されていた。しかしCV内部診断（train_mean/val_std/gapの変化）まで見ると、bmi_extreme_flagはgap変化ほぼ0（train_meanはむしろ微減、val_stdは改善）の「過学習兆候なしの純粋なノイズ」だったのに対し、bmi_bin7はgapが+0.00023拡大する「軽度の過学習兆候あり」だった。この2つを実際にLB提出して比較したところ、bmi_extreme_flagはLBでexp009比+0.00027**改善**し、bmi_bin7はLBでも-0.00012悪化と、CV内部診断による事前の判別がLBの挙動と一貫して対応した。
+- **背景追加（importanceの3点目）**: H-011（sleep_duration<6.0閾値、3変換案）では、sleep_deficit_amount/logのimportanceが14特徴量中8位（gender・physical_activity_level・smoking_alcohol・sleep_quality・diet_typeという既存採用済み特徴量より高い水準）だったにもかかわらず、ΔOOFはほぼゼロ〜マイナスだった。これはH-006(diet_type)でも確認済みの「importanceが中位以上でもΔOOFに寄与しない」パターンの再現であり、ΔOOF・gapの2点だけでは見えない乖離がimportance確認で追加発見できることを示した。ユーザーからは「これまでもPrivate時にshakedownを連発していた。ΔOOF閾値判断だけではリスクが高い」「今後の実験もOOFだけでなくこれらの数値から総合して採否を判断しよう」という明確な方針指示があった。
+- **問題点**: `scripts/feature_study.py`の判定ロジック（当初実装）はΔOOFの絶対値のみで4段階判定しており、gap・importanceを判定に組み込んでいなかった。ΔOOFが僅差の場合、「本当に効果がないノイズ」「軽度の過学習」「importanceは高いが精度に寄与しない冗長」を区別できず、誤った採否判断がPrivate LBでのshakedown（順位変動）リスクに繋がる。
+- **恒久対応（対応済み / DONE）**:
+    - `scripts/feature_study.py`の判定ロジックを改修し、ΔOOFがノイズ範囲・棄却域にある場合はgapの変化（閾値+0.0005を「notable」とする）も加味した詳細な判定を表示するようにした
+    - 同スクリプトの出力にimportance（新特徴量のimportance値・全特徴量中の順位）も自動表示するようにした（`run_cv()`が返す`importance_df`を利用、追加の学習は不要）
+    - スクリプトのdocstringに「ΔOOF・gap・importanceの3点を総合して判断する」原則と、s6e7での実証結果（2件）を明記した
+- **今後の運用ルール（このコンペ及び今後のコンペ共通）**: FE仮説の採否は必ず以下の3点を確認してから判断する。1つだけでは判断しない
+    1. **ΔOOF**: 閾値+0.001/+0.0003/±0.0003/マイナスの4段階（既存基準）
+    2. **CV内部診断（train/val/std/gap）**: train_meanの変化・val_stdの変化・gapの変化。gapが拡大していれば過学習兆候、変化がなければノイズの可能性が高い
+    3. **importance（gain）**: 新特徴量の順位・値。低ければ「使われていない」棄却、中位以上でもΔOOFに寄与しなければ「冗長」棄却（H-006/H-011型）
+    - ΔOOFがノイズ範囲・僅差棄却域かつgap変化が小さい場合は、提出枠に余裕があれば実際にLB提出して確認する価値がある（s6e7の事例のように、ΔOOFがマイナスでもLBで改善するケースがある）
+- **関連**: 下記「`/ds-kaggle-submit` の診断がOOF↔LBの2軸のみ」のTODO項目とは扱う段階が異なる（本項目はFE採否判断＝提出前の入口段階、下記項目は提出後のLB診断段階）が、根本思想（複数指標を常に併記する）は共通
+- **既知の限界（閾値校正、未着手/TODO）**: gap閾値`GAP_NOTABLE=0.0005`は、LB確認済みの2データ点（bmi_extreme_flag: Δgap+0.00004→LB改善／bmi_bin7: Δgap+0.00023→LB悪化）のみで暫定校正したものであり、サンプル数が極めて少ない。s6e7のH-010（step_count_bin3/5/7, Δgap+0.00030〜+0.00044）でこの閾値により全て「過学習兆候なし」と自動判定されたが、ΔOOFが3案とも一貫してマイナスだったため、ユーザー判断で自動判定を採用せず棄却した。今後のコンペでLB確認済みのCV内部診断データ点が蓄積されたら、閾値`GAP_NOTABLE`を再校正する（複数コンペのデータを`experiments/log.csv`から収集し、Δgapとoof_lb_gapの相関を確認した上で適切な閾値を再設定する）
+- **影響ファイル**: `scripts/feature_study.py`
+- **状態**: [DONE（閾値の再校正は今後の課題として別途TODO化）]
+
+---
+- **状態**: [DONE]（scripts/feature_study.py に実装済み。運用ルールは GUIDELINES `G-DIAG` / `G-FAIR` に反映）
