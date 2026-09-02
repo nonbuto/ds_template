@@ -74,6 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 21:11:53
-- **git**: `main` / 未コミット 7 件 / HEAD: 5ec2940 fix: AV 診断・foldcache の破損復帰・診断列の 0.00000・比較相手の取り違え
+- **記録時刻**: 2026-09-02 21:29:25
+- **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
+- **git**: `main` / 未コミット 6 件 / HEAD: bfbb0ff fix: リーク検証の空洞・最新提出の誤選択・GroupKFold の seed 無視・整形の写経
 <!-- END:auto-snapshot -->

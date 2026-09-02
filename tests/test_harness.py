@@ -1382,3 +1382,297 @@ def test_shape_logic_is_not_copied_around():
         assert not pattern.search(path.read_text(encoding="utf-8")), f"{path} に写経が残っている"
     for path in list(Path("scripts").rglob("*.py")) + list(Path("experiments").rglob("*.py")):
         assert not pattern.search(path.read_text(encoding="utf-8")), f"{path} に写経が残っている"
+
+
+# ──────────────────────────────────────────────────────────
+# 15. 振る舞いで検証する（ソースの字面ではなく）
+# ──────────────────────────────────────────────────────────
+# L-28 で「ガードが発火するテストを書く」と結論したが、実際に書いたのは
+# **過去のパッチの字面のテスト**だった。字面テストは「同じ diff を revert する」ことしか
+# 検知せず、意味的に別の書き方で同じ欠陥を入れると必ず通る。
+# 実測（変異注入 25 件）で 13 件がすり抜け、欠陥 3 件が同時に存在した状態で全件緑だった。
+# ここでは**実装を呼んで出力を確かめる**。
+
+
+def _synth_classification(n=600, n_features=6, seed=0):
+    import pandas as pd
+    from sklearn.datasets import make_classification
+
+    X, y = make_classification(n_samples=n, n_features=n_features, n_informative=4,
+                               random_state=seed)
+    return pd.DataFrame(X, columns=[f"f{i}" for i in range(n_features)]), pd.Series(y)
+
+
+def test_importance_is_gain_not_split_by_value():
+    """`extract_importance()` の戻り値が gain と一致し、split とは一致しないこと。
+
+    字面テスト（`'importance_type="gain"' in src`）は XGBoost 分岐の同じ文字列で
+    満たされてしまい、LightGBM だけ split に戻しても通っていた（実測）。
+    **値で確かめれば、どう書き換えても検知できる。**
+    """
+    import lightgbm as lgb
+    import numpy as np
+    from scripts.train import extract_importance
+
+    X, y = _synth_classification()
+    model = lgb.LGBMClassifier(n_estimators=30, verbose=-1).fit(X, y)
+    got = extract_importance(model, list(X.columns))
+
+    gain = np.asarray(model.booster_.feature_importance(importance_type="gain"), dtype=float)
+    split = np.asarray(model.booster_.feature_importance(importance_type="split"), dtype=float)
+    assert np.allclose(got, gain), "gain と一致しない"
+    assert not np.allclose(got, split), "split を返している（gain とは別物）"
+
+
+def test_stacking_train_predictions_are_not_in_sample():
+    """スタッキングの train 側予測が、全行学習の in-sample 予測と**数値として異なる**こと。
+
+    字面テスト（`"cross_val_predict" in body`）は関数内の import 行で満たされ、
+    実装を in-sample に戻しても通っていた（実測）。
+    """
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    from src.utils.ensemble import stacking_blend
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 400)
+    oof = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1)
+                           for _ in range(3)])
+    test = np.column_stack([rng.random(60) for _ in range(3)])
+
+    train_preds, _ = stacking_blend(oof, test, y)
+    in_sample = (make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=1000,
+                                                                   random_state=42))
+                 .fit(oof, y).predict_proba(oof)[:, 1])
+    assert not np.allclose(train_preds, in_sample), "in-sample 予測を返している"
+
+
+def test_test_imputation_uses_train_statistics(tmp_path):
+    """`preprocess` が test の欠損を **train の中央値**で埋めること。
+
+    字面テスト（該当行の存在 + `concat` を含まない）は、test 側を test 自身の中央値で
+    埋めるよう書き換えても通っていた（実測）。**実際に走らせて値を見る。**
+    """
+    import subprocess
+    import sys
+    import shutil
+
+    import pandas as pd
+
+    work = tmp_path / "repo"
+    shutil.copytree(ROOT, work, ignore=shutil.ignore_patterns(
+        "__pycache__", "*.pyc", ".git", ".venv", "kaggle_nb", "data"))
+    raw = work / "data" / "raw"
+    raw.mkdir(parents=True)
+    (work / "data" / "processed").mkdir(parents=True)
+
+    # train と test で中央値が明確に違うデータ（train=10, test=100）
+    train = pd.DataFrame({"num0": [10.0] * 9 + [None], "target": [0, 1] * 5})
+    test = pd.DataFrame({"num0": [100.0] * 9 + [None]})
+    train.to_csv(raw / "train.csv", index=False)
+    test.to_csv(raw / "test.csv", index=False)
+
+    src = work / "scripts" / "preprocess.py"
+    src.write_text(src.read_text().replace("NUMERIC_COLS: list[str] = []",
+                                           'NUMERIC_COLS: list[str] = ["num0"]'))
+    r = subprocess.run([sys.executable, "-m", "scripts.preprocess"], cwd=work,
+                       capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(work)})
+    assert r.returncode == 0, r.stderr[-1500:]
+
+    filled = pd.read_pickle(work / "data" / "processed" / "test_features.pkl")["num0"].iloc[-1]
+    assert filled == 10.0, f"test を train の中央値(10)で埋めていない（実際: {filled}）"
+
+
+def test_weight_bagging_actually_changes_weights():
+    """`n_seeds` を増やすと**重みが実際に変わる**こと。
+
+    字面テスト（シグネチャに `n_seeds` があること・重みの和が 1）は、
+    `n_seeds` を完全に無視する実装でも通っていた（実測）。
+    この関数は「bagging を実行できるようにする」ために作られたので、
+    実行できない状態に戻ったら落ちなければ意味がない。
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    from src.utils.ensemble import optimize_weights
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 600)
+    oofs = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, s, 600), 0, 1)
+                            for s in (0.30, 0.34, 0.40, 0.5)])
+
+    w1, _ = optimize_weights(oofs, y, roc_auc_score, n_seeds=1)
+    w8, _ = optimize_weights(oofs, y, roc_auc_score, n_seeds=8)
+    assert not np.allclose(w1, w8), "n_seeds を変えても重みが同じ（bagging が効いていない）"
+
+
+def test_unpredicted_rows_do_not_change_the_score():
+    """未予測行がスコアに混ざらないこと（`covered` マスクが実際に効いていること）。
+
+    字面テスト（`"covered" in src`）は、マスクを作るだけで評価に使わない実装でも
+    通っていた（実測）。ここでは**同じ値になるべき 2 つのスコア**を比べる。
+    """
+    import numpy as np
+    from src.metrics import get_metric, shape_for_metric
+
+    rng = np.random.default_rng(0)
+    n = 500
+    y = rng.integers(0, 2, n)
+    proba = np.clip(np.column_stack([1 - (y * 0.6 + rng.normal(0.2, 0.2, n)),
+                                     y * 0.6 + rng.normal(0.2, 0.2, n)]), 0, 1)
+    covered = np.ones(n, dtype=bool)
+    covered[:100] = False              # TimeSeriesSplit の先頭を模す
+    oof = proba.copy()
+    oof[~covered] = 0.0                # 未予測はゼロのまま
+
+    metric = get_metric()
+    masked = metric(y[covered], shape_for_metric(oof[covered]))
+    naive = metric(y, shape_for_metric(oof))
+    truth = metric(y[covered], shape_for_metric(proba[covered]))
+
+    assert abs(masked - truth) < 1e-12, "マスクした評価が実力と一致しない"
+    assert abs(naive - truth) > 1e-4, \
+        f"未予測行を混ぜてもスコアが動かない（masked={masked:.5f} naive={naive:.5f}）"
+
+
+def test_start_run_blocks_when_visualization_is_missing(tmp_path, monkeypatch):
+    """可視化ガードが**実行を止める**こと（警告ではなくブロック）。
+
+    `start_run` の docstring は「第4世代の対策として、警告の出力ではなく実行を止める
+    （過去3世代とも『警告は出ていたが対応されない』形で形骸化した）」と書いているのに、
+    **テストファイル全体に `start_run` という文字列が 1 度も出てこなかった**。
+    `raise` を `print` に格下げしても誰も気づかない状態だった。
+    """
+    import csv as _csv
+    from src import experiment as ex
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        for i in range(ex.VIZ_GUARD_WINDOW):
+            w.writerow({"experiment_id": f"{i:03d}", "timestamp": "2020-01-01 00:00:00",
+                        "model": "lgb", "oof_score": "0.5"})
+    plots = tmp_path / "plots"
+    plots.mkdir()
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
+    monkeypatch.setattr(ex, "PLOTS_DIR", plots)
+    monkeypatch.delenv("DS_SKIP_VIZ_CHECK", raising=False)
+
+    tracker = ex.ExperimentTracker(experiment_name="t", model="lgb", features="1f")
+    with pytest.raises(RuntimeError, match="可視化"):
+        tracker.start_run(description="ブロックされるべき")
+
+    # 明示的に省略の意思表示をしたときは通ること（逃げ道が塞がっていないこと）
+    assert tracker.start_run(description="省略を明示", skip_viz_check=True)
+
+
+def test_atomic_write_is_never_observed_half_written(tmp_path):
+    """書き戻しの最中に読んでも、壊れた状態を観測しないこと。
+
+    以前のテストは名前に反して**並行読み手を一切作らず**、逐次に 2 回書いて内容を
+    見るだけだった。非原子的な `open(w)` に戻しても通っていた（実測）。
+    """
+    import csv as _csv
+    import subprocess
+    import sys
+    import textwrap
+
+    path = tmp_path / "log.csv"
+    cols = ["experiment_id", "oof_score"]
+    from src.utils.csvlock import write_rows_atomic
+
+    rows = [{"experiment_id": f"{i:03d}", "oof_score": "0.9"} for i in range(300)]
+    write_rows_atomic(path, cols, rows)
+
+    reader_src = tmp_path / "reader.py"
+    reader_src.write_text(textwrap.dedent(f"""
+        import csv, time
+        bad = 0
+        end = time.monotonic() + 3.0
+        while time.monotonic() < end:
+            try:
+                with open({str(path)!r}, newline="") as f:
+                    n = len(list(csv.DictReader(f)))
+                if n not in (300, 301):
+                    bad += 1
+            except (FileNotFoundError, PermissionError):
+                bad += 1
+        print(bad)
+    """))
+    reader = subprocess.Popen([sys.executable, str(reader_src)],
+                              stdout=subprocess.PIPE, text=True)
+    for _ in range(60):
+        write_rows_atomic(path, cols, rows + [{"experiment_id": "999", "oof_score": "0.1"}])
+        write_rows_atomic(path, cols, rows)
+    bad = int(reader.communicate()[0].strip())
+    assert bad == 0, f"書き換え中に壊れた状態を {bad} 回観測した"
+
+    with open(path, newline="") as f:
+        assert len(list(_csv.DictReader(f))) == 300
+
+
+def test_run_cv_excludes_unpredicted_rows_from_its_score(tmp_path, monkeypatch):
+    """`run_cv` が報告する OOF スコアが、実際に予測された行だけで計算されていること。
+
+    前のテスト（`test_unpredicted_rows_do_not_change_the_score`）は指標側のロジックしか
+    見ておらず、`run_cv` が `covered` を作るだけで**評価に使わない**実装に戻しても通った
+    （変異注入で実測）。ここでは実際に `run_cv` を呼び、報告値を突き合わせる。
+
+    TimeSeriesSplit は先頭の行をどの fold の検証にも入れないので、ゼロのまま採点すると
+    「全部クラス0と予測した」ことになり、**スコアが実力と無関係に動く**。
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.datasets import make_classification
+
+    from scripts import train as t
+    from src import metrics as m
+
+    X, y = make_classification(n_samples=600, n_features=5, n_informative=3, random_state=0)
+    cols = [f"f{i}" for i in range(5)]
+    df = pd.DataFrame(X, columns=cols)
+    df["target"] = y
+    df.to_pickle(tmp_path / "train_features.pkl")
+    df[cols].to_pickle(tmp_path / "test_features.pkl")
+
+    monkeypatch.setattr(t, "PROCESSED_DATA_DIR", tmp_path)
+    monkeypatch.setattr(m, "CV_STRATEGY", "TimeSeriesSplit")
+
+    result = t.run_cv("lgb", t.build_params("lgb", 2) | {"n_estimators": 20}, seed=0,
+                      features=cols)
+
+    oof = np.asarray(result["oof_preds"], dtype=float)
+    covered = ~np.isnan(oof).any(axis=1)
+    assert not covered.all(), "TimeSeriesSplit なのに全行が予測されている（前提の確認）"
+
+    metric = m.get_metric()
+    on_covered = metric(y[covered], m.shape_for_metric(oof[covered]))
+    filled = np.nan_to_num(oof, nan=0.0)
+    naive = metric(y, m.shape_for_metric(filled))
+
+    assert abs(result["oof_score"] - on_covered) < 1e-12, \
+        f"報告値 {result['oof_score']:.6f} が予測済み行のスコア {on_covered:.6f} と一致しない"
+    assert abs(naive - on_covered) > 1e-4, \
+        f"未予測行を混ぜてもスコアが動かない（この差が検知の根拠。naive={naive:.6f}）"
+
+
+@pytest.mark.slow
+def test_mutations_are_detected():
+    """実装に欠陥を注入したら、テストが必ず落ちること。
+
+    **「テストが通ること」と「テストが守っていること」は別物**で、後者は欠陥を入れて
+    初めて測れる。L-28 で「ガードが発火するテストを書く」と結論した直後に書いたテストは
+    ソースの字面の grep で、変異注入 25 件のうち **13 件がすり抜け**、
+    欠陥 3 件が同時に存在した状態で 98 件全件が緑だった（L-30）。
+
+    この検査自体が「置換対象が実装に無い」場合も落ちる —— 検査対象が消えたことを
+    合格にすると、L-28 #2（入力が消えれば検査項目ごと消える）と同じ穴になる。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / "tests" / "_mutation_check.py"), str(ROOT)],
+                       capture_output=True, text=True, timeout=900)
+    assert r.returncode == 0, f"検知できない変異がある:\n{r.stdout}\n{r.stderr[-1000:]}"
+    assert "❌" not in r.stdout, r.stdout
