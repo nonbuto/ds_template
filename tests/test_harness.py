@@ -1132,3 +1132,95 @@ def test_submission_count_reports_failure_as_none():
     """
     from scripts.harness.deadline_status import count_todays_submissions
     assert count_todays_submissions("this-competition-does-not-exist-xyz-000") is None
+
+
+# ──────────────────────────────────────────────────────────
+# 13. HP 探索が「本番と同じもの」を最適化していること
+# ──────────────────────────────────────────────────────────
+
+def _search_params(model: str, n_cls: int = 2) -> dict:
+    import optuna
+    from scripts import optimize_hp as o
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    return o.build_search_params(optuna.create_study().ask(), model, n_cls)
+
+
+@pytest.mark.parametrize("model", ["lgb", "cb", "xgb"])
+def test_hp_search_uses_production_tree_count(model):
+    """探索が本番と同じ木の本数で行われること。
+
+    以前は写しキーに `n_estimators` / `iterations` が無く、LGB / XGB は sklearn 既定の
+    **100 本**で探索していた（本番は 1000 本）。100 本で選んだ learning_rate を
+    1000 本で使う構図で、低 lr が構造的に選ばれない。合成データでの実測では
+    探索が lr=0.05 を選ぶ一方、1000 本での最適は lr=0.01（**−0.00097**）。
+    さらに CatBoost だけ既定 1000 本で、モデル間の比較も不公正だった（`G-FAIR`）。
+    """
+    from scripts.train import build_params
+
+    search = _search_params(model)
+    prod = build_params(model, 2)
+    key = "iterations" if model == "cb" else "n_estimators"
+    assert search[key] == prod[key], f"{model}: 探索 {search.get(key)} vs 本番 {prod[key]}"
+
+
+@pytest.mark.parametrize("model", ["lgb", "cb", "xgb"])
+def test_early_stopping_metric_follows_eval_metric(model):
+    """early stopping の監視指標が `EVAL_METRIC` に従うこと。
+
+    とくに CatBoost は探索空間側の `eval_metric="AUC"` が上書きされずに残り、
+    **RMSE コンペでも AUC で best iteration を選んでいた**（例外は出ない）。
+    """
+    from src.config import EVAL_METRIC
+    from src.metrics import native_eval_metric
+
+    search = _search_params(model)
+    got = search.get("metric") or search.get("eval_metric")
+    expected = native_eval_metric(model, 2)
+    if expected is not None:
+        assert got == expected, f"{model}: {got!r} は EVAL_METRIC={EVAL_METRIC!r} に対応しない"
+
+
+def test_hp_spaces_have_no_task_dependent_keys():
+    """探索空間にタスク依存キー（目的関数・評価指標）が直書きされていないこと。
+
+    直書きすると、多クラス・回帰コンペでも二値前提のキーが探索空間から入り込み、
+    `build_params()` が上書きしないキー（CatBoost の `eval_metric`）はそのまま生き残る。
+    """
+    import optuna
+    from src import hp_spaces
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    trial = optuna.create_study().ask()
+    for name, fn in (("lgb", hp_spaces.lgb_space), ("xgb", hp_spaces.xgb_space),
+                     ("cb", hp_spaces.cb_space)):
+        space = fn(trial)
+        for key in ("objective", "metric", "eval_metric", "loss_function", "num_class"):
+            assert key not in space, f"{name}_space にタスク依存キー {key} が直書きされている"
+
+
+def test_optimize_hp_shares_early_stopping_protocol():
+    """HP 探索が train.py と同じ early stopping の分割を使うこと。"""
+    src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
+    assert "_split_for_fit(X_tr, y_tr, X_val, y_val)" in src
+    body = src.split("def objective")[1].split("\ndef ")[0]
+    assert "X_val, y_val)]" not in body.replace("_split_for_fit(X_tr, y_tr, X_val, y_val)", ""), \
+        "検証 fold を early stopping の監視に使っている箇所が残っている"
+
+
+def test_optuna_study_name_includes_condition_hash(tmp_path):
+    """study 名に条件のハッシュが入り、条件が変われば別 study になること。
+
+    以前は `{model}_{tag}` だけで `load_if_exists=True` だったため、FEATURES や指標を
+    変えて再実行すると**旧条件の trial と混ざり、best が旧セットから返り得た**。
+    FoldCache に `signature` を入れて塞いだのと同型の問題。
+    """
+    from src.utils.foldcache import _signature_hash
+
+    a = _signature_hash({"features": ["a", "b"], "metric": "auc"})
+    b = _signature_hash({"features": ["a", "c"], "metric": "auc"})
+    c = _signature_hash({"features": ["a", "b"], "metric": "logloss"})
+    assert len({a, b, c}) == 3, "条件が変わってもハッシュが同じ"
+
+    src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
+    assert "_signature_hash(" in src and "study_name = f\"{args.model}_{args.tag}_{sig}\"" in src

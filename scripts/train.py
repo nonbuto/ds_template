@@ -21,6 +21,7 @@ import json
 import numpy as np
 import pandas as pd
 from src.metrics import (get_cv, get_groups, get_metric, n_classes, is_regression,
+                         native_eval_metric,
                          shape_for_metric, describe as describe_setup)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -83,6 +84,9 @@ def build_params(model_name: str, n_cls: int) -> dict:
         else:
             task = {"objective": "multiclass", "num_class": n_cls, "metric": "multi_logloss"}
         params = {**common, **task, "num_leaves": 63}
+        native = native_eval_metric("lgb", n_cls)
+        if native:
+            params["metric"] = native
         if model_name == "lgb_balanced":
             if is_reg:
                 raise ValueError("lgb_balanced（class_weight）は回帰では使えません。--model lgb を使ってください")
@@ -91,8 +95,15 @@ def build_params(model_name: str, n_cls: int) -> dict:
 
     if model_name == "cb":
         loss = "RMSE" if is_reg else ("Logloss" if n_cls == 2 else "MultiClass")
-        return {"loss_function": loss, "iterations": 1000, "learning_rate": 0.05,
-                "depth": 6, "random_seed": RANDOM_STATE, "verbose": 0}
+        params = {"loss_function": loss, "iterations": 1000, "learning_rate": 0.05,
+                  "depth": 6, "random_seed": RANDOM_STATE, "verbose": 0}
+        # **CatBoost にも明示的に持たせる。** ここが空だと、探索空間側に直書きされた
+        # `eval_metric="AUC"` が上書きされずに生き残り、RMSE コンペでも AUC で
+        # early stopping していた（例外は出ず、best iteration だけが狂う）
+        native = native_eval_metric("cb", n_cls)
+        if native:
+            params["eval_metric"] = native
+        return params
 
     if model_name == "xgb":
         if is_reg:
@@ -101,9 +112,13 @@ def build_params(model_name: str, n_cls: int) -> dict:
             task = {"objective": "binary:logistic", "eval_metric": "logloss"}
         else:
             task = {"objective": "multi:softprob", "num_class": n_cls, "eval_metric": "mlogloss"}
-        return {**task, "n_estimators": 1000, "learning_rate": 0.05, "max_depth": 6,
-                "subsample": 0.8, "colsample_bytree": 0.8, "tree_method": "hist",
-                "enable_categorical": True, "random_state": RANDOM_STATE, "verbosity": 0}
+        params = {**task, "n_estimators": 1000, "learning_rate": 0.05, "max_depth": 6,
+                  "subsample": 0.8, "colsample_bytree": 0.8, "tree_method": "hist",
+                  "enable_categorical": True, "random_state": RANDOM_STATE, "verbosity": 0}
+        native = native_eval_metric("xgb", n_cls)
+        if native:
+            params["eval_metric"] = native
+        return params
 
     raise ValueError(f"未対応のモデルです: {model_name}")
 

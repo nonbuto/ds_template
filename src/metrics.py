@@ -214,3 +214,35 @@ def get_groups(df, strategy: str | None = None):
     if GROUP_COL not in df.columns:
         raise ValueError(f"GROUP_COL='{GROUP_COL}' がデータに見つかりません: {list(df.columns)[:10]}...")
     return df[GROUP_COL].to_numpy()
+
+
+# EVAL_METRIC → 各ライブラリが early stopping の監視に使える指標名。
+# 対応が無いものは None（ライブラリ既定の loss に任せる）。
+_NATIVE_EVAL: dict[str, dict[str, str | None]] = {
+    "auc":               {"lgb": "auc", "xgb": "auc", "cb": "AUC"},
+    "logloss":           {"lgb": "binary_logloss", "xgb": "logloss", "cb": "Logloss"},
+    "accuracy":          {"lgb": "binary_error", "xgb": "error", "cb": "Accuracy"},
+    "balanced_accuracy": {"lgb": None, "xgb": None, "cb": "BalancedAccuracy"},
+    "f1":                {"lgb": None, "xgb": None, "cb": None},
+    "rmse":              {"lgb": "rmse", "xgb": "rmse", "cb": "RMSE"},
+    "mae":               {"lgb": "l1", "xgb": "mae", "cb": "MAE"},
+    "r2":                {"lgb": "rmse", "xgb": "rmse", "cb": "RMSE"},   # 単調に対応
+}
+
+
+def native_eval_metric(model_name: str, n_cls: int = 2) -> str | None:
+    """early stopping の監視に使うライブラリ側の指標名を返す。
+
+    **なぜ必要か**: 監視指標は `EVAL_METRIC` と無関係に決まっていた。とくに CatBoost は
+    探索空間側の `eval_metric="AUC"` が上書きされずに残り、**RMSE コンペでも AUC で
+    best iteration を選んでいた**（例外は出ない）。多クラスでは二値用の指標名が使えないので、
+    その場合はライブラリ既定に任せる（None）。
+    """
+    key = "lgb" if model_name.startswith("lgb") else model_name
+    name = _NATIVE_EVAL.get(EVAL_METRIC.lower(), {}).get(key)
+    if name is None:
+        return None
+    if n_cls > 2 and key != "cb":
+        # 多クラスでは binary_logloss / error 系が使えない
+        return {"lgb": "multi_logloss", "xgb": "mlogloss"}[key] if EVAL_METRIC != "auc" else None
+    return name

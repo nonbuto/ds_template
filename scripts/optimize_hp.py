@@ -27,9 +27,10 @@ from src.metrics import (get_cv, get_groups, get_metric, greater_is_better, need
                          is_regression, n_classes, shape_for_metric)
 from sklearn.preprocessing import LabelEncoder
 
-from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL
+from src.config import (PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL,
+                        EVAL_METRIC, CV_STRATEGY, N_SPLITS)
 from src.hp_spaces import lgb_space, xgb_space, cb_space
-from scripts.train import FEATURES, _lgb_eval_kwargs
+from scripts.train import FEATURES, _lgb_eval_kwargs, _split_for_fit
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -89,8 +90,13 @@ def build_search_params(trial, model_type: str, n_cls: int) -> dict:
 
     params = HP_SPACE_FN[model_type](trial)
     task = build_params(model_type, n_cls)
+    # **木の本数も本番から継承する。** 以前は写すキーに `n_estimators` / `iterations` が
+    # 無く、LGB / XGB は sklearn 既定の **100 本**で探索していた（本番は 1000 本）。
+    # 100 本で選んだ learning_rate を 1000 本で使う構図で、低 lr が構造的に選ばれない。
+    # 合成データでの実測: 探索は lr=0.05 を選ぶが、1000 本での最適は lr=0.01（−0.00097）。
+    # さらに CatBoost だけ既定 1000 本だったため、モデル間の比較も不公正だった（`G-FAIR`）。
     for key in ("objective", "num_class", "metric", "loss_function", "eval_metric",
-                "tree_method", "enable_categorical"):
+                "tree_method", "enable_categorical", "n_estimators", "iterations"):
         if key in task:
             params[key] = task[key]
     return params
@@ -108,25 +114,30 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
     for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y, groups=groups)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
+        # **本番（train.py）と同じ early stopping プロトコルを使う。**
+        # 以前はここだけ検証 fold を監視していたので、①探索中の OOF が構造的に楽観側へ寄り
+        # （実測 AUC +0.00467）、②選ばれた HP は「val を覗ける条件で最良」であって
+        # 学習時条件での最良ではなかった（`G-FAIR`）。
+        X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
 
         if model_type == "lgb":
             import lightgbm as lgb
             Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
             model = Est(**params)
-            model.fit(X_tr, y_tr, **_lgb_eval_kwargs(Est, X_val, y_val),
+            model.fit(X_fit, y_fit, **_lgb_eval_kwargs(Est, X_es, y_es),
                       callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)])
         elif model_type == "cb":
             from catboost import CatBoostClassifier, CatBoostRegressor, Pool
             Est = CatBoostRegressor if is_regression() else CatBoostClassifier
             model = Est(**params)
-            model.fit(Pool(X_tr, y_tr, cat_features=cat_cols),
-                      eval_set=Pool(X_val, y_val, cat_features=cat_cols),
+            model.fit(Pool(X_fit, y_fit, cat_features=cat_cols),
+                      eval_set=Pool(X_es, y_es, cat_features=cat_cols),
                       early_stopping_rounds=50, verbose=0)
         elif model_type == "xgb":
             import xgboost as xgb
             Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
             model = Est(**params, early_stopping_rounds=50)
-            model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
+            model.fit(X_fit, y_fit, eval_set=[(X_es, y_es)], verbose=False)
 
         oof[val_idx] = model.predict(X_val) if is_regression() else model.predict_proba(X_val)
         covered[val_idx] = True
@@ -174,7 +185,14 @@ def main():
     # 「あと N 試行だけ追加したい」ができず毎回ゼロからやり直しになる）
     study_dir = PARAMS_DIR / "optuna_studies"
     study_dir.mkdir(parents=True, exist_ok=True)
-    study_name = f"{args.model}_{args.tag}"
+    # **study にも条件のハッシュを持たせる。** 以前は `{model}_{tag}` だけで
+    # `load_if_exists=True` だったため、FEATURES や指標を変えて再実行すると
+    # **旧条件の trial と混ざり、best が旧セットから返り得た**。
+    # FoldCache に `signature` を入れて塞いだのと同型の問題（L-29 #8）。
+    from src.utils.foldcache import _signature_hash
+    sig = _signature_hash({"features": features, "metric": EVAL_METRIC,
+                           "cv": CV_STRATEGY, "n_splits": N_SPLITS, "n_cls": n_cls})
+    study_name = f"{args.model}_{args.tag}_{sig}"
     storage = f"sqlite:///{study_dir / f'{study_name}.db'}"
 
     study = optuna.create_study(
