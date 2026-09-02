@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 13:44:24
-- **git**: `main` / 未コミット 3 件 / HEAD: 0474084 fix(template): コンペ成果物 106MB を main から除去し、C7 を追跡パスへ拡張
+- **記録時刻**: 2026-09-02 13:49:20
+- **git**: `main` / 未コミット 8 件 / HEAD: 50329cf docs: README の行数表記を同期（C11）
 <!-- END:auto-snapshot -->

@@ -23,8 +23,7 @@ import json
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.metrics import balanced_accuracy_score
-from sklearn.model_selection import StratifiedKFold
+from src.metrics import get_cv, get_metric, greater_is_better, needs_proba
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, N_SPLITS, TARGET_COL
@@ -55,8 +54,9 @@ BETA_GRID = [0.0, 0.25, 0.5, 0.75, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5]
 
 
 def _best_calibrated_score(oof: np.ndarray, y: pd.Series, prior: np.ndarray) -> float:
+    metric = get_metric()
     return max(
-        balanced_accuracy_score(y, (oof / prior**b).argmax(1))
+        metric(y, (oof / prior**b).argmax(1))
         for b in BETA_GRID
     )
 
@@ -64,7 +64,7 @@ def _best_calibrated_score(oof: np.ndarray, y: pd.Series, prior: np.ndarray) -> 
 def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str, prior: np.ndarray) -> float:
     params = HP_SPACE_FN[model_type](trial)
     params.update(MULTICLASS_OVERRIDES[model_type])
-    cv = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
+    cv = get_cv()   # train.py と同じ分割器（src.metrics が唯一の定義元）
     oof = np.zeros((len(y), N_CLASSES))
 
     cat_cols = [c for c in X.columns if str(X[c].dtype) in ("object", "category")]
@@ -92,7 +92,9 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str, prior: np.n
         oof[val_idx] = model.predict_proba(X_val)
 
     if model_type == "lgb":
-        return balanced_accuracy_score(y, np.argmax(oof, axis=1))
+        metric = get_metric()
+        return metric(y, oof[:, 1] if needs_proba() and oof.shape[1] == 2
+                      else (oof if needs_proba() else np.argmax(oof, axis=1)))
     return _best_calibrated_score(oof, y, prior)
 
 
@@ -128,7 +130,7 @@ def main():
     storage = f"sqlite:///{study_dir / f'{study_name}.db'}"
 
     study = optuna.create_study(
-        direction="maximize",
+        direction="maximize" if greater_is_better() else "minimize",   # 指標の向きに追従
         sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE),
         study_name=study_name,
         storage=storage,
@@ -154,7 +156,7 @@ def main():
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  モデル     : {args.model}
  試行数     : {args.n_trials}  ({stage})
- Best OOF (balanced_accuracy): {best_score:.5f}
+ Best OOF: {best_score:.5f}
  保存先     : {out_path}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 次のステップ:

@@ -29,7 +29,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 
 | 項目 | 現在値 |
 |---|---|
-| 毎セッション自動ロード（CLAUDE.md） | **3,508 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
+| 毎セッション自動ロード（CLAUDE.md） | **3,542 字（-94%）**（上限 5,000 字 / v5 は約 56,000 字） |
 | ルート直下 | テンプレート文書 6 件のみ（CLAUDE / GUIDELINES / CONVENTIONS / PLAYBOOK / README / CHANGELOG）。コンペごとに育つ記録は `state/`、改善の記録は `docs/` |
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
 | `doc_audit` のチェック | **C1-C13**（C4 は実測値、C12 は指針の索引と本文、C13 はエージェント定義を検査） |

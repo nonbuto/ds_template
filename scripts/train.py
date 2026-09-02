@@ -1,7 +1,9 @@
 """
 CV学習スクリプト（汎用骨格）
 
-StratifiedKFold CV でモデルを学習し、OOF予測・テスト予測・特徴量重要度を保存する。
+CV でモデルを学習し、OOF予測・テスト予測・特徴量重要度を保存する。
+**評価指標と CV 分割器は `src/metrics.py` が `src/config.py` の設定から決める**
+（`scripts/optimize_hp.py` と同じ定義元を使うため、指標がずれることがない）。
 コンペ開始時に TODO 箇所を埋めて使う。
 
 binary_classification / multiclass の両方に対応する（`N_CLASSES` で切り替える）。
@@ -17,8 +19,7 @@ import json
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import balanced_accuracy_score
+from src.metrics import get_cv, get_metric, needs_proba, describe as describe_setup
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import (
@@ -156,7 +157,8 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
 
     seeded_params = {**params, "random_state": seed} if model_name != "cb" else {**params, "random_seed": seed}
 
-    cv = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=seed)
+    cv = get_cv()          # 分割器は CV_STRATEGY から。seed は RANDOM_STATE に従う
+    metric = get_metric()
     oof_preds = np.zeros((len(train), N_CLASSES))
     test_preds = np.zeros((len(test), N_CLASSES))
     train_scores, val_scores = [], []
@@ -170,15 +172,21 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
         oof_preds[val_idx] = val_pred
         test_preds += model.predict_proba(X_test) / N_SPLITS
 
-        tr_score = balanced_accuracy_score(y_tr, model.predict(X_tr))
-        val_score = balanced_accuracy_score(y_val, np.argmax(val_pred, axis=1))
+        val_score = metric(y_val, val_pred[:, 1] if needs_proba() and val_pred.shape[1] == 2
+                           else (val_pred if needs_proba() else np.argmax(val_pred, axis=1)))
+        if needs_proba():
+            tr_proba = model.predict_proba(X_tr)
+            tr_score = metric(y_tr, tr_proba[:, 1] if tr_proba.shape[1] == 2 else tr_proba)
+        else:
+            tr_score = metric(y_tr, model.predict(X_tr))
         train_scores.append(tr_score)
         val_scores.append(val_score)
 
         if hasattr(model, "feature_importances_"):
             importances.append(model.feature_importances_)
 
-    oof_score = balanced_accuracy_score(y, np.argmax(oof_preds, axis=1))
+    oof_score = metric(y, oof_preds[:, 1] if needs_proba() and oof_preds.shape[1] == 2
+                       else (oof_preds if needs_proba() else np.argmax(oof_preds, axis=1)))
 
     importance_df = None
     if importances:
@@ -221,6 +229,7 @@ def main():
     le = LabelEncoder()
     y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
     print(f"クラス対応: {dict(zip(le.classes_, range(len(le.classes_))))}")
+    print(f"評価設定: {describe_setup()}")
 
     # パラメータ読み込み
     params = DEFAULT_PARAMS[args.model].copy()
@@ -238,7 +247,8 @@ def main():
     tracker.log_params(params)
 
     # CV学習
-    cv = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
+    cv = get_cv()          # 分割器は src.config の CV_STRATEGY から決まる
+    metric = get_metric()  # 指標は EVAL_METRIC から決まる（optimize_hp と共有）
     oof_preds = np.zeros((len(train), N_CLASSES))
     test_preds = np.zeros((len(test), N_CLASSES))
     importances = []
@@ -269,8 +279,16 @@ def main():
 
         # スコア計算（balanced_accuracy: argmaxクラスで評価）
         # キャッシュ再利用時は train スコアを再計算できないため val と同値を入れる
-        val_score = balanced_accuracy_score(y_val, np.argmax(val_pred, axis=1))
-        tr_score = balanced_accuracy_score(y_tr, model.predict(X_tr)) if model else val_score
+        # 指標が確率を要るか（AUC/logloss）ラベルで良いか（accuracy 等）で渡すものを変える
+        val_score = metric(y_val, val_pred[:, 1] if needs_proba() and val_pred.shape[1] == 2
+                           else (val_pred if needs_proba() else np.argmax(val_pred, axis=1)))
+        if model is None:
+            tr_score = val_score        # キャッシュ再利用時は train を再計算できない
+        elif needs_proba():
+            tr_proba = model.predict_proba(X_tr)
+            tr_score = metric(y_tr, tr_proba[:, 1] if tr_proba.shape[1] == 2 else tr_proba)
+        else:
+            tr_score = metric(y_tr, model.predict(X_tr))
         train_scores.append(tr_score)
         val_scores.append(val_score)
         tracker.log_fold_scores(fold, tr_score, val_score)
@@ -283,7 +301,8 @@ def main():
         print(f"Fold {fold}: train={tr_score:.5f}  val={val_score:.5f} {mark}")
 
     # OOFスコア
-    oof_score = balanced_accuracy_score(y, np.argmax(oof_preds, axis=1))
+    oof_score = metric(y, oof_preds[:, 1] if needs_proba() and oof_preds.shape[1] == 2
+                       else (oof_preds if needs_proba() else np.argmax(oof_preds, axis=1)))
 
     # 保存: 学習 → OOF + test 予測 → 提出ファイルを 1 回で出し切る（CLAUDE.md `G-STEPWISE`）。
     # 学習だけして推論を省くと、提出したくなった時点で同じ学習をやり直すことになる。

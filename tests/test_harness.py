@@ -251,3 +251,52 @@ def test_all_modules_import():
         if r.returncode != 0:
             failed.append(module)
     assert not failed, f"import できないモジュール: {failed}"
+
+
+# ──────────────────────────────────────────────────────────
+# 7. 評価指標と CV —— 設定から 1 箇所で決まること
+# ──────────────────────────────────────────────────────────
+
+def test_metric_and_cv_come_from_config():
+    """指標と分割器が `src/config.py` の設定から決まること。
+
+    以前は train.py と optimize_hp.py が独立に指標を呼んでおり、
+    片方だけ変えると **HP 最適化が別の指標を最適化する**（静かに壊れる）状態だった。
+    """
+    from src import metrics as M
+    assert callable(M.get_metric())
+    assert M.get_cv() is not None
+    assert isinstance(M.describe(), str)
+
+
+@pytest.mark.parametrize("name,y,pred", [
+    ("auc", np.array([0, 1, 0, 1]), np.array([0.1, 0.9, 0.2, 0.8])),
+    ("auc", np.array([0, 1, 2, 0]), np.eye(3)[[0, 1, 2, 0]] * 0.7 + 0.1),   # 多クラス
+    ("balanced_accuracy", np.array([0, 1, 0, 1]), np.array([0, 1, 1, 1])),
+    ("f1", np.array([0, 1, 2, 0]), np.array([0, 1, 2, 1])),                  # 多クラス
+    ("rmse", np.array([1.0, 2.0, 3.0]), np.array([1.1, 2.1, 2.8])),
+])
+def test_metric_handles_shapes(name, y, pred):
+    """二値・多クラス・回帰のいずれでも指標が計算できること。
+
+    多クラス × AUC は `multi_class` 引数が要る。呼び出し側に任せると
+    train と optimize_hp で扱いがずれるので、指標モジュール側で吸収する。
+    """
+    from src.metrics import get_metric
+    assert isinstance(get_metric(name)(y, pred), float)
+
+
+def test_unknown_metric_fails_loudly():
+    """未対応の指標は黙って動かず、選択肢を示して失敗すること。"""
+    from src.metrics import get_metric
+    with pytest.raises(ValueError, match="未対応"):
+        get_metric("nonexistent_metric")
+
+
+def test_metric_is_defined_in_one_place():
+    """train.py と optimize_hp.py が指標を直接呼んでいないこと（定義元は src/metrics.py だけ）。"""
+    for name in ["train.py", "optimize_hp.py"]:
+        code = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        body = "\n".join(l for l in code.splitlines() if not l.strip().startswith("#"))
+        assert "balanced_accuracy_score(" not in body, f"{name} が指標を直接呼んでいる"
+        assert "StratifiedKFold(" not in body, f"{name} が分割器を直接作っている"

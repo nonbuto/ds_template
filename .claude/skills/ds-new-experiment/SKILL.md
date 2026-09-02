@@ -88,7 +88,8 @@ argument-hint: <実験名>
 > `#スクリプトの標準構成` / `#ExperimentTracker の使い方` / `#実験名の命名規則` / `#ブランチ管理`
 >
 > あわせて `CONVENTIONS.md#ディレクトリ規約` / `CONVENTIONS.md#スクリプト構成` /
-> `CONVENTIONS.md#コーディング規約` / `CONVENTIONS.md#実験管理（log.csv）` を確認する
+> `CONVENTIONS.md#コーディング規約` / `CONVENTIONS.md#実験管理（log.csv）` /
+> `CONVENTIONS.md#評価指標と-cv-の決め方`（指標と分割器は `src.metrics` からのみ取る）を確認する
 > （成果物の置き場・命名・記録列は、実験を書き始める前に揃える）。
 >
 > **実験スクリプトは必ず `ExperimentTracker` を経由させる。** 使い捨てスクリプトが tracker を

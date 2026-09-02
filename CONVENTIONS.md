@@ -67,7 +67,8 @@
 | `scripts/harness/hook_status.py` | 随時 | **どの hook が実際に発火したか**を実測ログから集計 |
 
 **`src/`（コア）**: `config.py`（パス・コンペ設定）、`experiment.py`（`ExperimentTracker` と各ガード）、
-`hp_spaces.py`（Optuna 探索空間）、`validation.py`（スキーマ・リーク・欠損の検証。`preprocess.py` が呼ぶ）
+`hp_spaces.py`（Optuna 探索空間）、`validation.py`（スキーマ・リーク・欠損の検証。`preprocess.py` が呼ぶ）、
+`metrics.py`（**評価指標と CV 分割器の唯一の定義元**）
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（重み最適化・相関チェック）、
 `logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
@@ -172,6 +173,30 @@ PID が消えていれば異常終了、ハートビートが 15 分以上古け
 
 - **可視化 EDA では使わない** — Claude は marimo のレンダリング結果を認識できない。可視化はスクリプトから `data/output/plots/` に画像保存し、Claude が Read で読んで対話する
 - **`.ipynb` 変換に使う** — `scripts/to_kaggle_nb.py` が marimo 形式スクリプトを `marimo export ipynb` で変換する。Kaggle Notebook 実行用の `.ipynb` 生成に使う
+
+---
+
+## 評価指標と CV の決め方
+
+**指標と分割器は `src/metrics.py` からのみ取得する。** `scripts/` 側で
+`balanced_accuracy_score(...)` や `StratifiedKFold(...)` を直接書かない。
+
+```python
+from src.metrics import get_metric, get_cv, needs_proba, greater_is_better
+metric, cv = get_metric(), get_cv()
+```
+
+- 何を使うかは `src/config.py` の **`EVAL_METRIC` / `PROBLEM_TYPE` / `CV_STRATEGY`**（`/ds-kickoff` が記録）
+- 対応指標: `auc` `logloss` `accuracy` `balanced_accuracy` `f1` `rmse` `mae` `r2`。
+  未対応を指定すると**選択肢を示して失敗する**（黙って動かない）
+- 対応 CV: `StratifiedKFold` `KFold` `TimeSeriesSplit` `GroupKFold` `StratifiedGroupKFold`
+- 多クラス × AUC の `multi_class` 引数などは**指標モジュール側で吸収する**。
+  呼び出し側に任せると train と optimize_hp で扱いがずれる
+
+> **なぜ一元化したか**: 以前は `train.py` と `optimize_hp.py` が独立に指標を呼んでいた。
+> `FEATURES` は共有していたのに指標だけ共有しておらず、**片方を変え忘れると
+> HP 最適化が学習と別の指標を最適化して誰も気づかない**状態だった。
+> `EVAL_METRIC` 等の設定もコード側から一度も読まれていなかった。
 
 ---
 
