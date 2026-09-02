@@ -1,4 +1,4 @@
-# DS Template v6.4 — Kaggle Competition Workspace
+# DS Template v6.5 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
 「実験の目的を先に言語化する」「1列ずつΔOOFを計測する」「学びをサイクルとして蓄積する」という
@@ -16,6 +16,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 - **v6 系**: ドキュメント階層の再設計（4層モデル + SSoT と規律の機械検証）
   - v6: 4層化・恒久ID・`doc_audit` 新設 ／ v6.1: 導線の実装漏れ修正 ／ v6.2: 自己診断の追加
   - v6.3: 本番投入前の最終点検 ／ v6.4: README ドリフトの機械検知（C11）
+  - **v6.5: 規律の機械化（hook 6 種 × ガード 5 種）・学習成果を失わない仕組み・死蔵の解消**
 
 ---
 

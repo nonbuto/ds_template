@@ -6,6 +6,62 @@
 
 ---
 
+## v6.5 — 規律の機械化（ハーネス化）
+
+`G-MECH`（規律は AI の自己申告ではなく機械に守らせる）は v6 の旗印だったが、
+**テンプレート自身にはほとんど適用されていなかった**。強制の入口は PostToolUse hook 1 本のみで、
+s6e8 で実際に破られた規律（提出前確認・1 実験 1 コミット・状態ファイルの更新）は
+いずれも機械化ゼロの側にあった。v6.5 はここを埋める。
+
+### 強制機構: hook 1 種 → **6 種** / ガード 2 種 → **5 種**
+
+| hook | 実行 | 役割 |
+|---|---|---|
+| `SessionStart` · `PostCompact` | `session_brief.py` | 現在地の提示。**圧縮直後の再注入**（長時間セッション運用で効く） |
+| `PreToolUse` | `submit_gate.py` | Kaggle 提出に**ユーザー承認を要求**（`permissionDecision: "ask"`）。枠・締切・git は実測値 |
+| `PostToolUse` | `viz_guard.py` | 可視化・診断記録・推論成果物・Public 過剰浮上 |
+| `Stop` | `session_audit.py` | コミット規律・状態ファイルの鮮度（非ブロック） |
+| `PreCompact` | `session_snapshot.py` | 圧縮直前に SESSION.md へ退避 |
+
+**ブロックしてよいのは 2 つだけ** —— 実績のある可視化ガードと、不可逆な提出ゲート。
+
+### 学習成果を失わない仕組み
+
+- `src/utils/finalize.py` — **学習 → OOF + test 予測 → 提出 CSV を 1 回の実行で出し切る**。
+  学習だけして推論を省くと、提出時に同じ学習をやり直すことになる（実測で多発）
+- `src/utils/multiseed.py` — multi-seed avg で**基本 seed を再利用**（avg5 の学習時間が 1/5 削減）
+- `src/utils/foldcache.py` — **fold 単位チェックポイント**。中断した学習を途中から再開できる
+  （4 時間超まわした学習を fold 4/25 で打ち切り全損した事故への対策）
+- `experiments/.running/` + `job_status.py` — 実行中ジョブの生存・進捗・ETA・ハング検知
+
+### 観測できるようにしたもの
+
+`duration_sec`（30 分ルールの推定を較正する実測。列追加は既存 log.csv を壊さず移行）/
+`state_audit.py`（状態ファイルの停滞。FEATURE_REPORT が 3 週間止まった事故の検知）/
+`hook_status.py`（**hook が本当に発火したか**の実測）/
+`feature_report --sync`（「今どの特徴量がベースか」を実測から機械生成）
+
+### 死蔵の解消
+
+`src/feature_registry.py` を削除（import 元ゼロ）。`src/validation.py`（252 行・リーク検出を含む）を
+`preprocess.py` に配線し、**書かれているのに一度も走らないコード**を実際のガードにした。
+`train.py` が規約（提出まで 1 フロー・`feature_names` の記録）を破っていた状態も解消。
+
+### ドキュメント階層
+
+- **C1 を行数から文字数へ**。行数で測っていたため、箇条書きを 1 行に結合するだけで
+  測定値が下がり、**上限を守りながら中身が 6% 増えていた**（行数 −2 / 文字数 +1,898）
+- CLAUDE.md **32,112 → 26,105 字**。手順・対応表・文面を L1/L2/L3 へ移設
+- 完了済み TODO を `docs/TODO_ARCHIVE.md`、版履歴を `CHANGELOG.md` へ分離
+- 教訓 **L-24〜L-26** を追加
+
+### 既知の未達
+
+Claude Code 組み込みの CLAUDE.md 警告閾値は **15,000 字**で、現状 26,105 字はこれを 74% 超過する。
+次版で「憲法 60 行 + `GUIDELINES.md`」への再構成を予定。
+
+---
+
 ## v6 系で追加された主な改善 — ドキュメント階層の再設計
 
 v5 で s6e7 の総括を反映した結果、**毎セッション自動ロードされる CLAUDE.md が 1,070 行**まで膨らんだ。
