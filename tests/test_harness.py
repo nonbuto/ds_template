@@ -1199,13 +1199,40 @@ def test_hp_spaces_have_no_task_dependent_keys():
             assert key not in space, f"{name}_space にタスク依存キー {key} が直書きされている"
 
 
-def test_optimize_hp_shares_early_stopping_protocol():
-    """HP 探索が train.py と同じ early stopping の分割を使うこと。"""
-    src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
-    assert "_split_for_fit(X_tr, y_tr, X_val, y_val)" in src
-    body = src.split("def objective")[1].split("\ndef ")[0]
-    assert "X_val, y_val)]" not in body.replace("_split_for_fit(X_tr, y_tr, X_val, y_val)", ""), \
-        "検証 fold を early stopping の監視に使っている箇所が残っている"
+def test_optimize_hp_shares_the_training_code(monkeypatch):
+    """HP 探索が**本番と同じ学習関数**を通ること（別実装を持たないこと）。
+
+    探索と本番で別の学習コードを持つと、early stopping のプロトコルや目的関数が
+    静かにずれる（実際にずれていた: 探索だけ検証 fold を監視し、
+    LGB/XGB は 100 本・CB は 1000 本で比較していた）。
+    **字面ではなく、実際に TRAIN_FN が呼ばれることを見る。**
+    """
+    import numpy as np
+    import optuna
+    import pandas as pd
+    from sklearn.datasets import make_classification
+
+    from scripts import optimize_hp as o
+    from scripts import train as t
+
+    calls = []
+
+    def spy(X_tr, y_tr, X_val, y_val, params):
+        calls.append(len(X_tr))
+        return t.train_fold_lgb(X_tr, y_tr, X_val, y_val, params)
+
+    monkeypatch.setitem(o.TRAIN_FN, "lgb", spy)
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    X, y = make_classification(n_samples=300, n_features=5, n_informative=3, random_state=0)
+    X = pd.DataFrame(X, columns=[f"f{i}" for i in range(5)])
+    y = pd.Series(y)
+    trial = optuna.create_study().ask()
+    o.objective(trial, X, y, "lgb", np.array([0.5, 0.5]), 2)
+
+    assert calls, "探索が TRAIN_FN を経由していない（別の学習コードを持っている）"
+    # early stopping 用の内側分割を通っているので、学習行数は fold の train より少ない
+    assert all(n < 300 for n in calls)
 
 
 def test_optuna_study_name_includes_condition_hash(tmp_path):

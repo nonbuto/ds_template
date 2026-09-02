@@ -105,6 +105,12 @@ def build_params(model_name: str, n_cls: int) -> dict:
             params["eval_metric"] = native
         return params
 
+    if model_name in ("realmlp", "tabm"):
+        # 学習時間はエポック数で決まる。既定は「作業用」に振った軽めの設定で、
+        # Stage 5 では optimize_hp が n_epochs も含めて探索する。
+        return {"_nn_kind": model_name, "n_epochs": 64, "device": "cpu",
+                "random_state": RANDOM_STATE, "verbosity": 0}
+
     if model_name == "xgb":
         if is_reg:
             task = {"objective": "reg:squarederror", "eval_metric": "rmse"}
@@ -127,7 +133,7 @@ def build_params(model_name: str, n_cls: int) -> dict:
 # クラス数が実データ依存（multiclass）の場合は build_params() を直接呼ぶこと。
 DEFAULT_PARAMS: dict = {
     name: build_params(name, N_CLASSES or 2)
-    for name in ("lgb", "lgb_balanced", "cb", "xgb")
+    for name in ("lgb", "lgb_balanced", "cb", "xgb", "realmlp", "tabm")
     if not (is_regression() and name == "lgb_balanced")
 }
 
@@ -218,6 +224,38 @@ def train_fold_cb(X_tr, y_tr, X_val, y_val, params: dict):
     return model, _predict(model, X_val)
 
 
+def train_fold_nn(X_tr, y_tr, X_val, y_val, params: dict):
+    """pytabkit の RealMLP / TabM。**tree 系と同じ入口で扱えるようにする。**
+
+    **なぜ第一級にするか**: 前コンペで使った RealMLP / TabM はすべて `kaggle_nb/` の
+    アドホック実装で、`run_cv` / `feature_study` / `optimize_hp` の恩恵を受けていなかった。
+    結果、**FE の 1 列 ΔOOF 計測が tree 系だけに対して行われ、特徴量セットが
+    tree に偏って最適化される**（NN に効く FE は測られない）。
+    上位解法は単体 NN か「NN を最良単体としたスタック」が主流で、ここが主戦場になる。
+
+    early stopping は pytabkit が内部で行うので `_split_for_fit` の検証データを
+    `val_idxs` として渡す（tree 系と同じ「検証 fold を覗かない」プロトコル）。
+    """
+    from pytabkit import (RealMLP_TD_Classifier, RealMLP_TD_Regressor,
+                          TabM_D_Classifier, TabM_D_Regressor)
+
+    kind = params.pop("_nn_kind", "realmlp")
+    if kind == "tabm":
+        Est = TabM_D_Regressor if is_regression() else TabM_D_Classifier
+    else:
+        Est = RealMLP_TD_Regressor if is_regression() else RealMLP_TD_Classifier
+
+    X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
+    # pytabkit は 1 つの行列と検証行のインデックスを受け取る形
+    X_all = pd.concat([X_fit, X_es], axis=0, ignore_index=True)
+    y_all = np.concatenate([np.asarray(y_fit), np.asarray(y_es)])
+    val_idxs = np.arange(len(X_fit), len(X_all))
+
+    model = Est(**params)
+    model.fit(X_all, y_all, val_idxs=val_idxs)
+    return model, _predict(model, X_val)
+
+
 def train_fold_xgb(X_tr, y_tr, X_val, y_val, params: dict):
     import xgboost as xgb
     Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
@@ -231,7 +269,10 @@ def train_fold_xgb(X_tr, y_tr, X_val, y_val, params: dict):
     return model, _predict(model, X_val)
 
 
-TRAIN_FN = {"lgb": train_fold_lgb, "lgb_balanced": train_fold_lgb, "cb": train_fold_cb, "xgb": train_fold_xgb}
+TRAIN_FN = {"lgb": train_fold_lgb, "lgb_balanced": train_fold_lgb,
+            "cb": train_fold_cb, "xgb": train_fold_xgb,
+            "realmlp": train_fold_nn, "tabm": train_fold_nn}
+MODEL_CHOICES = sorted(TRAIN_FN)
 
 
 
@@ -288,7 +329,8 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None,
     else:
         y = pd.Series(LabelEncoder().fit_transform(y_raw), index=y_raw.index)
 
-    seeded_params = {**params, "random_state": seed} if model_name != "cb" else {**params, "random_seed": seed}
+    seeded_params = ({**params, "random_seed": seed} if model_name == "cb"
+                     else {**params, "random_state": seed})
 
     k = n_splits or N_SPLITS
     cv = get_cv(n_splits=k, seed=split_seed)   # 分割器は CV_STRATEGY から
@@ -358,7 +400,7 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="lgb", choices=["lgb", "lgb_balanced", "cb", "xgb"])
+    parser.add_argument("--model", type=str, default="lgb", choices=MODEL_CHOICES)
     parser.add_argument("--params", type=str, default="",
                         help="best_params JSON ファイルパス（省略時はデフォルトパラメータを使用）")
     parser.add_argument("--resume", action="store_true",

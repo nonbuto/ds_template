@@ -17,6 +17,8 @@ CatBoost の探索 HP に `eval_metric="AUC"` が残る、といった欠陥が�
   - `predict.py` が保存済み npy から同じ形式の提出を作る
   - `blend.py` が train.py の出力を受け取り、表示スコアの向きが揃っている
   - 実験雛形（`_TEMPLATE_exp000_s0_example.py`）が実際に完走する
+  - NN 系（pytabkit の RealMLP）が tree 系と同じ入口で完走する
+  - `--split-seed` / `--n-splits` が実際に配線されている
 
 単独実行:
     uv run python tests/_e2e_pipeline.py .
@@ -126,6 +128,14 @@ def run_task(task: str) -> None:
 
     run(work, "scripts.train", "--model", "lgb", "--resume")
     run(work, "experiments.runs._TEMPLATE_exp000_s0_example", "--model", "lgb")
+
+    # **NN 系も同じ入口で通ること。** ここが通らないと FE の ΔOOF 計測が
+    # tree 系だけに対して行われ、特徴量セットが tree に偏って最適化される。
+    run(work, "scripts.train", "--model", "realmlp", "--n-splits", "3")
+    check_submission(work, task)
+
+    # 分割の引き直しが配線されていること（単一分割では「たまたま良い」を選び続ける）
+    run(work, "scripts.train", "--model", "lgb", "--split-seed", "7", "--n-splits", "3")
 
     # 保存済み npy からの提出も、同じ形式で作られること
     n_before = len(list((work / "data/output/submissions").glob("*.csv")))

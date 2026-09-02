@@ -72,3 +72,21 @@ def cb_space(trial: optuna.Trial) -> dict[str, Any]:
         "bagging_temperature": trial.suggest_float("bagging_temperature", 0, 10),
         "random_strength": trial.suggest_float("random_strength", 1e-8, 10.0, log=True),
     }
+
+
+def nn_space(trial: optuna.Trial) -> dict[str, Any]:
+    """pytabkit（RealMLP / TabM）の探索空間。
+
+    tree 系と違い**エポック数が学習時間を直接決める**ので探索対象に入れる。
+    `_nn_kind` はタスクではなくモデルの別（`build_params` が入れる）なのでここでは触らない。
+    """
+    return {
+        "device": "cpu",
+        "random_state": RANDOM_STATE,
+        "verbosity": 0,
+        "n_epochs": trial.suggest_int("n_epochs", 32, 256, log=True),
+        "lr": trial.suggest_float("lr", 1e-3, 1e-1, log=True),
+        "hidden_sizes": trial.suggest_categorical(
+            "hidden_sizes", [[256] * 3, [512] * 3, [256] * 4]),
+        "p_drop": trial.suggest_float("p_drop", 0.0, 0.3),
+    }

@@ -183,13 +183,15 @@ Optuna フル ───── 確定した特徴量セットで100試行以上
 # Stage 2: EDA可視化（画像を data/output/plots/ に保存 → Claude が Read で読む）
 uv run python -m scripts.visualize
 
-# Stage 1・4: CV学習
+# Stage 1・4: CV学習（モデルは lgb / lgb_balanced / cb / xgb / realmlp / tabm）
 uv run python -m scripts.train --model lgb
+uv run python -m scripts.train --model realmlp            # NN も同じ入口
+uv run python -m scripts.train --model lgb --n-splits 10 --split-seed 7   # 分割を変える
 
 # Stage 3: 作業用HP（FE中のΔOOFノイズ低減）
 uv run python -m scripts.optimize_hp --model lgb --n-trials 25 --tag working
 
-# Stage 4: 1列ΔCV計測（FE仮説の効果測定）
+# Stage 4: 1列ΔCV計測（FE仮説の効果測定。--n-repeats で分割を引き直し床に含める）
 uv run python -m scripts.feature_study --new-feature <feature_name>
 
 # Stage 5: 本格HP最適化

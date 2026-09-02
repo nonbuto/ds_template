@@ -29,8 +29,8 @@ from sklearn.preprocessing import LabelEncoder
 
 from src.config import (PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL,
                         EVAL_METRIC, CV_STRATEGY, N_SPLITS)
-from src.hp_spaces import lgb_space, xgb_space, cb_space
-from scripts.train import FEATURES, _lgb_eval_kwargs, _split_for_fit
+from src.hp_spaces import cb_space, lgb_space, nn_space, xgb_space
+from scripts.train import FEATURES, TRAIN_FN
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -39,7 +39,8 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 #       例: {"xgb": [...生値版の特徴量...]}
 MODEL_FEATURES: dict[str, list[str]] = {}
 
-HP_SPACE_FN = {"lgb": lgb_space, "cb": cb_space, "xgb": xgb_space}
+HP_SPACE_FN = {"lgb": lgb_space, "cb": cb_space, "xgb": xgb_space,
+               "realmlp": nn_space, "tabm": nn_space}
 
 # beta 較正のグリッド。多クラス × ラベル指標（accuracy / balanced_accuracy / f1）でのみ意味を持つ。
 # 予測確率を事前分布の beta 乗で割ることで、少数クラスの過小予測を補正する（`G-DIAG`）。
@@ -109,37 +110,17 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
     oof = np.zeros(len(y)) if is_regression() else np.zeros((len(y), n_cls))
     covered = np.zeros(len(y), dtype=bool)   # TimeSeriesSplit は先頭を一度も検証しない
 
-    cat_cols = [c for c in X.columns if str(X[c].dtype) in ("object", "category")]
-
     for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y, groups=groups)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
-        # **本番（train.py）と同じ early stopping プロトコルを使う。**
+        # early stopping のプロトコルは `TRAIN_FN` の内側（`_split_for_fit`）に統一されている。
         # 以前はここだけ検証 fold を監視していたので、①探索中の OOF が構造的に楽観側へ寄り
         # （実測 AUC +0.00467）、②選ばれた HP は「val を覗ける条件で最良」であって
         # 学習時条件での最良ではなかった（`G-FAIR`）。
-        X_fit, y_fit, X_es, y_es = _split_for_fit(X_tr, y_tr, X_val, y_val)
-
-        if model_type == "lgb":
-            import lightgbm as lgb
-            Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
-            model = Est(**params)
-            model.fit(X_fit, y_fit, **_lgb_eval_kwargs(Est, X_es, y_es),
-                      callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)])
-        elif model_type == "cb":
-            from catboost import CatBoostClassifier, CatBoostRegressor, Pool
-            Est = CatBoostRegressor if is_regression() else CatBoostClassifier
-            model = Est(**params)
-            model.fit(Pool(X_fit, y_fit, cat_features=cat_cols),
-                      eval_set=Pool(X_es, y_es, cat_features=cat_cols),
-                      early_stopping_rounds=50, verbose=0)
-        elif model_type == "xgb":
-            import xgboost as xgb
-            Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
-            model = Est(**params, early_stopping_rounds=50)
-            model.fit(X_fit, y_fit, eval_set=[(X_es, y_es)], verbose=False)
-
-        oof[val_idx] = model.predict(X_val) if is_regression() else model.predict_proba(X_val)
+        # **学習は `train.py` の関数をそのまま使う。** 探索と本番で別の学習コードを
+        # 持つと、early stopping のプロトコルや目的関数がずれる（実際にずれていた）。
+        _, val_pred = TRAIN_FN[model_type](X_tr, y_tr, X_val, y_val, dict(params))
+        oof[val_idx] = val_pred
         covered[val_idx] = True
 
     # **予測されなかった行を評価に混ぜない。** TimeSeriesSplit では先頭の行が
@@ -153,7 +134,8 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
 
 def main():
     parser = argparse.ArgumentParser(description="Optuna HP最適化")
-    parser.add_argument("--model", type=str, default="lgb", choices=["lgb", "cb", "xgb"])
+    parser.add_argument("--model", type=str, default="lgb",
+                        choices=sorted(HP_SPACE_FN))
     parser.add_argument("--n-trials", type=int, default=25,
                         help="試行数（Stage 3: 20〜30 / Stage 5: 100以上）")
     parser.add_argument("--tag", type=str, default="working",

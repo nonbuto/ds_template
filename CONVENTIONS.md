@@ -47,11 +47,11 @@
 | ファイル | Stage | 役割 |
 |---|---|---|
 | `scripts/preprocess.py` | 0 | 生データ → `train_features.pkl` / `test_features.pkl`（**パイプラインの最初の工程**。保存前に `src/validation.py` のスキーマ・リーク・欠損検証を通す）|
-| `scripts/train.py` | 1・4 | CV学習の汎用骨格（モデル・特徴量をconfigで切り替え） |
-| `scripts/feature_study.py` | 4 | 1列ΔCV計測（FE仮説の効果測定） |
+| `scripts/train.py` | 1・4 | CV学習の汎用骨格。モデルは `lgb` / `lgb_balanced` / `cb` / `xgb` / `realmlp` / `tabm`（**NN も tree と同じ入口**）。`--n-splits` `--split-seed` で分割を変えられる |
+| `scripts/feature_study.py` | 4 | 1列ΔCV計測。**床はその 2 本から実測**（行・fold・分割の 3 成分。`--n-repeats` で分割を引き直す） |
 | `scripts/optimize_hp.py` | 3・5 | Optuna HP探索 |
 | `scripts/predict.py` | 全般 | OOF予測→提出ファイル生成 |
-| `scripts/blend.py` | 6 | アンサンブル・ブレンド |
+| `scripts/blend.py` | 6 | アンサンブル。`--mode corr / optimize（simplex）/ greedy / **hillclimb**（Caruana: 復元あり+bagging）/ **stack**（符号制約なし線形）` |
 | `scripts/visualize.py` | 2 | EDA可視化→`data/output/plots/`に画像保存 |
 | `scripts/feature_report.py` | 随時 | 特徴量重要度・ΔOOF棒グラフを画像生成 |
 | `scripts/harness/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
@@ -516,6 +516,25 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 | **4. 段階的FE** | 有効な特徴量の特定 | `state/FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
 | **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを state/SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
 | **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。手順は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に従い実施済み | `src/utils/ensemble.py` |
+
+### 期間の配分（カレンダー予算）
+
+ステージには順序があるが、**どのステージに何割の時間を使うか**は決めていなかった。
+前コンペでは後半 40% が同一プールの重み調整に費やされ、**最後の 8 日・32 提出で
+LB 更新はゼロ**だった（その間の ΔOOF は 1 件残らず「LB に現れる床」の下 → `G-CALIB-SUB`）。
+
+コンペ全期間を 100 とした目安:
+
+| 区間 | 使うこと | 目安 |
+|---|---|---|
+| 前半 **50%** | Stage 0〜5。**主軸単体モデルの卓越性**と FE。NN / tree の両方で計測する | 単体 OOF が更新され続けている限りここに留まる |
+| 次の **30%** | **情報源の多様性**（`G-SOURCE`）。別アーキ・外部データ・pseudo・別の CV 設計 | 単体の伸びが 2 回連続で床未満になったら移る |
+| 最後の **20%** | 集約と Final 2（`G-CEILING`）。重み bagging・hillclimb・stack | 集約の伸びも床で判定する |
+
+**系統の凍結ルール**: 同一系統（同じプール・同じ結合方式）で
+**床を超える改善が直近 8 実験ゼロ**なら、その系統への新規実験を止めて上の表の次の区間へ移る。
+`_check_below_floor_guard()` が自動で通知する。
+**これは探索の縮小ではない**（`G-PERSIST` と矛盾しない）—— 縮小せずに**向きを変える**。
 
 **Stage 6 の判断原則**（実行手順は L2、ここは着手可否の判断材料）:
 

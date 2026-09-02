@@ -74,7 +74,7 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 22:28:09
+- **記録時刻**: 2026-09-02 22:37:28
 - **実行中のジョブ**: exp005 → `uv run python -m scripts.harness.job_status` で確認
-- **git**: `main` / 未コミット 8 件 / HEAD: 0f34fce feat: 提出実績から「LB に現れるための床」を測り、判断が出る場所すべてに通す（L-33）
+- **git**: `main` / 未コミット 9 件 / HEAD: c88013b feat: 測定装置に分割の引き直しを通し、アンサンブル器を定石に揃える（D-1 / D-3）
 <!-- END:auto-snapshot -->
