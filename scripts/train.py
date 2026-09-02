@@ -20,7 +20,7 @@ import json
 
 import numpy as np
 import pandas as pd
-from src.metrics import (get_cv, get_metric, n_classes, is_regression,
+from src.metrics import (get_cv, get_groups, get_metric, n_classes, is_regression,
                          shape_for_metric, describe as describe_setup)
 from sklearn.preprocessing import LabelEncoder
 
@@ -218,6 +218,7 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
     seeded_params = {**params, "random_state": seed} if model_name != "cb" else {**params, "random_seed": seed}
 
     cv = get_cv()          # 分割器は CV_STRATEGY から。seed は RANDOM_STATE に従う
+    groups = get_groups(train)   # GroupKFold 系のみ。他は None
     metric = get_metric()
     n_cls = _resolve_n_classes(y)
     shape = (len(train),) if is_regression() else (len(train), n_cls)
@@ -231,7 +232,7 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
     train_scores, val_scores = [], []
     importances = []
 
-    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y)):
+    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y, groups=groups)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
@@ -321,6 +322,7 @@ def main():
 
     # CV学習
     cv = get_cv()          # 分割器は src.config の CV_STRATEGY から決まる
+    groups = get_groups(train)   # GroupKFold 系のみ。他は None
     metric = get_metric()  # 指標は EVAL_METRIC から決まる（optimize_hp と共有）
     n_cls = _resolve_n_classes(y)
     shape = (len(train),) if is_regression() else (len(train), n_cls)
@@ -338,7 +340,7 @@ def main():
     if args.resume:
         print(cache.report())
 
-    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y)):
+    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y, groups=groups)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 

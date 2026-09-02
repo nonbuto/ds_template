@@ -22,7 +22,8 @@ from typing import Callable
 
 import numpy as np
 
-from src.config import CV_STRATEGY, EVAL_METRIC, N_SPLITS, PROBLEM_TYPE, RANDOM_STATE
+from src.config import (CV_STRATEGY, EVAL_METRIC, GROUP_COL, N_SPLITS, PROBLEM_TYPE,
+                        RANDOM_STATE)
 
 # 指標名 → (関数, 確率が必要か, 大きいほど良いか)
 _METRICS: dict[str, tuple[Callable, bool, bool]] = {}
@@ -184,3 +185,32 @@ def n_classes(y: np.ndarray | None = None) -> int:
         "PROBLEM_TYPE='multiclass' のクラス数は実データからしか決まりません。"
         "n_classes(y) の形で y を渡してください。"
     )
+
+
+def needs_groups(strategy: str | None = None) -> bool:
+    """この CV 戦略は `groups` を要求するか。"""
+    return (strategy or CV_STRATEGY) in ("GroupKFold", "StratifiedGroupKFold")
+
+
+def get_groups(df, strategy: str | None = None):
+    """`cv.split(X, y, groups=...)` に渡す groups を取り出す。要らない戦略では None。
+
+    **なぜ関数にするか**: `GroupKFold` / `StratifiedGroupKFold` は `get_cv()` から返せても、
+    呼び出し側が `groups` を渡さなければ `ValueError: The 'groups' parameter should not be None`
+    で必ず落ちる。**設定として選べるのに一度も使えない**状態だった。
+    グループ列は `src/config.py` の `GROUP_COL` が定義元。
+
+        cv, groups = get_cv(), get_groups(train)
+        for tr, va in cv.split(X, y, groups=groups):
+            ...
+    """
+    if not needs_groups(strategy):
+        return None
+    if not GROUP_COL:
+        raise ValueError(
+            f"CV_STRATEGY='{strategy or CV_STRATEGY}' はグループ列を必要とします。"
+            "src/config.py の GROUP_COL に列名を設定してください。"
+        )
+    if GROUP_COL not in df.columns:
+        raise ValueError(f"GROUP_COL='{GROUP_COL}' がデータに見つかりません: {list(df.columns)[:10]}...")
+    return df[GROUP_COL].to_numpy()

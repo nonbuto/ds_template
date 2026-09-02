@@ -242,8 +242,16 @@ def greedy_ensemble(
         current_score = metric_fn(y, ensemble_oof)
         print(f"  +{best_next:35s}  score={current_score:.5f}  (Δ={sign * best_gain:+.5f})")
 
-    # テスト予測を選択モデルで均一平均
-    ensemble_test = np.mean([tests[n] for n in selected], axis=0)
+    # テスト予測を選択モデルで均一平均。**test 予測を渡さない使い方（OOF だけで
+    # 構成を探索する）でも落ちないようにする** —— 以前は `tests[n]` が KeyError になり、
+    # 探索が全部終わった最後の 1 行で例外になって結果ごと失われていた。
+    missing = [n for n in selected if n not in tests]
+    if missing:
+        if tests:
+            print(f"  ⚠️ test 予測が無いモデルがあるため test 側は作りません: {missing}")
+        ensemble_test = None
+    else:
+        ensemble_test = np.mean([tests[n] for n in selected], axis=0)
 
     print(f"\n選択モデル ({len(selected)}件): {selected}")
     print(f"Greedy Ensemble score: {current_score:.5f}")

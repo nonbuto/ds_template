@@ -244,10 +244,14 @@ def _check_inference_artifacts_window(window: int = INFER_GUARD_WINDOW) -> Optio
     )
 
 
-def _previous_experiment_scores() -> Optional[float]:
+def _previous_experiment_scores(exclude_id: Optional[str] = None) -> Optional[float]:
     """log.csv の最新行（＝直前の実験）の oof_score を返す。無ければ None。
 
-    指針#31「ΔOOF が fold 間 std より小さいなら、その差は測れていない」の自動判定に使う。
+    `G-DIAG`「ΔOOF が fold 間 std より小さいなら、その差は測れていない」の自動判定に使う。
+
+    `exclude_id` は**今まさに書き込んだ自分の行**を除くためのもの。以前はこの関数を
+    行の書き込み**後**に呼んでいたため、直前の実験ではなく自分自身を拾い、
+    **ΔOOF が常に ±0.00000 と表示されていた**（診断が常に「判別不能」を出す）。
     """
     if not LOG_CSV_PATH.exists():
         return None
@@ -257,10 +261,14 @@ def _previous_experiment_scores() -> Optional[float]:
     except Exception:
         return None
     for row in reversed(rows):
+        if exclude_id and (row.get("experiment_id") or "").strip() == exclude_id:
+            continue
         raw = (row.get("oof_score") or "").strip()
         if not raw:
             continue
-        m = re.search(r"[01]\.\d+", raw)     # "0.95092(anchor)" のような表記にも対応
+        # 以前は `[01]\.\d+` で、**0/1 で始まる値しか拾えず符号も落としていた**。
+        # RMSE の 12.34 は "2.34" と読まれ、R² の -0.12 は +0.12 になる。
+        m = re.search(r"-?\d+(?:\.\d+)?", raw)   # "0.95092(anchor)" のような表記にも対応
         if m:
             try:
                 return float(m.group(0))
@@ -720,6 +728,9 @@ class ExperimentTracker:
             "abort_criteria": "",        # /ds-new-experiment スキルが記録
             "learning": "",              # /ds-kaggle-submit スキルが記録
         }
+        # 直前の実験のスコアは**自分の行を書く前に**読む（書いた後だと自分自身を拾う）
+        prev = _previous_experiment_scores(exclude_id=row["experiment_id"])
+
         # 同じ experiment_id の行（start_run が確保した行、または /ds-new-experiment の
         # 予約行）があれば、追記ではなく**その行を上書き**する。目的・成功基準・撤退基準は
         # 予約時の記入を残す。読みから書き戻しまでを 1 つのロック区間に収めることが要点 ——
@@ -751,7 +762,10 @@ class ExperimentTracker:
         oof_str = f"{oof_score:.5f}" if oof_score is not None else "N/A"
         exp_id = self._experiment_id or "000"
         branch = _get_git_branch()
-        train_val_gap = train_mean - val_mean
+        # gap は「train が val よりどれだけ**良い**か」。小さいほど良い指標（RMSE 等）では
+        # 素の差の符号が逆になるため、指標の向きに合わせる（feature_study と同じ扱い）。
+        from src.metrics import greater_is_better
+        train_val_gap = (train_mean - val_mean) * (1 if greater_is_better() else -1)
         gap_note = "  ⚠️ gapが大きい可能性（過学習/校正不足を確認）" if train_val_gap > 0.01 else ""
         print(
             f"\n📊 実験記録完了 (ID: {exp_id})\n"
@@ -764,8 +778,7 @@ class ExperimentTracker:
             f"  log.csv : {LOG_CSV_PATH}"
         )
 
-        # CV 内部診断（CLAUDE.md 指針#31）。OOF/LB だけで判断させないための常設表示。
-        prev = _previous_experiment_scores()
+        # CV 内部診断（`G-DIAG`）。OOF/LB だけで判断させないための常設表示。
         if val_std > 0:
             print(
                 f"\n🔍 CV内部診断（指針#31）\n"

@@ -719,3 +719,101 @@ def test_beta_calibration_respects_metric_direction():
     src = Path("scripts/optimize_hp.py").read_text(encoding="utf-8")
     assert "pick = max if greater_is_better() else min" in src, "最良 beta の選び方が向きに従っていない"
     assert 'trial.set_user_attr("beta", beta)' in src, "最良 beta を保存していない"
+
+
+def test_previous_score_excludes_own_row(tmp_path, monkeypatch):
+    """ΔOOF の比較相手が「直前の実験」であって自分自身でないこと。
+
+    修正前はこの関数を自分の行を書いた**後**に呼んでいたため、
+    ΔOOF が常に ±0.00000 と表示され、`G-DIAG` の「std 未満なら測れていない」判定が
+    毎回「判別不能」に張り付いていた。
+    """
+    import csv as _csv
+    from src import experiment as ex
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        w.writerow({"experiment_id": "001", "oof_score": "0.90000"})
+        w.writerow({"experiment_id": "002", "oof_score": "0.95000"})
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
+
+    assert ex._previous_experiment_scores() == 0.95
+    assert ex._previous_experiment_scores(exclude_id="002") == 0.90, "自分の行を除けていない"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("0.95092(anchor)", 0.95092),      # 注釈つきの表記
+    ("12.3456", 12.3456),              # RMSE のスケール（旧実装は "2.34" と誤読）
+    ("-0.1234", -0.1234),              # R² が負（旧実装は符号を落とした）
+    ("0.5", 0.5),
+])
+def test_score_parsing_handles_all_metric_scales(raw, expected, tmp_path, monkeypatch):
+    """スコアの読み取りが 0/1 始まりの値に限定されないこと。"""
+    import csv as _csv
+    from src import experiment as ex
+
+    log = tmp_path / f"log_{raw}.csv"
+    with open(log, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=ex.LOG_CSV_COLUMNS)
+        w.writeheader()
+        w.writerow({"experiment_id": "001", "oof_score": raw})
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", log)
+    assert ex._previous_experiment_scores() == expected
+
+
+def test_group_cv_is_usable():
+    """GroupKFold 系が実際に分割できること（`groups` が渡る経路があること）。
+
+    修正前は `get_cv()` が返せても呼び出し側が `groups` を渡しておらず、
+    設定として選べるのに**必ず ValueError で落ちる**状態だった。
+    """
+    import pandas as pd
+    from src import metrics as m
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(m, "GROUP_COL", "g")
+    try:
+        df = pd.DataFrame({"a": range(20), "g": [i // 4 for i in range(20)]})
+        cv = m.get_cv(strategy="GroupKFold", n_splits=5)
+        groups = m.get_groups(df, "GroupKFold")
+        folds = list(cv.split(df[["a"]], [0, 1] * 10, groups=groups))
+        assert len(folds) == 5
+        for _, va in folds:
+            assert len(set(df["g"].iloc[va])) == 1, "同じグループが複数 fold に分かれている"
+    finally:
+        monkey.undo()
+
+    for path in ("scripts/train.py", "scripts/optimize_hp.py"):
+        src = Path(path).read_text(encoding="utf-8")
+        assert "groups=groups" in src, f"{path} が groups を渡していない"
+
+
+def test_blend_accepts_binary_probability_matrix():
+    """blend が train.py の出力（二値 (n,2)）を受け取れること。
+
+    修正前は「1 次元でない」と撥ねており、**テンプレートが出力したファイルを
+    テンプレートのブレンドが受け取れない**状態だった。
+    """
+    src = Path("scripts/blend.py").read_text(encoding="utf-8")
+    assert "_as_1d" in src
+    assert "arr.shape[1] == 2 and n_classes == 2" in src
+
+
+def test_greedy_ensemble_without_tests(capsys):
+    """`--tests` を渡さなくても greedy が最後で落ちないこと。
+
+    修正前は探索が全部終わった最後の 1 行で `tests[n]` が KeyError になり、
+    **計算結果ごと失われていた**。
+    """
+    import numpy as np
+    from src.utils.ensemble import greedy_ensemble
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 200)
+    oofs = {f"m{i}": np.clip(y * 0.6 + rng.normal(0.2, 0.3, 200), 0, 1) for i in range(3)}
+    selected, ens_oof, ens_test, score = greedy_ensemble(
+        oofs=oofs, tests={}, y=y, metric_fn=lambda a, b: float(((b > 0.5) == a).mean()))
+    assert selected and ens_test is None
+    assert ens_oof.shape == (200,)

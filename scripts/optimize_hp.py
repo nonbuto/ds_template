@@ -23,7 +23,7 @@ import json
 import numpy as np
 import optuna
 import pandas as pd
-from src.metrics import (get_cv, get_metric, greater_is_better, needs_proba,
+from src.metrics import (get_cv, get_groups, get_metric, greater_is_better, needs_proba,
                          is_regression, n_classes, shape_for_metric)
 from sklearn.preprocessing import LabelEncoder
 
@@ -97,7 +97,7 @@ def build_search_params(trial, model_type: str, n_cls: int) -> dict:
 
 
 def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
-              prior: np.ndarray, n_cls: int) -> float:
+              prior: np.ndarray, n_cls: int, groups=None) -> float:
     params = build_search_params(trial, model_type, n_cls)
     cv = get_cv()   # train.py と同じ分割器（src.metrics が唯一の定義元）
     oof = np.zeros(len(y)) if is_regression() else np.zeros((len(y), n_cls))
@@ -105,7 +105,7 @@ def objective(trial, X: pd.DataFrame, y: pd.Series, model_type: str,
 
     cat_cols = [c for c in X.columns if str(X[c].dtype) in ("object", "category")]
 
-    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y)):
+    for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y, groups=groups)):
         X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
         y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
@@ -162,6 +162,7 @@ def main():
         prior = (pd.Series(y_raw).value_counts().reindex(le.classes_).to_numpy()
                  / len(y_raw))
     n_cls = n_classes(y)
+    groups = get_groups(train)   # GroupKFold 系のみ。他は None
 
     stage = "Stage 3（作業用）" if args.n_trials <= 40 else "Stage 5（本格）"
     print(f"\n{stage} HP最適化を開始します")
@@ -186,7 +187,7 @@ def main():
     done = len(study.trials)
     if done:
         print(f"  既存 study を再開: 完了済み {done} 試行 → 追加 {args.n_trials} 試行")
-    study.optimize(lambda trial: objective(trial, X, y, args.model, prior, n_cls),
+    study.optimize(lambda trial: objective(trial, X, y, args.model, prior, n_cls, groups),
                    n_trials=args.n_trials, show_progress_bar=True)
 
     best_params = study.best_params

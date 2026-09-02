@@ -76,11 +76,20 @@ def main():
     print("\nOOF ファイル読み込み:")
     oofs = parse_npy_args(args.oofs)
 
-    # blend は 1 次元の OOF（二値の陽性確率 / 回帰の予測値）を前提にした実装。
-    # train.py は多クラスで (n, クラス数) の OOF を作るため、そのまま渡すと
-    # sklearn の分かりにくいエラーになる。**ここで明示的に止める。**
+    # blend は 1 次元の予測（二値の陽性確率 / 回帰の予測値）を重み付けする実装。
+    # **train.py は二値でも (n, 2) の確率行列を保存する**ので、そのまま渡すと
+    # 「1 次元でない」と撥ねられていた —— テンプレートが出力したファイルを
+    # テンプレートのブレンドが受け取れない状態だった。二値は陽性列に落として受け入れる。
     n_classes = len(np.unique(y))
-    bad = [n for n, a in oofs.items() if np.asarray(a).ndim != 1]
+
+    def _as_1d(name: str, arr: np.ndarray) -> np.ndarray:
+        arr = np.asarray(arr)
+        if arr.ndim == 2 and arr.shape[1] == 2 and n_classes == 2:
+            return arr[:, 1]
+        return arr
+
+    oofs = {n: _as_1d(n, a) for n, a in oofs.items()}
+    bad = [n for n, a in oofs.items() if a.ndim != 1]
     if bad or n_classes > 2:
         raise SystemExit(
             "\n❌ blend は二値分類・回帰の 1 次元 OOF のみ対応しています。\n"
@@ -112,7 +121,7 @@ def main():
             print(f"  {name:20s}: {score:.5f}")
         return
 
-    tests = parse_npy_args(args.tests) if args.tests else {}
+    tests = {n: _as_1d(n, a) for n, a in parse_npy_args(args.tests).items()} if args.tests else {}
 
     # ──────────────────────────────────────────────
     # STEP 2: 最適重みブレンド
@@ -155,7 +164,12 @@ def main():
             np.save(out_test, ens_test)
 
         print(f"\n保存: {out_oof.name}")
-        print(f"次: scripts/predict.py --test-npy {out_test} --model greedy_ens --oof-score {final_score:.5f}")
+        if ens_test is not None:
+            print(f"次: uv run python -m scripts.predict --test-npy {out_test} "
+                  f"--model greedy_ens --oof-score {final_score:.5f}")
+        else:
+            print("  ℹ️ --tests を渡していないため test 予測は作っていません"
+                  "（提出するには --tests を付けて再実行してください）")
 
 
 if __name__ == "__main__":
