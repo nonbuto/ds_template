@@ -547,3 +547,113 @@ def test_atomic_write_survives_reader(tmp_path):
         rows = list(_csv.DictReader(f))
     assert [r["experiment_id"] for r in rows] == ["001", "002"]
     assert not list(path.parent.glob(".*.tmp")), "一時ファイルが残っている"
+
+
+# ──────────────────────────────────────────────────────────
+# 10. 指標の向き・提出形式・クラス数（静かに間違う系）
+# ──────────────────────────────────────────────────────────
+# いずれも例外を出さず、それらしい数字を返しながら結論だけが逆になる型。
+# テストが無いと「動いている」ことと「正しい」ことが区別できない。
+
+def test_shape_for_metric_matches_metric_kind(monkeypatch):
+    """整形の写経（6 箇所にあった三項演算子）が 1 箇所に集約され、指標種別に従うこと。"""
+    import numpy as np
+    from src import metrics as m
+
+    proba2 = np.array([[0.3, 0.7], [0.6, 0.4]])
+    proba3 = np.array([[0.2, 0.3, 0.5], [0.7, 0.2, 0.1]])
+
+    assert m.shape_for_metric(proba2, "auc").tolist() == [0.7, 0.4], "二値は陽性列を渡す"
+    assert m.shape_for_metric(proba3, "auc").shape == (2, 3), "多クラス確率はそのまま"
+    assert m.shape_for_metric(proba3, "accuracy").tolist() == [2, 0], "ラベル指標は argmax"
+    assert m.shape_for_metric(np.array([1.5, 2.5]), "rmse").tolist() == [1.5, 2.5], "回帰は素通し"
+
+
+@pytest.mark.parametrize("metric,expected", [
+    ("auc", True), ("logloss", False), ("rmse", False), ("r2", True),
+    ("accuracy", True), ("balanced_accuracy", True), ("f1", True), ("mae", False),
+])
+def test_metric_direction_is_declared(metric, expected):
+    """全指標に改善の向きが定義されていること（feature_study の ΔOOF 判定の前提）。"""
+    from src.metrics import greater_is_better
+    assert greater_is_better(metric) is expected
+
+
+def test_feature_study_delta_orients_to_improvement():
+    """ΔOOF が**改善方向**に揃うこと。
+
+    修正前は `new - base` をそのまま判定に使っていたため、RMSE・logloss・MAE の
+    コンペでは**良い特徴量を棄却し、悪い特徴量を採用する**判定が出ていた。
+    feature_study は FE 判断の中核ツールなので、ここが逆だと全 FE の採否が反転する。
+    """
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "greater_is_better()" in src, "指標の向きを見ていない"
+    assert "delta = raw_delta if greater_is_better() else -raw_delta" in src
+
+
+def test_submission_format_follows_metric(monkeypatch):
+    """提出形式が `EVAL_METRIC` から決まること（AUC でハードラベルを出さない）。"""
+    from src.utils import finalize
+
+    monkeypatch.setattr(finalize, "is_regression", lambda: False)
+    monkeypatch.setattr(finalize, "needs_proba", lambda: True)
+    assert finalize._resolve_submit_mode("auto") == "proba", "AUC/logloss は確率で提出する"
+
+    monkeypatch.setattr(finalize, "needs_proba", lambda: False)
+    assert finalize._resolve_submit_mode("auto") == "label", "accuracy 系はラベルで提出する"
+
+    monkeypatch.setattr(finalize, "is_regression", lambda: True)
+    assert finalize._resolve_submit_mode("auto") == "value", "回帰は予測値で提出する"
+
+
+def test_default_config_is_internally_consistent():
+    """clone 直後の設定でクラス数と目的関数が矛盾しないこと。
+
+    修正前は `train.py` が `N_CLASSES = 3` を直書きし、config の既定
+    （binary_classification / auc）と食い違っていた。Stage 1 の最小ベースラインが
+    **clone 直後には動かない**状態で、テンプレートの入口が壊れていた。
+    """
+    from scripts.train import DEFAULT_PARAMS, build_params
+    from src.config import PROBLEM_TYPE
+    from src.metrics import n_classes
+
+    if PROBLEM_TYPE == "binary_classification":
+        assert DEFAULT_PARAMS["lgb"]["objective"] == "binary"
+        assert "num_class" not in DEFAULT_PARAMS["lgb"], "二値に num_class は渡さない"
+        assert n_classes() == 2
+    assert build_params("lgb", 3)["num_class"] == 3, "多クラスではクラス数が入る"
+    assert build_params("xgb", 2)["objective"] == "binary:logistic"
+
+
+def test_train_importance_is_gain_based():
+    """importance が gain ベースで取り出されること（文書・軸ラベルは "gain" と書いている）。
+
+    `feature_importances_` は LightGBM では既定が split（分岐回数）で、gain とは別物。
+    `G-DIAG` の第3診断軸をこの値で判断するので、定義がずれていると解釈が狂う。
+    """
+    src = Path("scripts/train.py").read_text(encoding="utf-8")
+    assert 'importance_type="gain"' in src
+    assert "feature_importances_" not in src.split("def extract_importance")[0], \
+        "extract_importance を経由せず split を拾っている箇所が残っている"
+
+
+def test_resume_does_not_fake_train_scores():
+    """キャッシュ再利用の fold が train スコアを詐称しないこと。
+
+    修正前は `tr_score = val_score` を入れていた。これは `cv_train_mean` に嘘を書くのと同じで、
+    `--resume` のたびに `G-DIAG` の train−val 乖離が「乖離ゼロ」に化けていた。
+    """
+    src = Path("scripts/train.py").read_text(encoding="utf-8")
+    assert "tr_score = val_score" not in src
+    assert 'tr_score = float("nan")' in src
+
+
+def test_experiment_diag_columns_blank_when_unmeasured():
+    """測れなかった診断値が "nan" ではなく空欄で記録されること。
+
+    "nan" と書くと診断記録ガードが「記入済み」と数え、記入率が実態より高く出る
+    （ガードの空洞化そのもの）。
+    """
+    from src.experiment import _fmt
+    assert _fmt(float("nan")) == ""
+    assert _fmt(0.5) == "0.50000"

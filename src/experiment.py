@@ -418,6 +418,15 @@ def _ensure_log_csv() -> None:
     print(f"🔧 log.csv に列を追加しました（既存 {n} 行は保持）: {', '.join(missing)}")
 
 
+def _fmt(value: float) -> str:
+    """診断列の書式。測れなかった値（NaN）は "nan" ではなく**空欄**にする。
+
+    "nan" を書くと診断記録ガードは「記入済み」と数えてしまい、記入率が実態より高く出る
+    （ガードが空洞化する典型）。空欄なら未記入として正しく数えられる。
+    """
+    return "" if value != value else f"{value:.5f}"
+
+
 def _claim_experiment_id(experiment_name: str, model: str, description: str) -> str:
     """次の experiment_id を**ロック下で採番し、その場で行を確保する**。
 
@@ -652,10 +661,23 @@ class ExperimentTracker:
         if val_scores is not None:
             self._fold_val_scores = val_scores
 
-        train_mean = float(np.mean(self._fold_train_scores)) if self._fold_train_scores else 0.0
-        train_std = float(np.std(self._fold_train_scores)) if self._fold_train_scores else 0.0
-        val_mean = float(np.mean(self._fold_val_scores)) if self._fold_val_scores else 0.0
-        val_std = float(np.std(self._fold_val_scores)) if self._fold_val_scores else 0.0
+        # `--resume` でキャッシュから復元した fold は train を再計算できないので NaN が入る。
+        # **NaN を平均に混ぜると全体が NaN になり、`G-DIAG` の診断列が丸ごと空になる**ので、
+        # 測れた fold だけで平均を取る（測れなかったことは fold 数の差として残る）。
+        def _mean(vals) -> float:
+            arr = np.asarray(vals, dtype=float)
+            arr = arr[~np.isnan(arr)]
+            return float(arr.mean()) if arr.size else float("nan")
+
+        def _std(vals) -> float:
+            arr = np.asarray(vals, dtype=float)
+            arr = arr[~np.isnan(arr)]
+            return float(arr.std()) if arr.size else float("nan")
+
+        train_mean = _mean(self._fold_train_scores) if self._fold_train_scores else 0.0
+        train_std = _std(self._fold_train_scores) if self._fold_train_scores else 0.0
+        val_mean = _mean(self._fold_val_scores) if self._fold_val_scores else 0.0
+        val_std = _std(self._fold_val_scores) if self._fold_val_scores else 0.0
 
         if _MLFLOW_AVAILABLE:
             mlflow.log_metric("cv_train_mean", train_mean)
@@ -680,10 +702,10 @@ class ExperimentTracker:
             "description": self.description,
             "model": self.model,
             "features": self.features,
-            "cv_train_mean": f"{train_mean:.5f}",
-            "cv_train_std": f"{train_std:.5f}",
-            "cv_val_mean": f"{val_mean:.5f}",
-            "cv_val_std": f"{val_std:.5f}",
+            "cv_train_mean": _fmt(train_mean),
+            "cv_train_std": _fmt(train_std),
+            "cv_val_mean": _fmt(val_mean),
+            "cv_val_std": _fmt(val_std),
             "oof_score": f"{oof_score:.5f}" if oof_score is not None else "",
             "submit_score": "",          # /ds-kaggle-submit スキルが追記
             "lb_rank": "",               # /ds-kaggle-submit スキルが追記

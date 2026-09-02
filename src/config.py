@@ -23,6 +23,7 @@ else:
 # TODO: /ds-kickoff 実行時にここを更新する
 COMPETITION = "your-competition-name"
 TARGET_COL = "target"
+ID_COL = "id"                              # 提出 CSV の識別子列（sample_submission の 1 列目）
 PROBLEM_TYPE = "binary_classification"   # "regression" | "binary_classification" | "multiclass"
 EVAL_METRIC = "auc"                       # 有効値は src/metrics.py の _METRICS が定義元:
                                           # auc / logloss / accuracy / balanced_accuracy / f1 / rmse / mae / r2

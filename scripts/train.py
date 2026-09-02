@@ -6,7 +6,8 @@ CV でモデルを学習し、OOF予測・テスト予測・特徴量重要度�
 （`scripts/optimize_hp.py` と同じ定義元を使うため、指標がずれることがない）。
 コンペ開始時に TODO 箇所を埋めて使う。
 
-binary_classification / multiclass の両方に対応する（`N_CLASSES` で切り替える）。
+regression / binary_classification / multiclass に対応する
+（`src/config.py` の `PROBLEM_TYPE` から目的関数・クラス数・出力の形が決まる）。
 
 使い方:
     uv run python -m scripts.train
@@ -19,12 +20,13 @@ import json
 
 import numpy as np
 import pandas as pd
-from src.metrics import get_cv, get_metric, needs_proba, describe as describe_setup
+from src.metrics import (get_cv, get_metric, n_classes, is_regression,
+                         shape_for_metric, describe as describe_setup)
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import (
     PROCESSED_DATA_DIR, PLOTS_DIR,
-    RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME,
+    RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME, PROBLEM_TYPE,
 )
 from src.experiment import ExperimentTracker
 from src.utils.finalize import save_run_outputs
@@ -37,104 +39,160 @@ from src.utils.foldcache import FoldCache
 # 使用する特徴量リスト（空のまま実行するとエラーになる。コンペごとに埋める）
 FEATURES: list[str] = []
 
-# クラス数。二値分類なら 2、多クラスならクラス数を入れる（回帰では使わない）
-# ※ DEFAULT_PARAMS の objective / metric もこの値に合わせて調整すること
-N_CLASSES = 3
+# クラス数は `PROBLEM_TYPE` から導く（回帰なら 1、二値なら 2）。
+# **以前はここが `N_CLASSES = 3` の直書きで、config のデフォルト（binary_classification / auc）と
+# 矛盾していた**。clone した直後に Stage 1 の最小ベースラインを回すと、
+# `num_class=3` の目的関数に 2 クラスのラベルを渡して落ちる。設定から導けば矛盾しようがない。
+# multiclass のときだけ実データが要るので、学習時に y から数え直す（_resolve_n_classes）。
+try:
+    N_CLASSES = n_classes()
+except ValueError:
+    N_CLASSES = 0          # multiclass — run_cv / main が y から確定させる
 
-# モデルごとのデフォルトパラメータ（multiclass）
+
+def _resolve_n_classes(y) -> int:
+    """設定と実データを突き合わせてクラス数を決める。食い違いはその場で止める。"""
+    actual = n_classes(y)
+    if N_CLASSES and actual != N_CLASSES:
+        raise ValueError(
+            f"PROBLEM_TYPE='{PROBLEM_TYPE}' はクラス数 {N_CLASSES} を意味しますが、"
+            f"データには {actual} クラスあります。src/config.py の PROBLEM_TYPE を見直してください。"
+        )
+    return actual
+
+
+def build_params(model_name: str, n_cls: int) -> dict:
+    """モデル別のデフォルト HP を、タスク種別に合わせて組み立てる。
+
+    目的関数・評価指標はクラス数で変わる（二値 `binary` / 多クラス `multiclass` /
+    回帰 `regression`）。dict のリテラルに書くと二値と多クラスで別の定数群を
+    保守することになり、片方が必ず腐る。
+    """
+    is_reg = is_regression()
+    common = {"n_estimators": 1000, "learning_rate": 0.05, "subsample": 0.8,
+              "colsample_bytree": 0.8, "reg_alpha": 0.1, "reg_lambda": 1.0,
+              "random_state": RANDOM_STATE, "verbose": -1}
+
+    if model_name in ("lgb", "lgb_balanced"):
+        if is_reg:
+            task = {"objective": "regression", "metric": "rmse"}
+        elif n_cls == 2:
+            task = {"objective": "binary", "metric": "binary_logloss"}
+        else:
+            task = {"objective": "multiclass", "num_class": n_cls, "metric": "multi_logloss"}
+        params = {**common, **task, "num_leaves": 63}
+        if model_name == "lgb_balanced":
+            if is_reg:
+                raise ValueError("lgb_balanced（class_weight）は回帰では使えません。--model lgb を使ってください")
+            params["class_weight"] = "balanced"
+        return params
+
+    if model_name == "cb":
+        loss = "RMSE" if is_reg else ("Logloss" if n_cls == 2 else "MultiClass")
+        return {"loss_function": loss, "iterations": 1000, "learning_rate": 0.05,
+                "depth": 6, "random_seed": RANDOM_STATE, "verbose": 0}
+
+    if model_name == "xgb":
+        if is_reg:
+            task = {"objective": "reg:squarederror", "eval_metric": "rmse"}
+        elif n_cls == 2:
+            task = {"objective": "binary:logistic", "eval_metric": "logloss"}
+        else:
+            task = {"objective": "multi:softprob", "num_class": n_cls, "eval_metric": "mlogloss"}
+        return {**task, "n_estimators": 1000, "learning_rate": 0.05, "max_depth": 6,
+                "subsample": 0.8, "colsample_bytree": 0.8, "tree_method": "hist",
+                "enable_categorical": True, "random_state": RANDOM_STATE, "verbosity": 0}
+
+    raise ValueError(f"未対応のモデルです: {model_name}")
+
+
+# 後方互換: 既存コードが `DEFAULT_PARAMS[name]` を参照している箇所のための辞書ビュー。
+# クラス数が実データ依存（multiclass）の場合は build_params() を直接呼ぶこと。
 DEFAULT_PARAMS: dict = {
-    "lgb": {
-        "objective": "multiclass",
-        "num_class": N_CLASSES,
-        "metric": "multi_logloss",
-        "n_estimators": 1000,
-        "learning_rate": 0.05,
-        "num_leaves": 63,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "reg_alpha": 0.1,
-        "reg_lambda": 1.0,
-        "random_state": RANDOM_STATE,
-        "verbose": -1,
-    },
-    "lgb_balanced": {
-        "objective": "multiclass",
-        "num_class": N_CLASSES,
-        "metric": "multi_logloss",
-        "n_estimators": 1000,
-        "learning_rate": 0.05,
-        "num_leaves": 63,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "reg_alpha": 0.1,
-        "reg_lambda": 1.0,
-        "class_weight": "balanced",
-        "random_state": RANDOM_STATE,
-        "verbose": -1,
-    },
-    "cb": {
-        "loss_function": "MultiClass",
-        "iterations": 1000,
-        "learning_rate": 0.05,
-        "depth": 6,
-        "random_seed": RANDOM_STATE,
-        "verbose": 0,
-    },
-    "xgb": {
-        "objective": "multi:softprob",
-        "num_class": N_CLASSES,
-        "eval_metric": "mlogloss",
-        "n_estimators": 1000,
-        "learning_rate": 0.05,
-        "max_depth": 6,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "tree_method": "hist",
-        "enable_categorical": True,
-        "random_state": RANDOM_STATE,
-        "verbosity": 0,
-    },
+    name: build_params(name, N_CLASSES or 2)
+    for name in ("lgb", "lgb_balanced", "cb", "xgb")
+    if not (is_regression() and name == "lgb_balanced")
 }
 
 # ──────────────────────────────────────────────
-# 学習関数（いずれも predict_proba (N, N_CLASSES) を返す）
+# 学習関数
 # ──────────────────────────────────────────────
+# 分類は `predict_proba (N, n_classes)`、回帰は 1 次元の予測を返す。
+# 呼び出し側は `src.metrics.shape_for_metric()` で指標に合う形へ整えるので、
+# ここでは**モデルの素の出力**を返せばよい。
+
+def _has_proba(model) -> bool:
+    """確率を出せるモデルか（回帰器は出せない）。"""
+    return hasattr(model, "predict_proba")
+
+
+def _predict(model, X):
+    """分類なら確率、回帰なら値。"""
+    return model.predict_proba(X) if _has_proba(model) else model.predict(X)
+
 
 def train_fold_lgb(X_tr, y_tr, X_val, y_val, params: dict):
     import lightgbm as lgb
-    model = lgb.LGBMClassifier(**params)
+    Est = lgb.LGBMRegressor if is_regression() else lgb.LGBMClassifier
+    model = Est(**params)
     model.fit(
         X_tr, y_tr,
         eval_set=[(X_val, y_val)],
         callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(100)],
     )
-    return model, model.predict_proba(X_val)
+    return model, _predict(model, X_val)
 
 
 def train_fold_cb(X_tr, y_tr, X_val, y_val, params: dict):
-    from catboost import CatBoostClassifier, Pool
+    from catboost import CatBoostClassifier, CatBoostRegressor, Pool
     cat_features = [c for c in X_tr.columns if X_tr[c].dtype in ("object", "category")]
-    model = CatBoostClassifier(**params)
+    Est = CatBoostRegressor if is_regression() else CatBoostClassifier
+    model = Est(**params)
     model.fit(
         Pool(X_tr, y_tr, cat_features=cat_features),
         eval_set=Pool(X_val, y_val, cat_features=cat_features),
         early_stopping_rounds=50,
     )
-    return model, model.predict_proba(X_val)
+    return model, _predict(model, X_val)
 
 
 def train_fold_xgb(X_tr, y_tr, X_val, y_val, params: dict):
     import xgboost as xgb
-    model = xgb.XGBClassifier(**params, early_stopping_rounds=50)
+    Est = xgb.XGBRegressor if is_regression() else xgb.XGBClassifier
+    model = Est(**params, early_stopping_rounds=50)
     model.fit(
         X_tr, y_tr,
         eval_set=[(X_val, y_val)],
         verbose=100,
     )
-    return model, model.predict_proba(X_val)
+    return model, _predict(model, X_val)
 
 
 TRAIN_FN = {"lgb": train_fold_lgb, "lgb_balanced": train_fold_lgb, "cb": train_fold_cb, "xgb": train_fold_xgb}
+
+
+
+def extract_importance(model, features: list[str]) -> "np.ndarray | None":
+    """特徴量重要度を**gain ベース**で取り出す。
+
+    `sklearn` ラッパーの `feature_importances_` は、LightGBM では既定が
+    `importance_type="split"`（分岐に使われた**回数**）。回数は「よく使われたか」は示すが
+    「どれだけ損失を減らしたか」は示さない。カーディナリティの高い列が上位に来やすく、
+    **文書・グラフの軸ラベルはどちらも "gain" と書いていた**ので、読む側は別物を見ていた。
+    `G-DIAG` の第3診断軸（新特徴量が実際に効いたか）はこの値で判断するため、定義を揃える。
+    """
+    booster = getattr(model, "booster_", None)                  # LightGBM
+    if booster is not None:
+        return np.asarray(booster.feature_importance(importance_type="gain"), dtype=float)
+    if hasattr(model, "get_booster"):                           # XGBoost
+        score = model.get_booster().get_score(importance_type="gain")
+        return np.array([score.get(f, 0.0) for f in features], dtype=float)
+    if hasattr(model, "get_feature_importance"):                # CatBoost
+        # CatBoost の既定は PredictionValuesChange（gain 相当の寄与度）
+        return np.asarray(model.get_feature_importance(), dtype=float)
+    if hasattr(model, "feature_importances_"):
+        return np.asarray(model.feature_importances_, dtype=float)
+    return None
 
 
 def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None):
@@ -152,15 +210,20 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
     X, y_raw = train[features], train[TARGET_COL]
     X_test = test[features]
 
-    le = LabelEncoder()
-    y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
+    if is_regression():
+        y = pd.Series(y_raw.to_numpy(dtype=float), index=y_raw.index)
+    else:
+        y = pd.Series(LabelEncoder().fit_transform(y_raw), index=y_raw.index)
 
     seeded_params = {**params, "random_state": seed} if model_name != "cb" else {**params, "random_seed": seed}
 
     cv = get_cv()          # 分割器は CV_STRATEGY から。seed は RANDOM_STATE に従う
     metric = get_metric()
-    oof_preds = np.zeros((len(train), N_CLASSES))
-    test_preds = np.zeros((len(test), N_CLASSES))
+    n_cls = _resolve_n_classes(y)
+    shape = (len(train),) if is_regression() else (len(train), n_cls)
+    test_shape = (len(test),) if is_regression() else (len(test), n_cls)
+    oof_preds = np.zeros(shape)
+    test_preds = np.zeros(test_shape)
     train_scores, val_scores = [], []
     importances = []
 
@@ -170,23 +233,19 @@ def run_cv(model_name: str, params: dict, seed: int, features: list[str] = None)
 
         model, val_pred = TRAIN_FN[model_name](X_tr, y_tr, X_val, y_val, seeded_params)
         oof_preds[val_idx] = val_pred
-        test_preds += model.predict_proba(X_test) / N_SPLITS
+        test_preds += _predict(model, X_test) / N_SPLITS
 
-        val_score = metric(y_val, val_pred[:, 1] if needs_proba() and val_pred.shape[1] == 2
-                           else (val_pred if needs_proba() else np.argmax(val_pred, axis=1)))
-        if needs_proba():
-            tr_proba = model.predict_proba(X_tr)
-            tr_score = metric(y_tr, tr_proba[:, 1] if tr_proba.shape[1] == 2 else tr_proba)
-        else:
-            tr_score = metric(y_tr, model.predict(X_tr))
+        val_score = metric(y_val, shape_for_metric(val_pred))
+        tr_pred = model.predict_proba(X_tr) if _has_proba(model) else model.predict(X_tr)
+        tr_score = metric(y_tr, shape_for_metric(tr_pred))
         train_scores.append(tr_score)
         val_scores.append(val_score)
 
-        if hasattr(model, "feature_importances_"):
-            importances.append(model.feature_importances_)
+        imp = extract_importance(model, features)
+        if imp is not None:
+            importances.append(imp)
 
-    oof_score = metric(y, oof_preds[:, 1] if needs_proba() and oof_preds.shape[1] == 2
-                       else (oof_preds if needs_proba() else np.argmax(oof_preds, axis=1)))
+    oof_score = metric(y, shape_for_metric(oof_preds))
 
     importance_df = None
     if importances:
@@ -225,14 +284,18 @@ def main():
     X, y_raw = train[FEATURES], train[TARGET_COL]
     X_test = test[FEATURES]
 
-    # ターゲットのラベルエンコード（文字列クラス → 0..N_CLASSES-1）
-    le = LabelEncoder()
-    y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
-    print(f"クラス対応: {dict(zip(le.classes_, range(len(le.classes_))))}")
+    # ターゲットの整形。分類はラベルエンコード（文字列クラス → 0..n_classes-1）、
+    # 回帰はそのまま使う（LabelEncoder に連続値を通すと**全値がユニークな「クラス」になる**）。
+    if is_regression():
+        y = pd.Series(y_raw.to_numpy(dtype=float), index=y_raw.index)
+    else:
+        le = LabelEncoder()
+        y = pd.Series(le.fit_transform(y_raw), index=y_raw.index)
+        print(f"クラス対応: {dict(zip(le.classes_, range(len(le.classes_))))}")
     print(f"評価設定: {describe_setup()}")
 
-    # パラメータ読み込み
-    params = DEFAULT_PARAMS[args.model].copy()
+    # パラメータ読み込み。クラス数が実データ依存（multiclass）なら y から組み立て直す
+    params = build_params(args.model, _resolve_n_classes(y)).copy()
     if args.params:
         with open(args.params) as f:
             params.update(json.load(f))
@@ -249,8 +312,11 @@ def main():
     # CV学習
     cv = get_cv()          # 分割器は src.config の CV_STRATEGY から決まる
     metric = get_metric()  # 指標は EVAL_METRIC から決まる（optimize_hp と共有）
-    oof_preds = np.zeros((len(train), N_CLASSES))
-    test_preds = np.zeros((len(test), N_CLASSES))
+    n_cls = _resolve_n_classes(y)
+    shape = (len(train),) if is_regression() else (len(train), n_cls)
+    test_shape = (len(test),) if is_regression() else (len(test), n_cls)
+    oof_preds = np.zeros(shape)
+    test_preds = np.zeros(test_shape)
     importances = []
     train_scores, val_scores = [], []
 
@@ -271,38 +337,35 @@ def main():
             model = None
         else:
             model, val_pred = TRAIN_FN[args.model](X_tr, y_tr, X_val, y_val, params)
-            fold_test_pred = model.predict_proba(X_test)
+            fold_test_pred = _predict(model, X_test)
             cache.save(fold, val_pred, fold_test_pred)
 
         oof_preds[val_idx] = val_pred
         test_preds += fold_test_pred / N_SPLITS   # テスト予測（フォールド平均）
 
-        # スコア計算（balanced_accuracy: argmaxクラスで評価）
-        # キャッシュ再利用時は train スコアを再計算できないため val と同値を入れる
-        # 指標が確率を要るか（AUC/logloss）ラベルで良いか（accuracy 等）で渡すものを変える
-        val_score = metric(y_val, val_pred[:, 1] if needs_proba() and val_pred.shape[1] == 2
-                           else (val_pred if needs_proba() else np.argmax(val_pred, axis=1)))
+        val_score = metric(y_val, shape_for_metric(val_pred))
+        # キャッシュ再利用時は train を再計算できない。**以前は val と同じ値を入れていた**が、
+        # それは `cv_train_mean` に嘘を書くのと同じで、`G-DIAG` の第1診断軸
+        # （train − val 乖離で過学習か校正不足かを切り分ける）が --resume のたびに
+        # 「乖離ゼロ」に化けていた。測れないものは NaN にして、集計から除く。
         if model is None:
-            tr_score = val_score        # キャッシュ再利用時は train を再計算できない
-        elif needs_proba():
-            tr_proba = model.predict_proba(X_tr)
-            tr_score = metric(y_tr, tr_proba[:, 1] if tr_proba.shape[1] == 2 else tr_proba)
+            tr_score = float("nan")
         else:
-            tr_score = metric(y_tr, model.predict(X_tr))
+            tr_score = metric(y_tr, shape_for_metric(_predict(model, X_tr)))
         train_scores.append(tr_score)
         val_scores.append(val_score)
         tracker.log_fold_scores(fold, tr_score, val_score)
 
         # 特徴量重要度
-        if model is not None and hasattr(model, "feature_importances_"):
-            importances.append(model.feature_importances_)
+        imp = extract_importance(model, FEATURES) if model is not None else None
+        if imp is not None:
+            importances.append(imp)
 
         mark = "（キャッシュ再利用）" if model is None else ""
         print(f"Fold {fold}: train={tr_score:.5f}  val={val_score:.5f} {mark}")
 
     # OOFスコア
-    oof_score = metric(y, oof_preds[:, 1] if needs_proba() and oof_preds.shape[1] == 2
-                       else (oof_preds if needs_proba() else np.argmax(oof_preds, axis=1)))
+    oof_score = metric(y, shape_for_metric(oof_preds))
 
     # 保存: 学習 → OOF + test 予測 → 提出ファイルを 1 回で出し切る（CLAUDE.md `G-STEPWISE`）。
     # 学習だけして推論を省くと、提出したくなった時点で同じ学習をやり直すことになる。

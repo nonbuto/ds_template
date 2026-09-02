@@ -36,6 +36,7 @@ import json
 import numpy as np
 
 from scripts.train import run_cv, DEFAULT_PARAMS, FEATURES as BASE_FEATURES
+from src.metrics import greater_is_better
 from src.config import OOF_DIR, PLOTS_DIR, EXPERIMENT_NAME
 from src.experiment import ExperimentTracker
 
@@ -45,20 +46,26 @@ from src.experiment import ExperimentTracker
 
 
 def _cv_stats(result: dict) -> dict:
-    """train/valのfold平均・std・gapをまとめる（過学習・CV安定性を毎回確認するため）。"""
+    """train/valのfold平均・std・gapをまとめる（過学習・CV安定性を毎回確認するため）。
+
+    `gap` は**「train が val よりどれだけ良いか」**に揃える（`G-DIAG` の第1診断軸）。
+    素の差 `train - val` だと、RMSE や logloss のように**小さいほど良い**指標では
+    過学習しているほど gap が負に大きくなり、判定の向きが逆になる。
+    """
     tr = np.array(result["train_scores"])
     va = np.array(result["val_scores"])
+    sign = 1.0 if greater_is_better() else -1.0
     return {
         "train_mean": float(tr.mean()), "train_std": float(tr.std()),
         "val_mean": float(va.mean()), "val_std": float(va.std()),
-        "gap": float(tr.mean() - va.mean()),
+        "gap": float(sign * (tr.mean() - va.mean())),
     }
 
 
 def _print_cv_stats(label: str, stats: dict) -> None:
     print(f"  {label} train: mean={stats['train_mean']:.5f} std={stats['train_std']:.5f}")
     print(f"  {label} val  : mean={stats['val_mean']:.5f} std={stats['val_std']:.5f}")
-    print(f"  {label} gap(train-val): {stats['gap']:.5f}")
+    print(f"  {label} gap(train が val より良い分): {stats['gap']:.5f}")
 
 
 def main():
@@ -120,8 +127,13 @@ def main():
     new_stats = _cv_stats(new_result)
     print(f"  New  OOF: {new_oof:.5f}")
     _print_cv_stats("New", new_stats)
+    metric_dir = "大きいほど良い" if greater_is_better() else "小さいほど良い"
 
-    delta = new_oof - base_oof
+    # **改善方向に揃えた Δ**を判定に使う。素の `new - base` だと、RMSE・logloss・MAE の
+    # ように小さいほど良い指標では符号が逆になり、**良い特徴量を棄却し悪い特徴量を採用する**。
+    # feature_study は FE 判断の中核ツールなので、ここが逆だと全 FE の採否が反転する。
+    raw_delta = new_oof - base_oof
+    delta = raw_delta if greater_is_better() else -raw_delta
     gap_delta = new_stats["gap"] - base_stats["gap"]
 
     # ΔOOFがノイズ範囲・棄却域にある場合、gapの変化で「純粋なノイズ」か
@@ -207,7 +219,8 @@ def main():
  [OOF]
  Base OOF  : {base_oof:.5f}
  New  OOF  : {new_oof:.5f}
- ΔOOF      : {delta:+.5f}
+ ΔOOF      : {delta:+.5f}   ← 改善方向に揃えた値（正なら改善）
+ 素の差     : {raw_delta:+.5f}（{metric_dir}）
 
  [CV内部診断: train/val 平均・ばらつき・gap]
  Base: train={base_stats['train_mean']:.5f}±{base_stats['train_std']:.5f}  val={base_stats['val_mean']:.5f}±{base_stats['val_std']:.5f}  gap={base_stats['gap']:.5f}

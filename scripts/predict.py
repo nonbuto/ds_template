@@ -16,12 +16,12 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
-from src.config import RAW_DATA_DIR, TARGET_COL, submission_path
+from src.config import ID_COL, RAW_DATA_DIR, TARGET_COL, submission_path
 
 # ──────────────────────────────────────────────
 # TODO: コンペごとにここを変更する
 # ──────────────────────────────────────────────
-ID_COL = "id"
+
 
 
 def main():

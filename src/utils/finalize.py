@@ -24,9 +24,8 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
-from src.config import OOF_DIR, RAW_DATA_DIR, TARGET_COL, submission_path
-
-ID_COL = "id"
+from src.config import ID_COL, OOF_DIR, RAW_DATA_DIR, TARGET_COL, submission_path
+from src.metrics import is_regression, needs_proba
 
 
 @dataclass
@@ -36,8 +35,27 @@ class RunOutputs:
     submission: Optional[Path]
 
 
+def _resolve_submit_mode(submit: str) -> str:
+    """`"auto"` を、評価指標とタスク種別から具体的な提出形式に落とす。
+
+    **なぜ auto が既定か**: 以前の既定は `"label"` で、しかも呼び出し側は誰も指定していなかった。
+    つまり AUC コンペでも**ハードラベル（0/1）を提出していた**。AUC は順序の指標なので、
+    確率を 2 値に潰すと情報が消える —— 過去コンペのデータで実測すると **AUC −0.074**。
+    しかもスコアは出るのでエラーにならず、**気づかないまま提出枠を消費する**。
+    指標が確率を要るかは `src/metrics.py` が既に知っているので、そこから決める。
+    """
+    if submit != "auto":
+        return submit
+    if is_regression():
+        return "value"
+    return "proba" if needs_proba() else "label"
+
+
 def _to_submission_values(test: np.ndarray, submit: str) -> np.ndarray:
     """test 予測配列を提出列の値に変換する。"""
+    if submit == "value":
+        # 回帰: 予測値をそのまま提出する
+        return np.asarray(test).ravel()
     if submit == "proba":
         # 二値分類（AUC 等）: 陽性クラスの確率をそのまま提出する
         return test[:, 1] if test.ndim == 2 and test.shape[1] == 2 else test.ravel()
@@ -55,7 +73,7 @@ def save_run_outputs(
     oof: np.ndarray,
     test: np.ndarray,
     oof_score: float,
-    submit: Literal["label", "proba"] = "label",
+    submit: Literal["auto", "label", "proba", "value"] = "auto",
     make_submission: bool = True,
     is_ensemble: bool = False,
 ) -> RunOutputs:
@@ -66,8 +84,9 @@ def save_run_outputs(
         model: モデル識別子（例 `lgb_h012`）。ファイル名に入る。
         oof / test: 予測配列。**test を省いた実験は再学習を招くので必ず渡す。**
         oof_score: OOF スコア（提出ファイル名に埋め込む）。
-        submit: `"label"` = argmax してクラスラベルを提出（多クラス精度系）。
-            `"proba"` = 陽性確率をそのまま提出（AUC 系）。
+        submit: `"auto"`（既定）= `EVAL_METRIC` / `PROBLEM_TYPE` から決める。
+            `"label"` = argmax してクラスラベルを提出（accuracy・f1 等）。
+            `"proba"` = 陽性確率をそのまま提出（AUC・logloss）。`"value"` = 回帰の予測値。
         make_submission: False にすると CSV を作らない。**ΔOOF スクリーニング専用の
             実験でのみ使う**（提出候補になりうる実験では必ず True のままにする）。
         is_ensemble: 派生アンサンブルなら True。ファイル名に `_ens_` を入れて
@@ -90,11 +109,12 @@ def save_run_outputs(
         # npy は保存済みなので、提出 CSV だけ諦めて続行する。
         print(f"⚠️ {sample_path} が無いため提出 CSV は作りません（OOF / test は保存済み）")
         make_submission = False
+    mode = _resolve_submit_mode(submit)
     if make_submission:
         sample = pd.read_csv(sample_path)
         sub = pd.DataFrame({
             ID_COL: sample[ID_COL],
-            TARGET_COL: _to_submission_values(test, submit),
+            TARGET_COL: _to_submission_values(test, mode),
         })
         sub_path = submission_path(model=tag, oof_score=oof_score, exp_id=exp_id)
         sub.to_csv(sub_path, index=False)
@@ -104,5 +124,6 @@ def save_run_outputs(
         f"  OOF : {oof_path.name}\n"
         f"  test: {test_path.name}\n"
         f"  提出: {sub_path.name if sub_path else '（未作成: make_submission=False）'}"
+        f"{f'  ← 形式={mode}' if sub_path else ''}"
     )
     return RunOutputs(oof=oof_path, test=test_path, submission=sub_path)

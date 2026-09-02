@@ -98,28 +98,35 @@ def get_metric(metric_name: str | None = None) -> Callable[[np.ndarray, np.ndarr
     return scorer
 
 
-def get_cv(n_splits: int | None = None, strategy: str | None = None, shuffle: bool = True):
+def get_cv(n_splits: int | None = None, strategy: str | None = None,
+           shuffle: bool = True, seed: int | None = None):
     """設定された CV 分割器を返す。
 
     `StratifiedKFold` / `KFold` / `TimeSeriesSplit` / `GroupKFold` /
     `StratifiedGroupKFold` に対応する。**時系列とグループは `shuffle` を使わない**
     （順序やグループを壊すと leakage になる）。
+
+    `seed` は**分割そのものの seed**。省略すると `RANDOM_STATE` を使う。
+    multi-seed 検証では「モデルの seed」だけを振って分割を固定するのが既定だが、
+    **分割の引き直し**（`G-DIAG` の「fold 間 std より小さい差は測れていない」への対処）を
+    したいときは、ここに別の seed を渡す。以前は引数が無く、分割の bagging ができなかった。
     """
     from sklearn import model_selection as ms
 
     name = (strategy or CV_STRATEGY)
     k = n_splits or N_SPLITS
+    rs = RANDOM_STATE if seed is None else seed
     if name == "StratifiedKFold":
-        return ms.StratifiedKFold(n_splits=k, shuffle=shuffle, random_state=RANDOM_STATE if shuffle else None)
+        return ms.StratifiedKFold(n_splits=k, shuffle=shuffle, random_state=rs if shuffle else None)
     if name == "KFold":
-        return ms.KFold(n_splits=k, shuffle=shuffle, random_state=RANDOM_STATE if shuffle else None)
+        return ms.KFold(n_splits=k, shuffle=shuffle, random_state=rs if shuffle else None)
     if name == "TimeSeriesSplit":
         return ms.TimeSeriesSplit(n_splits=k)
     if name == "GroupKFold":
         return ms.GroupKFold(n_splits=k)
     if name == "StratifiedGroupKFold":
         return ms.StratifiedGroupKFold(n_splits=k, shuffle=shuffle,
-                                       random_state=RANDOM_STATE if shuffle else None)
+                                       random_state=rs if shuffle else None)
     raise ValueError(
         f"CV_STRATEGY='{name}' は未対応です。次から選んでください: "
         "StratifiedKFold / KFold / TimeSeriesSplit / GroupKFold / StratifiedGroupKFold"
@@ -136,3 +143,44 @@ def describe() -> str:
     direction = "大きいほど良い" if greater_is_better() else "小さいほど良い"
     return (f"{PROBLEM_TYPE} / 指標={EVAL_METRIC}（{direction}）/ "
             f"CV={CV_STRATEGY} {N_SPLITS}-fold / seed={RANDOM_STATE}")
+
+
+def shape_for_metric(pred: np.ndarray, metric_name: str | None = None) -> np.ndarray:
+    """モデルの出力を、評価指標が受け取れる形に整える。
+
+    **なぜ関数にするか**: この三項演算子は `train.py` / `optimize_hp.py` /
+    `feature_study.py` / 実験雛形など **6 箇所に写経されていた**。写経は必ずずれる ——
+    片方だけ「二値なら陽性確率」を入れ忘れれば、`roc_auc_score` に (n,2) が渡って
+    例外か誤ったスコアになる。このモジュールを作った動機（指標の定義元を 1 つにする）と同じ理由で、
+    **形の整え方も 1 箇所**に置く。
+
+    - 確率が要る指標 × 二値 (n,2) → 陽性列
+    - 確率が要る指標 × 多クラス (n,k) → そのまま
+    - ラベル指標 × 確率行列 → argmax
+    - 回帰（1 次元） → そのまま
+    """
+    pred = np.asarray(pred)
+    if pred.ndim == 1:
+        return pred
+    if needs_proba(metric_name):
+        return pred[:, 1] if pred.shape[1] == 2 else pred
+    return np.argmax(pred, axis=1)
+
+
+def n_classes(y: np.ndarray | None = None) -> int:
+    """クラス数を返す。回帰では 1。
+
+    `y` を渡せば**実データから数える**（設定と実データの食い違いを防ぐ）。
+    渡さない場合は `PROBLEM_TYPE` から推定する —— `multiclass` は実データ無しでは
+    決まらないので、その場合は `y` が必須。
+    """
+    if y is not None:
+        return 1 if is_regression() else int(len(np.unique(np.asarray(y))))
+    if is_regression():
+        return 1
+    if PROBLEM_TYPE == "binary_classification":
+        return 2
+    raise ValueError(
+        "PROBLEM_TYPE='multiclass' のクラス数は実データからしか決まりません。"
+        "n_classes(y) の形で y を渡してください。"
+    )
