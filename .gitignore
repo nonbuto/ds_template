@@ -68,3 +68,10 @@ experiments/.hook_log
 kaggle_nb/*.ipynb
 kaggle_nb/output/
 kaggle_nb/push*/
+
+# 秘匿情報（API キー・認証情報）。誤って追跡しないための備え
+.env
+.env.*
+*.pem
+*credentials*.json
+kaggle.json

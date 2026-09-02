@@ -29,10 +29,10 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 
 | 項目 | 現在値 |
 |---|---|
-| 毎セッション自動ロード（CLAUDE.md） | **3,510 字（-94%）**（59 行。上限は 3,000〜5,000 字かつ 60 行 / v5 は約 56,000 字） |
+| 毎セッション自動ロード（CLAUDE.md） | **3,540 字（-94%）**（59 行。上限は 3,000〜5,000 字かつ 60 行 / v5 は約 56,000 字） |
 | ルート直下 | テンプレート文書 6 件のみ（CLAUDE / GUIDELINES / CONVENTIONS / PLAYBOOK / README / CHANGELOG）。コンペごとに育つ記録は `state/`、改善の記録は `docs/` |
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
-| `doc_audit` のチェック | **C1-C14**（C4 は実測値、C12 は指針の索引と本文、C13 はエージェント定義、C14 は文書中のコマンドの実行可能性を検査） |
+| `doc_audit` のチェック | **C1-C15**（C4 は**固定 37 個の数値**の保存、C12 は指針の索引と本文、C13 はエージェント定義、C14 は文書中のコマンド、C15 は**ガード自身が空洞化していないか**を検査） |
 | 規律の機械化 | hook 6 種 + statusLine + ガード 6 種 + サブエージェント 4 種（調査・提案・審査のみ／`tools` で学習実行を封じる） |
 
 > この表の数値は `uv run python -m scripts.harness.doc_audit` の C11 が実態と突き合わせる。
@@ -233,56 +233,53 @@ uv run python -m scripts.feature_report
 ## ディレクトリ構成
 
 ```
-├── CLAUDE.md              # L0 原則: 判断の憲法（恒久ID G-XXX・ステージ定義）※毎セッション自動ロード
-├── CONVENTIONS.md         # L1 規約: パス・命名・log.csv列・コミット形式 ※引くときだけ読む
-├── PLAYBOOK.md            # L2 手順+史料: 実行レシピ + 教訓アーカイブ(L-NN) ※局面参照
-├── state/COMPETITION.md         # コンペ固有メモ（/ds-kickoff が生成・更新）
-├── state/FE_HYPOTHESES.md       # FE仮説の立案・検証・棄却記録（/ds-fe-hypothesis が管理）
-├── state/FEATURE_REPORT.md      # 特徴量の生きたレポート（EDA・FE段階を通じて記入）
-├── state/EDA_SUMMARY.md         # EDA対話の発見まとめ（/ds-eda-visual が生成）
-├── state/SESSION.md             # セッション現在地・次のアクション（/ds-resume で参照）
-├── docs/TODO_TEMPLATE.md       # テンプレート改善タスク（/ds-template-update が追記）
+├── CLAUDE.md              # 憲法（60行以内・3,000〜5,000字）※毎セッション自動ロード
+├── GUIDELINES.md          # 判断指針 G-* 17件の本文（CLAUDE.md には索引だけ）
+├── CONVENTIONS.md         # 規約の辞書（パス・命名・log.csv列・hook一覧）
+├── PLAYBOOK.md            # 実行レシピ + 教訓アーカイブ L-NN（実測値つき）
+├── README.md / CHANGELOG.md
 │
-├── scripts/               # 汎用骨格スクリプト（コンペ開始時に TODO を埋めて使う）
-│   ├── doc_audit.py       # ドキュメント階層の検査（SSoT・行数予算・実測値の保存）
-│   ├── train.py           # CV学習（LGB / CB / XGB 切り替え）
-│   ├── feature_study.py   # 1列ΔOOF計測（Stage 4 FE仮説の効果測定）
-│   ├── optimize_hp.py     # Optuna HP最適化（Stage 3: 軽量 / Stage 5: フル）
-│   ├── predict.py         # OOF・test 予測 → 提出ファイル生成
-│   ├── blend.py           # アンサンブル（相関確認 / 重み最適化 / Greedy HC）
-│   ├── visualize.py       # EDA可視化 → data/output/plots/ に画像保存
-│   └── feature_report.py  # 特徴量重要度・ΔOOF棒グラフを画像生成
+├── state/                 # コンペごとに育つ作業記録（パスは src.config の STATE_DIR）
+│   ├── SESSION.md         #   現在地・次のアクション
+│   ├── COMPETITION.md     #   コンペ概要・CV設計（/ds-kickoff）
+│   ├── FE_HYPOTHESES.md   #   FE仮説の立案・検証・棄却
+│   ├── FEATURE_REPORT.md  #   特徴量の生きたレポート（--sync で機械生成）
+│   ├── EDA_SUMMARY.md     #   EDA対話の発見
+│   └── KAGGLE_RESEARCH.md #   外部調査ログ
+│
+├── docs/                  # テンプレート改善の記録（TODO_TEMPLATE / TODO_ARCHIVE）
+├── tests/                 # ハーネスのテスト（uv run pytest）
+│
+├── scripts/               # コンペ用スクリプト（-m scripts.<名前> で実行）
+│   ├── preprocess.py      #   生データ → 特徴量pickle（検証も走る）
+│   ├── train.py           #   CV学習 → OOF+test+提出CSV を1回で
+│   ├── feature_study.py / optimize_hp.py / predict.py / blend.py
+│   ├── visualize.py / feature_report.py / av_check.py / to_kaggle_nb.py
+│   └── harness/           # 規律・診断（-m scripts.harness.<名前>）
+│       ├── doc_audit.py   #   ドキュメント階層の検査 C1-C15
+│       ├── session_brief.py / session_audit.py / session_snapshot.py
+│       ├── submit_gate.py / viz_guard.py / state_audit.py
+│       └── statusline.py / job_status.py / hook_status.py / deadline_status.py
+│
+├── src/
+│   ├── config.py          # パス・コンペ設定（IS_KAGGLE 自動検出・STATE_DIR）
+│   ├── metrics.py         # 評価指標と CV 分割器の唯一の定義元
+│   ├── experiment.py      # ExperimentTracker とガード群
+│   ├── validation.py / hp_spaces.py
+│   └── utils/             # finalize / foldcache / multiseed / ensemble / plot_style / logger
 │
 ├── experiments/
-│   ├── log.csv            # 全実験サマリー（OOF・LB・oof_lb_gap・学びを記録）
-│   └── runs/              # コンペ固有の1回限りスクリプト
-│       └── exp{NNN}_s{stage}_{内容}.py
+│   ├── log.csv            # 全実験サマリー
+│   ├── runs/              # 実験スクリプト（_TEMPLATE_*.py をコピーして始める）
+│   └── blockers/          # 技術的ブロッカーの最小再現（G-BLOCKER）
 │
-├── src/                   # 共通ライブラリ
-│   ├── config.py          # パス・コンペ設定・命名規約（IS_KAGGLE 自動検出）
-│   ├── experiment.py      # 実験トラッキング（log.csv 書き込み）
-│   ├── validation.py      # データバリデーション
-│   ├── hp_spaces.py       # Optuna サーチスペース定義
-│   └── utils/
-│       ├── ensemble.py    # correlation_check / optimize_weights / greedy_ensemble
-│       └── logger.py      # ロガー
-│
-├── data/                  # ← Git 管理外（.gitignore で除外）
-│   ├── raw/               # 生データ（読み取り専用）
-│   ├── processed/         # 前処理済みデータ（.pkl）
-│   └── output/
-│       ├── submissions/   # 提出CSV（submission_path() で命名）
-│       ├── oof/           # OOF・test予測（.npy）
-│       ├── models/        # 学習済みモデル
-│       ├── params/        # best_params JSON
-│       └── plots/         # 可視化画像（Claude が Read で読んで対話に使う）
-│
+├── kaggle_nb/             # Kaggle Notebook 用（中身は git 管理しない）
+├── data/                  # raw / processed / output（submissions・oof・models・params・plots）
 └── .claude/
-    ├── skills/            # L3 進行台本: 対話フェーズと質問文面
-    └── settings.json      # PostToolUse hook（可視化ガードの自動起動）
+    ├── settings.json      # statusLine + hook 6種
+    ├── skills/            # 対話の進行（8スキル）
+    └── agents/            # サブエージェント4種（調査・提案・審査のみ）
 ```
-
----
 
 ## 設計上の主要な判断
 

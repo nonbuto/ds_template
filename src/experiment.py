@@ -16,7 +16,10 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:      # 型注釈のためだけの import（実行時には読み込まない）
+    import pandas as pd
 
 import numpy as np
 
@@ -571,7 +574,7 @@ class ExperimentTracker:
         self,
         oof_preds: np.ndarray,
         labels: np.ndarray,
-        feature_df: Optional["pd.DataFrame"] = None,  # type: ignore[name-defined]
+        feature_df: Optional["pd.DataFrame"] = None,
         output_dir: Optional[Path] = None,
     ) -> None:
         """OOF 予測の誤差分析を出力する（問題種別に応じて内容を変える）。

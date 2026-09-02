@@ -380,6 +380,10 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 | `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を state/SESSION.md へ退避 |
 | `PostCompact` | `scripts/harness/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
 
+**静的検査**: `uv run ruff check src scripts tests experiments` ——
+未使用 import・未定義名など「壊れている」ものだけを見る（スタイルは強制しない）。
+導入時に **15 件**見つかり、うち 1 件は未定義名（`F821`）だった。
+
 **ハーネス自体のテスト**: `uv run pytest` —— 提出ゲートの検知精度・log.csv の列追加移行・
 fold キャッシュの再開・エージェントの `tools` 制限・hook のブランチ耐性・doc_audit の ERROR 0 を検証する。
 **ハーネスを変更したら必ず実行する。** 手作業の確認は締切前に最初に省略される。
@@ -391,7 +395,7 @@ uv run python -m scripts.harness.viz_guard        # 可視化・診断記録・�
 uv run python -m scripts.harness.state_audit      # 状態ファイルの停滞（log.csv の実験時刻 vs mtime）
 uv run python -m scripts.harness.session_audit    # 上記すべて + コミット規律
 uv run python -m scripts.harness.session_brief    # 現在地ブリーフ
-uv run python -m scripts.harness.doc_audit        # ドキュメント階層（11 チェック）
+uv run python -m scripts.harness.doc_audit        # ドキュメント階層（15 チェック）
 ```
 
 **設計上の約束**:

@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 15:41:36
-- **git**: `main` / 未コミット 10 件 / HEAD: a5c472f fix(docs): 実行不能コマンド14箇所を修正し、C14 で再発を防ぐ
+- **記録時刻**: 2026-09-02 18:18:34
+- **git**: `main` / 未コミット 18 件 / HEAD: ab14435 fix: blend の指標一元化・誤差分析の汎用化・実験雛形・テスト鮮度の検知
 <!-- END:auto-snapshot -->

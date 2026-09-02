@@ -23,7 +23,7 @@ from src.metrics import get_cv, get_metric, needs_proba, describe as describe_se
 from sklearn.preprocessing import LabelEncoder
 
 from src.config import (
-    PROCESSED_DATA_DIR, OOF_DIR, PLOTS_DIR,
+    PROCESSED_DATA_DIR, PLOTS_DIR,
     RANDOM_STATE, N_SPLITS, TARGET_COL, EXPERIMENT_NAME,
 )
 from src.experiment import ExperimentTracker

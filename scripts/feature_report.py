@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from src.config import (PLOTS_DIR, OOF_DIR, PARAMS_DIR, PROCESSED_DATA_DIR,
+from src.config import (PLOTS_DIR, PARAMS_DIR, PROCESSED_DATA_DIR,
                         FEATURE_REPORT_MD, FE_HYPOTHESES_MD)
 from src.utils.plot_style import setup_japanese_font
 

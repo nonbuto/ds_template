@@ -14,7 +14,6 @@ from __future__ import annotations
 import csv
 import json
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -340,3 +339,26 @@ def test_experiment_template_follows_conventions():
     for required in ["ExperimentTracker", "log_fold_scores", "end_run(",
                      "get_metric", "get_cv", "FoldCache", "save_run_outputs"]:
         assert required in body, f"雛形に {required} が無い"
+
+
+def test_doc_audit_guards_are_not_hollow():
+    """ガード自身が「0 件しか検査していない」状態になっていないこと（C15）。
+
+    「問題 0 件」と「検査対象 0 件」は表示上どちらも ✅ になる。
+    README の自己申告値・指針の ID 定義・文書中のコマンドで、実際に 3 度見逃した。
+    """
+    import importlib
+    from scripts.harness import doc_audit as D
+    importlib.reload(D)
+    results: list = []
+    D.check(results)
+    for key in ["C2", "C3", "C6", "C11", "C13", "C14"]:
+        assert D.CHECKED.get(key, 0) > 0, f"{key} の検査対象が 0 件（ガードが空洞）"
+    assert len(results) == D.TOTAL_CHECKS, "TOTAL_CHECKS が実際の検査数と不一致"
+
+
+def test_blend_rejects_multiclass_clearly():
+    """blend は 1 次元 OOF 前提。多クラスでは**沈黙せず明確に**失敗すること。"""
+    body = (ROOT / "scripts" / "blend.py").read_text(encoding="utf-8")
+    assert "二値分類・回帰" in body, "多クラスを検知して止める処理が無い"
+    assert "LabelEncoder" in body, "ラベルエンコードを通していない（文字列ラベルで落ちる）"

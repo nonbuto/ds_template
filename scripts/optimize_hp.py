@@ -26,7 +26,7 @@ import pandas as pd
 from src.metrics import get_cv, get_metric, greater_is_better, needs_proba
 from sklearn.preprocessing import LabelEncoder
 
-from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, N_SPLITS, TARGET_COL
+from src.config import PROCESSED_DATA_DIR, PARAMS_DIR, RANDOM_STATE, TARGET_COL
 from src.hp_spaces import lgb_space, xgb_space, cb_space
 from scripts.train import FEATURES, N_CLASSES
 

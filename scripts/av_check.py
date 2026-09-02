@@ -20,6 +20,11 @@ from scripts.train import FEATURES
 
 
 def main():
+    # argparse を先に処理する。assert が先だと `--help` すら表示できない
+    # （使い方を知りたいだけの人が「FEATURES が空」で止まる）。
+    import argparse
+    argparse.ArgumentParser(description=__doc__.splitlines()[1] if __doc__ else "AV 診断").parse_args()
+
     assert FEATURES, "FEATURES リストが空です。scripts/train.py の TODO を埋めてください。"
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
     test = pd.read_pickle(PROCESSED_DATA_DIR / "test_features.pkl")

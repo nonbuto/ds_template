@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-import os
 
 # ===== 環境検出（ローカル / Kaggle Notebook）=====
 _KAGGLE_INPUT = Path("/kaggle/input")

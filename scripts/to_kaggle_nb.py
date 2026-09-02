@@ -41,7 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.config import COMPETITION, IS_KAGGLE
+from src.config import COMPETITION
 
 
 # ──────────────────────────────────────────────────────────
@@ -234,8 +234,8 @@ def _clean_script_for_kaggle(
             if is_block_end:
                 in_src_config_import = False
                 injected = True
-                cleaned.append(f'# [Kaggle注入] コンペ固有の設定値を上書き')
-                cleaned.append(f'from pathlib import Path as _KagglePath')
+                cleaned.append('# [Kaggle注入] コンペ固有の設定値を上書き')
+                cleaned.append('from pathlib import Path as _KagglePath')
                 cleaned.append(f'TARGET_COL = "{target_col}"')
                 cleaned.append(f'RAW_DATA_DIR = _KagglePath("/kaggle/input/competitions/{competition}")')
 

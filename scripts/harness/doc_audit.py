@@ -108,8 +108,19 @@ def _headings(text: str) -> set[str]:
     return {_slug(m.group(1)) for m in re.finditer(r"^#{1,6}\s+(.+)$", text, re.M)}
 
 
+# 各チェックが「何件を実際に検査したか」。**0 なら守っているつもりで何も見ていない。**
+# 移設や書き換えで検査対象が消えても「✅ 0 件」と表示されるため、3 度見逃した
+# （README の自己申告値・G-* の ID 定義・文書中のコマンド）。分母を明示して機械で捕まえる。
+CHECKED: dict[str, int] = {}
+
+# チェックの総数。C11 が README の申告値と突き合わせる。
+# 以前は `len(results) + 1` で数えており、**自分より後ろに追加された検査を数え落とした**。
+TOTAL_CHECKS = 15
+
+
 def check(results: list[tuple[str, str, str]]) -> None:
     docs = dict(_iter_docs())
+    CHECKED.clear()
 
     # ── C1: 常時ロードの行数予算 ──
     present = [f for f in ALWAYS_LOADED if (ROOT / f).exists()]
@@ -138,6 +149,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
                 continue                                    # プレースホルダーは対象外
             elif _slug(anchor) not in _headings(docs[target]):
                 unresolved.append(f"{rel}: {target}#{anchor}")
+    CHECKED["C2"] = sum(len(re.findall(r"(?:CLAUDE|PLAYBOOK|CONVENTIONS)\.md#", t)) for t in docs.values())
     results.append(("ERROR" if unresolved else "OK", "C2 アンカー解決",
                     f"未解決 {len(unresolved)} 件" + ("\n      " + "\n      ".join(unresolved[:8]) if unresolved else "")))
 
@@ -156,6 +168,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
                 for rel, text in docs.items()
                 for m in re.finditer(r"指針\s*#[0-9]", text)]
     msg = f"定義 {len(defined)} / 使用 {len(set(used))}、未定義参照 {len(set(undefined))} 件、旧番号 `指針#N` {len(old_refs)} 件"
+    CHECKED["C3"] = len(defined)
     results.append(("ERROR" if (undefined or (defined and old_refs)) else "OK", "C3 ID 解決", msg))
 
     # ── C4: 実測値の保存（主役）──
@@ -190,6 +203,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
             for phrase, owner in SSOT_MAP.items()
             for rel, text in docs.items()
             if phrase in text and rel != owner]
+    CHECKED["C6"] = sum(1 for phrase, owner in SSOT_MAP.items() if phrase in docs.get(owner, ""))
     results.append(("ERROR" if viol else "OK", "C6 SSoT 違反",
                     f"{len(viol)} 件" + ("\n      " + "\n      ".join(viol[:8]) if viol else "")))
 
@@ -308,6 +322,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
             agent_issues.append(f"{ap.name}: 想定外の tools {sorted(tools - ALLOWED_TOOLS)}")
         if ap.stem in READONLY_AGENTS and "Bash" in tools:
             agent_issues.append(f"{ap.name}: 読み取り専用のはずが Bash を持っている")
+    CHECKED["C13"] = len(agent_files)
     results.append(("ERROR" if agent_issues else "OK", "C13 エージェント定義",
                     f"{len(agent_files)} 件"
                     + ("\n      " + "\n      ".join(agent_issues) if agent_issues else "")))
@@ -336,6 +351,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
             mod = m.group(1)
             if not (ROOT / (mod.replace(".", "/") + ".py")).exists():
                 cmd_issues.append(f"{rel}: `-m {mod}` に対応するスクリプトが無い")
+    CHECKED["C14"] = sum(len(re.findall(r"uv run python ", t)) for t in cmd_targets.values())
     results.append(("ERROR" if cmd_issues else "OK", "C14 文書中のコマンド",
                     f"{len(cmd_issues)} 件"
                     + ("\n      " + "\n      ".join(sorted(set(cmd_issues))[:8]) if cmd_issues else "")))
@@ -349,8 +365,7 @@ def check(results: list[tuple[str, str, str]]) -> None:
         readme = readme_path.read_text()
         actual_claude = len((ROOT / "CLAUDE.md").read_text())   # C1 と同じ「文字数」で測る
         actual_skills = len(list(ROOT.glob(SKILL_GLOB)))
-        n_checks = len(results) + 1   # 自分自身を含めた総数。**新しい検査は C11 より前に置く**
-                                      # （後ろに置くと C11 が数え落として README がずれる）
+        n_checks = TOTAL_CHECKS       # 定数にして順序依存をなくした
         claims = [
             (r"固定\s*(\d+)\s*個の数値", len(CRITICAL_NUMBERS), "C4 の実測値の個数"),
             (r"\*\*(\d[\d,]*)\s*字（-\d+%）\*\*", actual_claude, "常時ロードの文字数"),
@@ -360,12 +375,43 @@ def check(results: list[tuple[str, str, str]]) -> None:
             m = re.search(pattern, readme)
             if m and int(m.group(1).replace(",", "")) != actual:
                 drift.append(f"{label}: README は {m.group(1)} / 実測 {actual}")
+        CHECKED["C11"] = sum(1 for pattern, _, _ in claims if re.search(pattern, readme))
         listed = len(re.findall(r"^\|\s*`/ds-[a-z-]+`\s*\|", readme, re.M))
         if listed and listed != actual_skills:
             drift.append(f"スキル一覧: README は {listed} 件 / 実測 {actual_skills} 件")
+
+        # ディレクトリ構成図とリポジトリのトップレベルの過不足。
+        # 新しいディレクトリを作っても構成図を直し忘れると、README を頼りに
+        # 探した人が見つけられない（state/ tests/ scripts/harness/ .claude/agents/ で実際に起きた）。
+        m_tree = re.search(r"## ディレクトリ構成\n\n```\n(.*?)```", readme, re.S)
+        if m_tree:
+            tree = m_tree.group(1)
+            IGNORE = {".git", ".venv", ".pytest_cache", "__pycache__", "catboost_info",
+                      "uv.lock", "pyproject.toml", ".gitignore", ".kaggleignore",
+                      ".python-version", "dataset-metadata.json.template"}
+            actual_top = {q.name for q in ROOT.iterdir()
+                          if not q.name.startswith(".") or q.name == ".claude"} - IGNORE
+            undocumented = sorted(n for n in actual_top if n not in tree)
+            if undocumented:
+                drift.append(f"構成図に無いトップレベル: {', '.join(undocumented)}")
     results.append(("WARNING" if drift else "OK", "C11 README の同期",
                     f"実態とのズレ {len(drift)} 件"
                     + ("\n      " + "\n      ".join(drift) if drift else "")))
+
+    # ── C15: ガードの空洞検知 ──
+    # 「問題 0 件」と「0 件しか検査していない」は別物。後者はガードが死んでいる状態で、
+    # 表示上はどちらも ✅ になる。分母を持つチェックについて、それがゼロなら ERROR にする。
+    EXPECTED_NONZERO = {"C2": "アンカー参照", "C3": "指針の ID 定義", "C6": "SSoT の語句",
+                        "C11": "README の自己申告値", "C13": "エージェント定義",
+                        "C14": "文書中のコマンド"}
+    hollow = [f"{k}（{label}）の検査対象が 0 件 —— ガードが何も見ていない"
+              for k, label in EXPECTED_NONZERO.items() if CHECKED.get(k, 0) == 0]
+    if len(results) + 1 != TOTAL_CHECKS:      # 自分自身を足した数
+        hollow.append(f"TOTAL_CHECKS={TOTAL_CHECKS} が実際の検査数 {len(results) + 1} と不一致")
+    detail = " / ".join(f"{k}={CHECKED.get(k, 0)}" for k in EXPECTED_NONZERO)
+    results.append(("ERROR" if hollow else "OK", "C15 ガードの空洞検知",
+                    detail + ("\n      " + "\n      ".join(hollow) if hollow else "")))
+
 
 
 

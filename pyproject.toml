@@ -1,5 +1,14 @@
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# 未使用 import・未定義名・重複定義など「壊れている」ものだけを見る。
+# スタイルの強制はしない（既存コードを大量に書き換えないため）。
+select = ["F", "E9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -12,8 +21,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "altair>=6.0.0",
     "catboost>=1.2",
+    # 以下は main のコードに import が無いが、コンペで実際に使うため残す
+    # （前コンペでの使用実績: shap 67 ファイル / pytabkit 8 / flaml 2）。
+    # pyarrow は pandas の parquet エンジンとして必要。
     "flaml[automl]>=2.5.0",
     "japanize-matplotlib>=1.1.3",
     "kaggle>=1.6",

@@ -18,7 +18,6 @@ CLAUDE.md の「アンサンブル探索手順（STEP 1〜4）」に対応して
 """
 
 import argparse
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -67,10 +66,29 @@ def main():
 
     # 正解ラベルの読み込み
     train = pd.read_pickle(PROCESSED_DATA_DIR / "train_features.pkl")
-    y = train[TARGET_COL].values
+    # ラベルは train.py と同じく LabelEncoder を通す。生のまま渡すと文字列ラベルや
+    # 多クラスで指標が落ちる（`multi_class must be in ('ovo','ovr')`）。
+    # e2e が blend を通していなかったため、この不整合が長く残っていた。
+    from sklearn.preprocessing import LabelEncoder
+    y_raw = train[TARGET_COL]
+    y = LabelEncoder().fit_transform(y_raw) if y_raw.dtype == object else y_raw.values
 
-    print(f"\nOOF ファイル読み込み:")
+    print("\nOOF ファイル読み込み:")
     oofs = parse_npy_args(args.oofs)
+
+    # blend は 1 次元の OOF（二値の陽性確率 / 回帰の予測値）を前提にした実装。
+    # train.py は多クラスで (n, クラス数) の OOF を作るため、そのまま渡すと
+    # sklearn の分かりにくいエラーになる。**ここで明示的に止める。**
+    n_classes = len(np.unique(y))
+    bad = [n for n, a in oofs.items() if np.asarray(a).ndim != 1]
+    if bad or n_classes > 2:
+        raise SystemExit(
+            "\n❌ blend は二値分類・回帰の 1 次元 OOF のみ対応しています。\n"
+            f"   クラス数={n_classes} / 1 次元でない OOF={bad or 'なし'}\n"
+            "   多クラスをブレンドする場合は、クラスごとに 1 次元へ分けて実行するか、\n"
+            "   `src/utils/ensemble.py` を直接使って確率行列を重み付けしてください\n"
+            "   （多クラス対応は docs/TODO_TEMPLATE.md に課題として記録済み）。"
+        )
 
     # ──────────────────────────────────────────────
     # STEP 1: 相関確認
@@ -104,10 +122,10 @@ def main():
         oofs_matrix = np.column_stack([oofs[n] for n in names])
         tests_matrix = np.column_stack([tests[n] for n in names]) if tests else None
 
-        print(f"\n【STEP 2: 最適重みブレンド】")
+        print("\n【STEP 2: 最適重みブレンド】")
         w_opt, best_score = optimize_weights(oofs_matrix, y, _ascending_metric())
 
-        print(f"\nブレンド結果:")
+        print("\nブレンド結果:")
         for name, w in zip(names, w_opt):
             single = get_metric()(y, oofs[name])
             print(f"  {name:20s}: weight={w:.3f}  (単体OOF={single:.5f})")
@@ -126,7 +144,7 @@ def main():
     # STEP 3: Greedy Hill Climbing
     # ──────────────────────────────────────────────
     if args.mode == "greedy":
-        print(f"\n【STEP 3: Greedy Hill Climbing】")
+        print("\n【STEP 3: Greedy Hill Climbing】")
         selected, ens_oof, ens_test, final_score = greedy_ensemble(
             oofs=oofs, tests=tests, y=y, metric_fn=_ascending_metric(),
         )
