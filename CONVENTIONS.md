@@ -92,6 +92,9 @@ experiments/runs/
 - `exp{NNN}`: `experiments/log.csv` の `experiment_id` と一致させる
 - `s{stage}`: どのステージの実験かが一目で分かる
 - `scripts/` のスクリプトを呼び出すラッパーとして書くことを推奨
+- **`_TEMPLATE_exp000_s0_example.py` をコピーして始める。** 作法（`ExperimentTracker` /
+  `src.metrics` / `FoldCache` / `save_run_outputs`）を最初から満たした状態になる ——
+  ゼロから書くと tracker を経由し忘れ、`G-DIAG` の診断列が残らない事故が起きる
 
 ## スクリプトの標準構成
 

@@ -8,6 +8,7 @@ AI への指示ではなく**観測可能な結果の側から**測る（`G-MECH
   1. 未コミットの実験スクリプト（`experiments/runs/exp*.py`）
   2. log.csv に OOF が記録済みなのに、その実験 ID を含むコミットが存在しない
   3. 状態ファイルの停滞（`scripts/harness/state_audit.py`）
+  4. ハーネスを変更したのに pytest を走らせていない状態
   4. 4 つの規律ガード（可視化・診断記録・推論成果物・Public 過剰浮上）
 
 **ブロックはしない。** Stop hook でブロックすると停止と再開のループを招くため、
@@ -81,6 +82,39 @@ def experiments_without_commit() -> list[str]:
     return missing
 
 
+HARNESS_PATHS = ["scripts/harness", "src", ".claude/agents", ".claude/settings.json"]
+
+
+def stale_tests() -> str | None:
+    """ハーネスを変更したのに `pytest` を走らせていない状態を検知する。
+
+    ガード・hook・エージェントの動作確認を手作業に頼ると、締切前に最初に省略される。
+    可視化ガードと同じ mtime 比較で、ローカル完結・ゼロコスト。
+    """
+    # `.pytest_cache` の mtime は内容が変わったときしか更新されないので、
+    # `tests/conftest.py` が実行のたびに touch するマーカーを見る
+    marker = ROOT / "experiments" / ".pytest_last_run"
+    last_run = marker.stat().st_mtime if marker.exists() else 0.0
+
+    changed = []
+    for rel in HARNESS_PATHS:
+        p = ROOT / rel
+        if not p.exists():
+            continue
+        files = [p] if p.is_file() else list(p.rglob("*.py")) + list(p.rglob("*.md")) + list(p.rglob("*.json"))
+        for f in files:
+            if "__pycache__" in str(f):
+                continue
+            if f.stat().st_mtime > last_run:
+                changed.append(str(f.relative_to(ROOT)))
+    if not changed:
+        return None
+    shown = ", ".join(sorted(changed)[:4]) + ("…" if len(changed) > 4 else "")
+    when = "一度も実行されていません" if last_run == 0 else "最後の実行より新しいです"
+    return (f"ハーネスを変更したのに pytest が{when}（{len(changed)} ファイル: {shown}）\n"
+            f"  → `uv run pytest` を実行してください（ガード・hook・エージェントの検証）")
+
+
 def build_report() -> str | None:
     """指摘があれば報告文を返す。何も無ければ None。"""
     sections: list[str] = []
@@ -100,6 +134,10 @@ def build_report() -> str | None:
             f"OOF 記録済みだがコミットが見つからない実験: {ids}\n"
             f"  → OOF 判明後 5 分以内に commit する規約です（`G-STEPWISE`）"
         )
+
+    tests_warning = stale_tests()
+    if tests_warning:
+        sections.append(tests_warning)
 
     try:
         from scripts.harness.state_audit import build_report as _state_report

@@ -574,38 +574,64 @@ class ExperimentTracker:
         feature_df: Optional["pd.DataFrame"] = None,  # type: ignore[name-defined]
         output_dir: Optional[Path] = None,
     ) -> None:
-        """OOF予測の誤差分析レポートを出力する。
+        """OOF 予測の誤差分析を出力する（問題種別に応じて内容を変える）。
 
-        - 高信頼度FP/FNの件数と主要セグメントを表示
-        - feature_df を渡した場合はセグメント別残差を表示
-        - output_dir を渡した場合は .npy ファイルとして保存
+        `G-MECH` は「③提出後（OOF-LB 乖離が大きいなら**誤差分析**）」を必須の可視化局面に
+        挙げているが、`feature_report`（importance / ΔOOF）も `visualize`（分布）も
+        誤差分析は担わない。ここが唯一の実装。
+
+        以前は `roc_auc_score` と閾値 0.5 を直書きしており **二値分類でしか動かず、
+        しかもどこからも呼ばれていなかった**（死蔵メソッド）。指標は `src.metrics` から取り、
+        `PROBLEM_TYPE` で分岐するように直したうえで `scripts/train.py` から呼ぶようにした。
         """
         try:
-            from sklearn.metrics import roc_auc_score
+            from src.config import PROBLEM_TYPE
+            from src.metrics import get_metric, needs_proba
         except ImportError:
             return
 
-        auc = roc_auc_score(labels, oof_preds)
-        global_mean = labels.mean()
-        threshold = 0.5
+        oof_preds, labels = np.asarray(oof_preds), np.asarray(labels)
+        lines = ["\n📋 OOF 誤差分析"]
 
-        fp_high = ((oof_preds > 0.8) & (labels == 0)).sum()
-        fn_high = ((oof_preds < 0.2) & (labels == 1)).sum()
-        abs_err = float(np.abs(oof_preds - labels).mean())
+        try:
+            pred_for_metric = oof_preds
+            if not needs_proba() and oof_preds.ndim == 2:
+                pred_for_metric = np.argmax(oof_preds, axis=1)
+            elif needs_proba() and oof_preds.ndim == 2 and oof_preds.shape[1] == 2:
+                pred_for_metric = oof_preds[:, 1]
+            lines.append(f"  OOF スコア: {get_metric()(labels, pred_for_metric):.5f}")
+        except Exception as e:
+            lines.append(f"  OOF スコア: 計算できず（{type(e).__name__}）")
 
-        print(
-            f"\n📋 OOF誤差分析\n"
-            f"  OOF AUC: {auc:.5f}\n"
-            f"  平均絶対誤差: {abs_err:.4f}\n"
-            f"  高信頼度FP (prob>0.8, label=0): {fp_high:,}件\n"
-            f"  高信頼度FN (prob<0.2, label=1): {fn_high:,}件\n"
-            f"  ※ /ds-eda-visual でセグメント別残差を可視化できます"
-        )
+        if PROBLEM_TYPE == "regression":
+            resid = labels - (oof_preds.ravel() if oof_preds.ndim > 1 else oof_preds)
+            q = np.quantile(np.abs(resid), [0.5, 0.9, 0.99])
+            lines += [f"  平均絶対誤差: {np.abs(resid).mean():.4f}",
+                      f"  |残差| の分位点 50%/90%/99%: {q[0]:.4f} / {q[1]:.4f} / {q[2]:.4f}",
+                      f"  最大の外れ {min(5, len(resid))} 件: "
+                      f"{np.sort(np.abs(resid))[-5:][::-1].round(4).tolist()}"]
+        elif oof_preds.ndim == 2 and oof_preds.shape[1] > 2:
+            pred_cls = np.argmax(oof_preds, axis=1)
+            lines.append(f"  正解率: {(pred_cls == labels).mean():.4f}")
+            for c in np.unique(labels):
+                mask = labels == c
+                lines.append(f"    class {c}: n={mask.sum():,}  誤り {(pred_cls[mask] != c).sum():,} 件"
+                             f"（{(pred_cls[mask] != c).mean():.1%}）")
+        else:
+            prob = oof_preds[:, 1] if oof_preds.ndim == 2 else oof_preds
+            fp_high = int(((prob > 0.8) & (labels == 0)).sum())
+            fn_high = int(((prob < 0.2) & (labels == 1)).sum())
+            lines += [f"  平均絶対誤差: {float(np.abs(prob - labels).mean()):.4f}",
+                      f"  高信頼度 FP (prob>0.8, label=0): {fp_high:,} 件",
+                      f"  高信頼度 FN (prob<0.2, label=1): {fn_high:,} 件"]
+
+        lines.append("  ※ 乖離が大きいときは /ds-eda-visual でセグメント別に可視化する")
+        print("\n".join(lines))
 
         if output_dir is not None:
             output_dir = Path(output_dir)
-            exp_id = self._experiment_id or "000"
-            np.save(output_dir / f"oof_{exp_id}.npy", oof_preds)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            np.save(output_dir / f"oof_{self._experiment_id or '000'}.npy", oof_preds)
 
     def end_run(
         self,

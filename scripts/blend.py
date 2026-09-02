@@ -22,10 +22,22 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
+from src.metrics import get_metric, greater_is_better
 
 from src.config import OOF_DIR, PROCESSED_DATA_DIR, TARGET_COL
 from src.utils.ensemble import correlation_check, optimize_weights, greedy_ensemble
+
+
+def _ascending_metric():
+    """`optimize_weights` / `greedy_ensemble` は「大きいほど良い」前提なので向きを揃える。
+
+    RMSE のように小さいほど良い指標は符号を反転して渡す。
+    指標そのものは `src.metrics` が唯一の定義元（学習・HP と必ず同じものを使う）。
+    """
+    metric = get_metric()
+    if greater_is_better():
+        return metric
+    return lambda y, p: -metric(y, p)
 
 
 def parse_npy_args(args_list: list[str]) -> dict[str, np.ndarray]:
@@ -78,7 +90,7 @@ def main():
         # 単体スコアも表示
         print("\n単体OOFスコア:")
         for name, oof in oofs.items():
-            score = roc_auc_score(y, oof)
+            score = get_metric()(y, oof)
             print(f"  {name:20s}: {score:.5f}")
         return
 
@@ -93,11 +105,11 @@ def main():
         tests_matrix = np.column_stack([tests[n] for n in names]) if tests else None
 
         print(f"\n【STEP 2: 最適重みブレンド】")
-        w_opt, best_score = optimize_weights(oofs_matrix, y, roc_auc_score)
+        w_opt, best_score = optimize_weights(oofs_matrix, y, _ascending_metric())
 
         print(f"\nブレンド結果:")
         for name, w in zip(names, w_opt):
-            single = roc_auc_score(y, oofs[name])
+            single = get_metric()(y, oofs[name])
             print(f"  {name:20s}: weight={w:.3f}  (単体OOF={single:.5f})")
         print(f"\nブレンドOOF: {best_score:.5f}")
 
@@ -116,7 +128,7 @@ def main():
     if args.mode == "greedy":
         print(f"\n【STEP 3: Greedy Hill Climbing】")
         selected, ens_oof, ens_test, final_score = greedy_ensemble(
-            oofs=oofs, tests=tests, y=y, metric_fn=roc_auc_score,
+            oofs=oofs, tests=tests, y=y, metric_fn=_ascending_metric(),
         )
         out_oof = OOF_DIR / f"oof_{args.out_prefix}_greedy.npy"
         out_test = OOF_DIR / f"test_{args.out_prefix}_greedy.npy"

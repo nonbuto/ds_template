@@ -52,6 +52,8 @@ data/output/params/optuna_studies/
 
 # 実行中ジョブのハートビート（プロセス固有。共有しない）
 experiments/.running/
+# pytest の最終実行時刻（session_audit がテスト鮮度の判定に使う）
+experiments/.pytest_last_run
 # statusLine が読む提出枠キャッシュ（deadline_status が API を叩いたついでに書く）
 experiments/.statusline_cache.json
 # fold 単位チェックポイント（再開用の一時成果物）

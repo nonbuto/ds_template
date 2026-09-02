@@ -320,6 +320,9 @@ def main():
     tracker.end_run(train_scores=train_scores, val_scores=val_scores,
                     oof_score=oof_score, feature_names=FEATURES)
 
+    # 誤差分析（`G-MECH` が必須と定める可視化局面③。問題種別に応じて内容が変わる）
+    tracker.save_oof_analysis(oof_preds, y.to_numpy())
+
 
 if __name__ == "__main__":
     main()

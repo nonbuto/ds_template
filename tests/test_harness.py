@@ -295,8 +295,48 @@ def test_unknown_metric_fails_loudly():
 
 def test_metric_is_defined_in_one_place():
     """train.py と optimize_hp.py が指標を直接呼んでいないこと（定義元は src/metrics.py だけ）。"""
-    for name in ["train.py", "optimize_hp.py"]:
+    for name in ["train.py", "optimize_hp.py", "blend.py"]:
         code = (ROOT / "scripts" / name).read_text(encoding="utf-8")
         body = "\n".join(l for l in code.splitlines() if not l.strip().startswith("#"))
-        assert "balanced_accuracy_score(" not in body, f"{name} が指標を直接呼んでいる"
-        assert "StratifiedKFold(" not in body, f"{name} が分割器を直接作っている"
+        for bad in ["balanced_accuracy_score(", "roc_auc_score(", "log_loss(",
+                    "mean_squared_error(", "StratifiedKFold("]:
+            assert bad not in body, f"{name} が {bad} を直接呼んでいる（定義元は src/metrics.py）"
+
+
+def test_oof_analysis_handles_all_problem_types(capsys):
+    """誤差分析が二値・多クラス・回帰のいずれでも例外を出さないこと。
+
+    以前は roc_auc と閾値 0.5 を直書きした**二値専用かつ呼び出し元ゼロ**の死蔵メソッドだった。
+    """
+    import importlib
+    import src.config as cfg
+    from src.experiment import ExperimentTracker
+
+    rng = np.random.default_rng(0)
+    cases = [
+        ("binary_classification", "auc", rng.random(40), rng.integers(0, 2, 40)),
+        ("multiclass", "balanced_accuracy", rng.random((40, 3)), rng.integers(0, 3, 40)),
+        ("regression", "rmse", rng.random(40) * 10, rng.random(40) * 10),
+    ]
+    original = (cfg.PROBLEM_TYPE, cfg.EVAL_METRIC)
+    try:
+        for ptype, metric, oof, y in cases:
+            cfg.PROBLEM_TYPE, cfg.EVAL_METRIC = ptype, metric
+            import src.metrics as M
+            importlib.reload(M)
+            ExperimentTracker(experiment_name="t").save_oof_analysis(oof, y)
+            assert "OOF 誤差分析" in capsys.readouterr().out, ptype
+    finally:
+        cfg.PROBLEM_TYPE, cfg.EVAL_METRIC = original
+        import src.metrics as M
+        importlib.reload(M)
+
+
+def test_experiment_template_follows_conventions():
+    """実験の雛形が作法（tracker / metrics / foldcache / finalize）を満たしていること。"""
+    tpl = ROOT / "experiments" / "runs" / "_TEMPLATE_exp000_s0_example.py"
+    assert tpl.exists(), "実験の雛形が無い"
+    body = tpl.read_text(encoding="utf-8")
+    for required in ["ExperimentTracker", "log_fold_scores", "end_run(",
+                     "get_metric", "get_cv", "FoldCache", "save_run_outputs"]:
+        assert required in body, f"雛形に {required} が無い"

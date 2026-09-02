@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-02 15:37:19
-- **git**: `main` / 未コミット 5 件 / HEAD: 1ad9675 fix(claude-md): 指定された「60行以内」をガードに入れ、59行へ是正
+- **記録時刻**: 2026-09-02 15:41:36
+- **git**: `main` / 未コミット 10 件 / HEAD: a5c472f fix(docs): 実行不能コマンド14箇所を修正し、C14 で再発を防ぐ
 <!-- END:auto-snapshot -->
