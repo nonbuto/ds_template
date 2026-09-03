@@ -382,19 +382,26 @@ STEP 1【相関確認】← 必ず最初に実施
   → 相関 < 0.998: STEP 2 へ
   → 相関 ≥ 0.998: スキップ。ただし【棄却分析A】を実施してから次へ
 
-STEP 2【Simple Blend】
-  既存モデル群との最適重みブレンドを試す（`optimize_weights()` で重み探索）
-  → OOFが改善: STEP 3 へ
-  → OOFが改善しない: 【棄却分析B】を実施してから次へ
+STEP 2【構成を決める — hillclimb】
+  保有する全 OOF を対象に Caruana の ensemble selection（復元あり + サブセット bagging）:
+  ```bash
+  uv run python -m scripts.blend --mode hillclimb --oofs a=... b=... --tests a=... b=...
+  ```
+  → 選ばれた回数がそのまま重みになる。**非復元・等重みの `greedy_ensemble` は使わない**
+    （過去実験の再現用に残しているだけ）
+  → 改善しない: 【棄却分析B】を実施してから次へ
 
-STEP 3【Greedy Hill Climbing】
-  保有する全OOFファイルを対象に系統的に探索する（`greedy_ensemble()`）
-  → 改善するモデルの組み合わせを特定する
-  → 全モデルで改善なし: 【棄却分析C】を実施
+STEP 3【結合方式を上げる — signed_stack】
+  ```bash
+  uv run python -m scripts.blend --mode stack --oofs ... --tests ...
+  ```
+  **符号制約なし**の線形結合なので、`optimize_weights` の simplex（非負・合計 1）では
+  表現できない「**弱い候補を引き算に使う**」経路が開く。
+  前コンペで終盤に唯一 LB で確認できた改善（累計 +0.00035、2σ 超え）はこの変更によるもの。
+  → 改善しない: 【棄却分析C】を実施
 
-STEP 4【Stacking】
-  LGB/CB以外に予測パターンが異なるモデルが2種以上ある場合のみ検討する
-  → 相関が高いモデル同士のStackingは効果がない（前提の再確認）
+  ※ 天井帯で重みそのものを安定させたいときだけ
+    `--mode optimize --n-seeds 8`（重み bagging → `G-CEILING` の集約戦略 (a)）
 
 STEP 5【Pseudo-labeling】
   アンサンブルの多様性が飽和した場合に有効な代替戦略。

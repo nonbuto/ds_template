@@ -528,7 +528,7 @@ CLAUDE.md「作業ステージとゲート」の完了条件（規範は L0、�
 | **3. 作業用HP調整** | FE計測の安定化 | Optuna 20〜30試行でFE実験中に使う「作業用HP」を確定済み。目的は完全最適化ではなくΔOOF計測のノイズ低減。**不安定な大型アーキでは単一 fold・サブサンプルでの HP 選定を禁止**（→ `G-FULLCV`）。study は SQLite に永続化され同じ tag で追加試行できる（→ `CONVENTIONS.md#optuna-study-の永続化と命名`） | Optuna（軽量） |
 | **4. 段階的FE** | 有効な特徴量の特定 | `state/FE_HYPOTHESES.md` に採用・棄却含む仮説5件以上、棄却理由が分類記録済み。**特徴量は必ず1列ずつ** `scripts/feature_study.py` で投入し ΔOOF と importance を計測済み。AV 診断で分布シフト確認済み。FE 確定後、全候補アーキテクチャへ移植して再評価済み（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | `/ds-fe-hypothesis` + `scripts/feature_study.py` + AV診断 |
 | **5. 本格HP最適化** | 確定特徴量での性能最大化 | 特徴量セット確定後に Optuna 100 試行以上を実施し、ΔOOF が指標別閾値以内（`G-NOISE`）で収束済み。FE が ±20% 以上変動したら HP retune を再実行する。**単体ベストを state/SESSION.md に記録する**（詳細 → `PLAYBOOK.md#stage-4-stage-5-のゲート詳細`） | Optuna（フルサーチ） |
-| **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。**順路は 1 本道**: ①`--mode corr` で相関確認（高すぎる候補は追加しない）→ ②`--mode hillclimb` で構成決定 → ③`--mode stack` で結合方式を上げる。**提出直前に `src/utils/postprocess.py` を通す**（重複行の統一は指標に依らず安全） | `blend.py --mode corr / hillclimb / stack` |
+| **6. アンサンブル** | モデル多様性の活用 | 特徴量・HP飽和を確認済み。**順路は 1 本道**: ①`--mode corr` で相関確認（高すぎる候補は追加しない）→ ②`--mode hillclimb` で構成決定 → ③`--mode stack` で結合方式を上げる（手順と棄却分析は `PLAYBOOK.md#アンサンブル探索の手順stage-6`）。**提出直前に `src/utils/postprocess.py` を通す**（重複行の統一は指標に依らず安全） | `blend.py --mode corr / hillclimb / stack` |
 
 ### 期間の配分（カレンダー予算）
 
