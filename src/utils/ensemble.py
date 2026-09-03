@@ -1,124 +1,27 @@
-"""
-アンサンブルユーティリティモジュール
+"""複数モデルの予測を結合する。**使う順番は 1 本道**（選択肢を並べない）。
 
-複数モデルの予測値をブレンドするためのヘルパー関数群。
-05_predict.py から呼び出す。
-"""
+    1. `correlation_check()` —— 候補と既存の OOF 相関を見る。**高すぎるなら追加しない**
+    2. `hillclimb()`         —— 構成を決める（Caruana: 復元あり + サブセット bagging）
+    3. `signed_stack()`      —— 結合方式を上げる（符号制約なし線形。**弱い候補を引き算に使える**）
 
-from pathlib import Path
-from typing import Optional
+`optimize_weights()` は simplex（非負・合計 1）の重み探索で、
+**hillclimb と役割が重なる**。天井帯で重み bagging（`n_seeds`）をしたいときだけ使う。
+`greedy_ensemble()` は非復元・等重みの旧実装で、過去の実験を再現する目的でのみ残している
+（新規は `hillclimb` を使う）。
+
+**なぜ 1 本道にしたか**: 以前は 9 個の API があり、うち 4 個は誰からも呼ばれていなかった
+（`simple_average` / `rank_average` / `stacking_blend` / `load_predictions`）。
+選択肢が多いこと自体がコスト —— 次のコンペで「重みを最適化したい」と思った人が、
+**どれを使うべきか判断できない**。順路を 1 つ示し、残りは理由つきで位置づける。
+
+削除したものの代替:
+    simple_average    → `np.average(preds, axis=0, weights=w)` で足りる
+    rank_average      → `src.utils.postprocess.rank_transform()` で順位に揃えてから結合
+    stacking_blend    → `signed_stack()`（符号制約なし・正則化を fold 外で選ぶ・回帰も可）
+    load_predictions  → `np.load` / `pd.read_csv` を直接呼ぶ
+"""
 
 import numpy as np
-import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-
-
-def simple_average(
-    predictions: list[np.ndarray],
-    weights: Optional[list[float]] = None,
-) -> np.ndarray:
-    """単純平均（重み付き平均）でアンサンブルする。
-
-    Args:
-        predictions: 各モデルの予測値リスト（各要素はshape=(n_samples,)のndarray）
-        weights: 重みリスト（Noneの場合は等重み）
-
-    Returns:
-        アンサンブル後の予測値 (shape=(n_samples,))
-
-    Example:
-        blended = simple_average([lgb_preds, cb_preds], weights=[0.6, 0.4])
-    """
-    preds_array = np.column_stack(predictions)  # shape: (n_samples, n_models)
-    if weights is None:
-        return preds_array.mean(axis=1)
-    w = np.array(weights, dtype=float)
-    w = w / w.sum()  # 正規化
-    return (preds_array * w).sum(axis=1)
-
-
-def rank_average(
-    predictions: list[np.ndarray],
-    weights: Optional[list[float]] = None,
-) -> np.ndarray:
-    """ランク平均でアンサンブルする。
-
-    各モデルの予測値をランクに変換してから平均する。
-    スケールの異なるモデルを組み合わせる際に有効。
-
-    Args:
-        predictions: 各モデルの予測値リスト
-        weights: 重みリスト（Noneの場合は等重み）
-
-    Returns:
-        ランク平均後の予測値 (shape=(n_samples,), 0〜1に正規化)
-    """
-    n_samples = len(predictions[0])
-    ranked = []
-    for pred in predictions:
-        ranks = pd.Series(pred).rank(method="average").values
-        ranked.append(ranks / (n_samples + 1))  # 0〜1に正規化
-
-    return simple_average(ranked, weights=weights)
-
-
-def stacking_blend(
-    oof_predictions: np.ndarray,
-    test_predictions: np.ndarray,
-    y_train: np.ndarray,
-    meta_features_train: Optional[np.ndarray] = None,
-    meta_features_test: Optional[np.ndarray] = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """スタッキング（メタ学習）でアンサンブルする。
-
-    OOF予測値をメタ特徴量としてロジスティック回帰でブレンドする。
-
-    Args:
-        oof_predictions: shape=(n_samples, n_models) のOOF予測値
-        test_predictions: shape=(n_test_samples, n_models) のテスト予測値
-        y_train: 訓練データの正解ラベル
-        meta_features_train: 追加メタ特徴量（任意, shape=(n_samples, n_features)）
-        meta_features_test: テスト用追加メタ特徴量（任意）
-
-    Returns:
-        (train_meta_preds, test_meta_preds) のタプル。
-        **train 側は out-of-fold で作る**（下記）。
-
-    Note:
-        以前は「全行で学習したメタモデルで同じ全行を予測」していた。これは in-sample 予測なので、
-        返り値をそのままスタッキングの OOF として評価すると**必ず楽観的に出る**。
-        メタモデルは重みを 2〜3 個決めるだけなので過学習は軽いが、
-        `G-OVERFIT` が言うとおり天井帯では「OOF↑なのに LB↓」がこの経路でも起こる。
-        ここで確保した OOF がブレンド候補の比較に使われるので、素性を揃える意味は大きい。
-        メタ予測は `cross_val_predict` で fold 外から作り、test 用のモデルだけ全行で学習する。
-    """
-    from sklearn.model_selection import cross_val_predict
-    from sklearn.pipeline import make_pipeline
-
-    from src.metrics import get_cv
-
-    X_meta_train = oof_predictions
-    X_meta_test = test_predictions
-
-    if meta_features_train is not None:
-        X_meta_train = np.hstack([X_meta_train, meta_features_train])
-        X_meta_test = np.hstack([X_meta_test, meta_features_test])
-
-    def _pipe():
-        # スケーラも fold 内で fit する（全行で fit すると test 側の統計が漏れる）
-        return make_pipeline(StandardScaler(),
-                             LogisticRegression(C=1.0, max_iter=1000, random_state=42))
-
-    train_preds = cross_val_predict(_pipe(), X_meta_train, y_train,
-                                    cv=get_cv(), method="predict_proba")[:, 1]
-
-    final = _pipe().fit(X_meta_train, y_train)
-    test_preds = final.predict_proba(X_meta_test)[:, 1]
-
-    print(f"📐 スタッキング完了: {oof_predictions.shape[1]}モデルをメタ学習"
-          f"（train 側は out-of-fold）")
-    return train_preds, test_preds
 
 
 def correlation_check(
@@ -297,34 +200,6 @@ def greedy_ensemble(
     print(f"Greedy Ensemble score: {current_score:.5f}")
     return selected, ensemble_oof, ensemble_test, current_score
 
-
-def load_predictions(pred_files: list[Path]) -> list[np.ndarray]:
-    """CSVまたはnpyファイルから予測値を読み込む。
-
-    Args:
-        pred_files: 予測値ファイルのパスリスト（CSV or npy）
-
-    Returns:
-        予測値のリスト
-    """
-    predictions = []
-    for path in pred_files:
-        if path.suffix == ".npy":
-            pred = np.load(path)
-        elif path.suffix == ".csv":
-            df = pd.read_csv(path)
-            pred_col = df.columns[-1]  # 最後のカラムを予測値として使用
-            pred = df[pred_col].values
-        else:
-            raise ValueError(f"非対応のファイル形式: {path.suffix}")
-        predictions.append(pred)
-        print(f"  ✅ {path.name}: shape={pred.shape}")
-    return predictions
-
-
-# ──────────────────────────────────────────────────────────
-# Caruana 型の ensemble selection と、符号制約なしスタッキング
-# ──────────────────────────────────────────────────────────
 
 def hillclimb(
     oofs: dict[str, np.ndarray],

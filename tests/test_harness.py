@@ -996,21 +996,22 @@ def test_early_stopping_inner_split_is_stratified():
 
 
 def test_stacking_meta_predictions_are_out_of_fold():
-    """スタッキングの train 側予測が in-sample でないこと。
+    """スタッキングの train 側予測が in-sample でないこと（`signed_stack`）。
 
     全行で学習したメタモデルで同じ全行を予測すると、返り値をそのまま
     スタッキングの OOF として評価したとき**必ず楽観的に出る**。
     """
     src = Path("src/utils/ensemble.py").read_text(encoding="utf-8")
-    body = src.split("def stacking_blend")[1].split("\ndef ")[0]
+    body = src.split("def signed_stack")[1].split("\ndef ")[0]
     assert "cross_val_predict" in body
 
     import numpy as np
-    from src.utils.ensemble import stacking_blend
+    from src.utils.ensemble import signed_stack
     rng = np.random.default_rng(0)
     y = rng.integers(0, 2, 400)
-    oof = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1) for _ in range(3)])
-    tr, te = stacking_blend(oof, np.column_stack([rng.random(50)] * 3), y)
+    oofs = {f"m{i}": np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1) for i in range(3)}
+    tests = {f"m{i}": rng.random(50) for i in range(3)}
+    _, tr, te, _ = signed_stack(oofs, tests, y, verbose=False)
     assert tr.shape == (400,) and te.shape == (50,)
 
 
@@ -1468,18 +1469,18 @@ def test_stacking_train_predictions_are_not_in_sample():
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 
-    from src.utils.ensemble import stacking_blend
+    from src.utils.ensemble import signed_stack
 
     rng = np.random.default_rng(0)
     y = rng.integers(0, 2, 400)
-    oof = np.column_stack([np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1)
-                           for _ in range(3)])
-    test = np.column_stack([rng.random(60) for _ in range(3)])
+    oofs = {f"m{i}": np.clip(y * 0.5 + rng.normal(0.25, 0.3, 400), 0, 1) for i in range(3)}
+    tests = {f"m{i}": rng.random(60) for i in range(3)}
+    X = np.column_stack([oofs[f"m{i}"] for i in range(3)])
 
-    train_preds, _ = stacking_blend(oof, test, y)
-    in_sample = (make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=1000,
+    _, train_preds, _, _ = signed_stack(oofs, tests, y, verbose=False)
+    in_sample = (make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000,
                                                                    random_state=42))
-                 .fit(oof, y).predict_proba(oof)[:, 1])
+                 .fit(X, y).predict_proba(X)[:, 1])
     assert not np.allclose(train_preds, in_sample), "in-sample 予測を返している"
 
 

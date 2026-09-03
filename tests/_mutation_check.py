@@ -34,10 +34,9 @@ MUTANTS = [
      'return np.asarray(model.feature_importances_, dtype=float)',
      "importance を split に戻す"),
     ("src/utils/ensemble.py",
-     'train_preds = cross_val_predict(_pipe(), X_meta_train, y_train,\n'
-     '                                    cv=get_cv(), method="predict_proba")[:, 1]',
-     'train_preds = _pipe().fit(X_meta_train, y_train).predict_proba(X_meta_train)[:, 1]',
-     "stacking を in-sample に戻す"),
+     '            pred = cross_val_predict(pipe, X, y, cv=get_cv(), method="predict_proba")[:, 1]',
+     '            pred = pipe.fit(X, y).predict_proba(X)[:, 1]',
+     "signed_stack を in-sample に戻す"),
     ("scripts/preprocess.py",
      "test[NUMERIC_COLS] = test[NUMERIC_COLS].fillna(medians)",
      "test[NUMERIC_COLS] = test[NUMERIC_COLS].fillna(test[NUMERIC_COLS].median())",

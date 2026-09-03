@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 13:29:43
-- **git**: `main` / 未コミット 10 件 / HEAD: d544776 feat: early stopping 後に学習 fold 全体で再学習する（`inner_refit` を既定に）— L-38
+- **記録時刻**: 2026-09-03 13:43:58
+- **git**: `main` / 未コミット 3 件 / HEAD: 9357da1 fix: プロセス制御の 9 件（提出ゲートの fail-open 3 経路 / 常時走る仕組みの止まり方）
 <!-- END:auto-snapshot -->
