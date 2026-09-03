@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 15:24:39
-- **git**: `main` / 未コミット 3 件 / HEAD: e3c7953 refactor: 到達経路の無い公開ヘルパーを整理し、C17 で再発を止める（L-41）
+- **記録時刻**: 2026-09-03 15:28:48
+- **git**: `main` / 未コミット 4 件 / HEAD: e52002f fix: 可視化ガードの hook が「主要な使い方で死んでいた」（L-42）
 <!-- END:auto-snapshot -->

@@ -37,7 +37,22 @@ DEFAULT_WEIGHT = 0.5
 
 
 def _confidence_and_labels(proba: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """予測から (確信度, ラベル) を取り出す。二値の陽性確率 1 次元にも対応する。"""
+    """予測から (確信度, ラベル) を取り出す。二値の陽性確率 1 次元にも対応する。
+
+    **回帰では確信度が定義できない。** 予測値をそのまま確信度として扱うと、
+    値が大きい行ほど確信度が高いという無意味な基準になる（実測: 予測
+    `[-3.2, 0.4, 120.0, 0.51]` → 確信度 `[4.2, 0.6, 120.0, 0.51]` / ラベル `[0,0,1,1]`）。
+    `make_fold_pseudo` だけでなく**この下位関数でも止める** ——
+    公開されている以上、直接呼ばれうる。
+    """
+    from src.metrics import is_regression
+
+    if is_regression():
+        raise ValueError(
+            "pseudo-labeling は分類専用です（回帰では確信度が定義できません）。\n"
+            "   回帰で擬似ラベルを使うなら、予測値そのものを擬似ターゲットにし、"
+            "sample_weight で減衰させる別の設計が要ります。"
+        )
     proba = np.asarray(proba)
     if proba.ndim == 1:                      # 二値で陽性確率だけ渡された場合
         return np.maximum(proba, 1 - proba), (proba >= 0.5).astype(int)

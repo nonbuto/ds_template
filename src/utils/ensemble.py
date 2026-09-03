@@ -47,7 +47,26 @@ def correlation_check(
         if skip:
             print("追加しても重みゼロの可能性が高い。スキップを推奨。")
     """
-    corr = float(np.corrcoef(oof_existing, oof_candidate)[0, 1])
+    a, b = np.asarray(oof_existing, dtype=float), np.asarray(oof_candidate, dtype=float)
+    # **未予測行（NaN）を黙って通さない。** `np.corrcoef` は NaN を伝播し、
+    # `nan < threshold` は False なので **「✅ 追加を検討可」と答えてしまう**（実測）。
+    # TimeSeriesSplit の OOF には未予測行が NaN で入る（`train.py` の covered）。
+    both = np.isfinite(a) & np.isfinite(b)
+    if not both.all():
+        if both.sum() < 2:
+            raise ValueError(
+                f"比較できる行がありません（有限値 {int(both.sum())} 行）。OOF を確認してください")
+        print(f"  ℹ️ 未予測行 {int((~both).sum()):,} 行を除いて相関を計算します（TimeSeriesSplit 等）")
+        a, b = a[both], b[both]
+    # 定数列（分散ゼロ）は相関が定義できない。numpy に 0 除算させず、先に弾く
+    if a.std() == 0 or b.std() == 0:
+        raise ValueError(
+            "相関が計算できません: 予測が定数（分散ゼロ）です。"
+            "学習が失敗しているか、間違ったファイルを渡していないか確認してください"
+        )
+    corr = float(np.corrcoef(a, b)[0, 1])
+    if not np.isfinite(corr):
+        raise ValueError("相関が計算できませんでした。予測を確認してください")
     skip = corr >= threshold
     status = "⚠️  スキップ推奨" if skip else "✅ 追加を検討可"
     print(f"OOF相関: {corr:.4f}  ({status}, 閾値={threshold})")

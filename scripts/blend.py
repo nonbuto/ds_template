@@ -105,6 +105,22 @@ def main():
         return arr
 
     oofs = {n: _as_1d(n, a) for n, a in oofs.items()}
+
+    # ── 未予測行（NaN）を全モデル共通で落とす ──
+    # `train.py` は TimeSeriesSplit の未予測行を **NaN** で保存する（`covered`）。
+    # そのまま重み最適化に渡すと sklearn が `Input contains NaN` で落ちるか、
+    # 相関チェックが NaN を返して**「追加を検討可」と答える**（実測）。
+    # 学習側と同じ扱い ——「全モデルで予測されている行だけで評価する」に揃える。
+    covered = np.ones(len(y), dtype=bool)
+    for arr in oofs.values():
+        covered &= np.isfinite(np.asarray(arr, dtype=float))
+    if not covered.all():
+        print(f"\n  ℹ️ 未予測行 {int((~covered).sum()):,} / {len(covered):,} 行を除外します"
+              f"（全モデルで予測された行だけで評価）")
+        if covered.sum() < 10:
+            raise SystemExit("❌ 全モデルで予測されている行が 10 行未満です。OOF を確認してください")
+        oofs = {n: np.asarray(a, dtype=float)[covered] for n, a in oofs.items()}
+        y = y[covered]
     bad = [n for n, a in oofs.items() if a.ndim != 1]
     if bad or n_classes > 2:
         raise SystemExit(

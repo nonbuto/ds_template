@@ -3446,3 +3446,89 @@ def test_guard_costs_are_bounded():
     head = src.split("\ndef ")[0]
     for heavy in ("import numpy", "import pandas", "from src.experiment"):
         assert heavy not in head, f"提出ゲートがトップレベルで {heavy} している"
+
+
+# ──────────────────────────────────────────────────────────
+# 27. 未予測行と回帰 —— 黙って間違った答えを返さない
+# ──────────────────────────────────────────────────────────
+
+def test_correlation_check_refuses_to_answer_with_nan():
+    """未予測行（NaN）があるとき、黙って「追加を検討可」と答えないこと。
+
+    `np.corrcoef` は NaN を伝播し、**`nan < threshold` は False** なので、
+    スキップ判定が `False`（＝追加してよい）になる。実測でそう答えていた。
+    TimeSeriesSplit の OOF には未予測行が NaN で入る（`train.py` の `covered`）。
+    """
+    import numpy as np
+
+    from src.utils.ensemble import correlation_check
+
+    rng = np.random.default_rng(0)
+    n = 400
+    y = rng.integers(0, 2, n)
+    a = np.clip(y * 0.5 + rng.normal(0.25, 0.3, n), 0, 1)
+    b = a + rng.normal(0, 0.1, n)
+
+    clean_corr, _ = correlation_check(a, b)
+    with_nan = a.copy()
+    with_nan[:50] = np.nan
+    nan_corr, _ = correlation_check(with_nan, b)
+
+    assert np.isfinite(nan_corr), "NaN を返している（判定が意味を成さない）"
+    assert abs(nan_corr - clean_corr) < 0.05, "未予測行を除いた相関が大きくずれている"
+
+    # 相関が定義できない入力は**答えない**（定数列など）
+    with pytest.raises(ValueError, match="定数"):
+        correlation_check(np.full(n, 0.5), b)
+
+
+def test_blend_drops_rows_not_predicted_by_all_models():
+    """`blend` が未予測行を全モデル共通で落とすこと。
+
+    そのまま重み最適化に渡すと sklearn が `Input contains NaN` で落ちる。
+    学習側と同じ扱い ——「全モデルで予測されている行だけで評価する」に揃える。
+    """
+    src = Path("scripts/blend.py").read_text(encoding="utf-8")
+    assert "covered &= np.isfinite" in src, "未予測行のマスクを作っていない"
+    assert "y = y[covered]" in src, "正解側にマスクを適用していない"
+
+    # 実際に NaN 入りで重み最適化が落ちることの確認（前提）
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    from src.utils.ensemble import optimize_weights
+
+    rng = np.random.default_rng(0)
+    n = 300
+    y = rng.integers(0, 2, n)
+    a = np.clip(y * 0.5 + rng.normal(0.25, 0.3, n), 0, 1)
+    bad = np.column_stack([a, a + rng.normal(0, 0.1, n)])
+    bad[:30, 0] = np.nan
+    with pytest.raises(ValueError):
+        optimize_weights(bad, y, roc_auc_score)
+
+    good = bad[30:]
+    w, _ = optimize_weights(good, y[30:], roc_auc_score)
+    assert np.isfinite(w).all(), "マスク後も NaN が残っている"
+
+
+def test_select_confident_refuses_regression(monkeypatch):
+    """下位関数を直接呼んでも回帰で素通りしないこと。
+
+    `make_fold_pseudo` だけ塞いでも、**公開されている以上は直接呼ばれうる**。
+    実測: 予測 `[-3.2, 0.4, 120.0, 0.51]` → 確信度 `[4.2, 0.6, 120.0, 0.51]` /
+    ラベル `[0,0,1,1]` を例外なく返していた（値が大きい行ほど確信度が高い、という無意味な基準）。
+    """
+    import numpy as np
+
+    import src.metrics as m
+    from src.utils.pseudo import select_confident
+
+    monkeypatch.setattr(m, "PROBLEM_TYPE", "regression")
+    with pytest.raises(ValueError, match="分類専用"):
+        select_confident(np.array([-3.2, 0.4, 120.0, 0.51]))
+
+    monkeypatch.setattr(m, "PROBLEM_TYPE", "binary_classification")
+    mask, labels = select_confident(np.array([0.99, 0.5, 0.01]), threshold=0.9)
+    assert mask.tolist() == [True, False, True]
+    assert labels.tolist() == [1, 0]
