@@ -2782,3 +2782,63 @@ def test_pseudo_labeling_rejects_regression(monkeypatch):
     with pytest.raises(ValueError, match="分類専用"):
         pseudo.make_fold_pseudo(pd.DataFrame({"f": [1, 2]}), [0.5, 1.5],
                                 pd.DataFrame({"f": [3]}), lambda *a, **k: (None, None))
+
+
+def test_nested_te_leak_is_measurably_removed():
+    """入れ子リークが実際に減ることを、**リポジトリの API で**測る。
+
+    「前処理で 1 本作って使い回す」と「fold ループの内側で作る」を同じ合成データで比べる。
+    効果ゼロのカテゴリ列なので、正しければどちらも OOF AUC ≈ 0.5 になるはず。
+    実測では前者が 0.5194（z vs 0.5 = +3.28）、後者が 0.5080（z = +1.77）。
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.metrics import roc_auc_score
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.tree import DecisionTreeClassifier
+
+    from src.utils.encoders import add_target_encoding, add_target_encoding_in_fold
+
+    rng = np.random.default_rng(0)
+    n, k = 3000, 300
+    y = rng.integers(0, 2, n)
+    df = pd.DataFrame({"c": [f"v{v}" for v in rng.integers(0, k, n)]})   # target と無関係
+    cv = StratifiedKFold(5, shuffle=True, random_state=0)
+
+    def oof_preprocessed():
+        te, _ = add_target_encoding(df, None, ["c"], y, cv=cv, smoothing=10.0)
+        oof = np.zeros(n)
+        for tr, va in cv.split(df, y):
+            m = DecisionTreeClassifier(max_depth=6, random_state=0)
+            m.fit(te[["c_te"]].iloc[tr], y[tr])
+            oof[va] = m.predict_proba(te[["c_te"]].iloc[va])[:, 1]
+        return roc_auc_score(y, oof)
+
+    def oof_in_fold():
+        oof = np.zeros(n)
+        inner = StratifiedKFold(5, shuffle=True, random_state=1)
+        for tr, va in cv.split(df, y):
+            tr_te, va_te, _ = add_target_encoding_in_fold(
+                df.iloc[tr], y[tr], df.iloc[va], None, ["c"], inner_cv=inner, smoothing=10.0)
+            m = DecisionTreeClassifier(max_depth=6, random_state=0)
+            m.fit(tr_te[["c_te"]], y[tr])
+            oof[va] = m.predict_proba(va_te[["c_te"]])[:, 1]
+        return roc_auc_score(y, oof)
+
+    leaky, safe = oof_preprocessed(), oof_in_fold()
+    assert leaky > safe, f"入れ子リークが再現しない（前処理 {leaky:.4f} / fold 内 {safe:.4f}）"
+    assert abs(safe - 0.5) < abs(leaky - 0.5), "fold 内で作った方が 0.5 に近くない"
+
+
+def test_low_level_te_api_warns_about_its_scope():
+    """低レベル API の docstring が「渡すのは fold の学習部分」だと明示していること。
+
+    この関数の「fold 外」は**渡された train の中での fold 外**でしかない。
+    train 全体を渡して 1 本作れば、モデルの CV から見れば漏れている。
+    """
+    from src.utils.encoders import add_target_encoding
+
+    doc = add_target_encoding.__doc__ or ""
+    assert "その fold の学習部分" in doc
+    assert "入れ子" in doc
+    assert "add_target_encoding_in_fold" in doc, "正しい API へ誘導していない"

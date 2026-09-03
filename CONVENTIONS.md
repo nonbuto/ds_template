@@ -76,15 +76,17 @@
 `multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）、
 `foldcache.py`（fold 単位チェックポイント・中断した学習の再開）、
 `csvlock.py`（log.csv の並行更新をロック + 原子的書き戻し）、
-**`encoders.py`（fold 外 target encoding・count encoding）**、
+**`encoders.py`（target encoding は `add_target_encoding_in_fold()` を**モデルの fold ループの内側**で呼ぶ・count encoding）**、
 **`pseudo.py`（fold 内で完結する pseudo-labeling）**、
 **`postprocess.py`（重複行の統一・rank 変換・範囲 clip）**
 
 > **定石は手書きしない。** target encoding / pseudo / 後処理は `PLAYBOOK.md` に記述だけがあり
 > `src/` に実装が無かったため、毎回手書き＝毎回リークの余地だった。
 > **TE と pseudo のリークはエラーを出さない**（学習時だけスコアが跳ね、LB で落ちる）。
-> 実測: 行ごとに一意な列を素朴に TE すると OOF AUC = 1.00000（完全なリーク）、
-> fold 外なら 0.50000。
+> 実測: 行ごとに一意な列を素朴に TE すると OOF AUC = 1.00000（完全なリーク）、fold 外なら 0.50000。
+> **さらに「fold 外」でも作る場所を間違えると漏れる** —— 前処理で 1 本作って使い回すと、
+> 学習 fold の行の TE に**検証 fold の target が入る**（効果ゼロの列で 0.5194 / z=+3.28）。
+> `add_target_encoding_in_fold()` を fold ループの内側で呼ぶこと。
 
 **`experiments/runs/`（コンペ固有・使い捨て）**
 

@@ -66,7 +66,12 @@ def add_target_encoding(
     smoothing: float = DEFAULT_SMOOTHING,
     suffix: str = "_te",
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    """target encoding を **fold 外で** 計算して列を足す。
+    """target encoding を計算して列を足す（**低レベル API**）。
+
+    ⚠️ **`train` に渡すのは「その fold の学習部分」であって、train 全体ではない。**
+    train 全体を渡して 1 本作り、それをモデルの CV で使い回すと**入れ子のリーク**になる
+    （学習 fold の行の TE に、モデルの検証 fold の target が入る）。
+    通常は `add_target_encoding_in_fold()` を使うこと —— そちらが正しい呼び方を強制する。
 
     Args:
         train / test: 元のデータフレーム（**破壊しない**。コピーを返す）。
@@ -80,9 +85,12 @@ def add_target_encoding(
         `(train + TE 列, test + TE 列)`。test は `None` を渡せば `None` が返る。
 
     Note:
-        **train 側は「その行が属さない fold の target だけ」で計算する。**
-        test 側は train 全体で計算してよい（test の target は存在しないので漏れない）。
+        **`train` 側は「その行が属さない fold の target だけ」で計算する。**
+        `test` 側は `train` 全体で計算してよい（`test` の target は存在しないので漏れない）。
         多クラスでは**クラスごとに 1 列**作る（`{col}_te_c{クラス}`）。
+
+        この「fold 外」は**渡された `train` の中での fold 外**でしかない。
+        だから渡すものが「その fold の学習部分」でなければ意味を成さない。
     """
     from src.metrics import get_cv, get_groups, is_regression
 

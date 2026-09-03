@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 09:41:46
-- **git**: `main` / 未コミット 7 件 / HEAD: e9bd1a4 fix: DS 検査の重大 4 件（TE 入れ子リーク / 床の合成 / TabM が学習されていない）
+- **記録時刻**: 2026-09-03 10:17:34
+- **git**: `main` / 未コミット 3 件 / HEAD: d120ed5 fix: DS 検査の中重要度 6 件（clip の NaN 全滅 / 陽性率 / √2 / t 分布 / NB 補正 / 回帰 pseudo）
 <!-- END:auto-snapshot -->
