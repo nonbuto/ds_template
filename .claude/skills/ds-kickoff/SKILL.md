@@ -249,15 +249,26 @@ sample_submission.csv のヘッダー: id,<col>
 **ユーザーが手で入力するのは `COMPETITION` だけ**（`/ds-kaggle-setup` が設定済み）。
 残りの項目は以下の情報源から **自動で決定** し、`src/config.py` の TODO セクションを上書きする:
 
-```python
-# ===== コンペティション設定（/ds-kickoff スキルが更新する） =====
-COMPETITION = "<slug>"             # /ds-kaggle-setup が設定済み（変更不要）
-TARGET_COL  = "<col>"              # ← sample_submission.csv の 2 列目（Q3 で検出）
-PROBLEM_TYPE = "<type>"            # ← 評価指標 + ターゲット列の値域から推定
-EVAL_METRIC  = "<metric>"          # ← Kaggle メタデータから取得
-CV_STRATEGY  = "<strategy>"        # ← CV 設計の初期判断（Q4）から
-N_SPLITS     = 5
-```
+**`src/config.py` の「コンペティション設定」を更新する（該当行だけ書き換える）**
+
+> ⚠️ **ブロックごと置き換えないこと。** このセクションには 12 個の設定があり、
+> 一部だけを書いたスニペットで上書きすると **`ImportError: cannot import name ...`** で
+> 学習が始まりません（`src/metrics.py` が `GROUP_COL` 等を読むため）。
+> **下の表の行だけを、値を変えて上書きする。**
+
+| 設定 | 何を入れるか |
+|---|---|
+| `COMPETITION` | コンペ slug |
+| `TARGET_COL` / `ID_COL` | 目的変数の列名 / `sample_submission` の 1 列目 |
+| `PROBLEM_TYPE` | `regression` / `binary_classification` / `multiclass` |
+| `EVAL_METRIC` | Kaggle の評価指標を `src/metrics.py` の語彙に変換した値 |
+| `CV_STRATEGY` / `N_SPLITS` | 分割戦略 / fold 数 |
+| `GROUP_COL` | `GroupKFold` 系を選んだときだけ列名（それ以外は `None`） |
+| `DAILY_SUBMISSION_LIMIT` | 1 日の提出上限（**コンペにより 5**。コンペページで確認する） |
+| `PUBLIC_TEST_ROWS` / `PUBLIC_POS_RATE` | Public LB の行数 / 陽性率（**分かればノイズ床を解析式で出せる**。不明なら `None` のまま） |
+
+`EARLY_STOPPING_ON` / `EARLY_STOPPING_INNER_SIZE` は既定のままでよい
+（変えると過去の実験と OOF が比較できなくなる → `CONVENTIONS.md#srcconfigpy-の設定項目`）。
 
 **各項目の自動決定ロジック:**
 

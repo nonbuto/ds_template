@@ -414,8 +414,8 @@ python -c "import re; print(bool(re.search(r'_ens_', '<新しいファイル名>
 |---|---|---|
 | `SessionStart` | `scripts/harness/session_brief.py` | 現在地（ステージ・次アクション・直近の実験・要対応）を提示。`/ds-resume` の機械部分。行数上限は同ファイルの `MAX_LINES`（毎セッションのコンテキストを消費するため） |
 | `PreToolUse` (Bash) | `scripts/harness/submit_gate.py` | Kaggle 提出コマンドを検知し、**実測した**提出枠・締切・git 状態を添えて**ユーザー承認を要求**（`permissionDecision: "ask"`） |
-| `PostToolUse` (Bash) | `scripts/harness/viz_guard.py` | log.csv が 20 秒以内に更新されていたら 3 ガードを判定 |
-| `Stop` | `scripts/harness/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・3 ガードを監査（**ブロックしない**） |
+| `PostToolUse` (Bash) | `scripts/harness/viz_guard.py` | log.csv が**前回検査より新しければ** 5 ガードを判定（時間窓ではない → L-42） |
+| `Stop` | `scripts/harness/session_audit.py` | 未コミットの実験スクリプト・OOF 記録済みで未コミットの実験・状態ファイルの停滞・5 ガードを監査（**ブロックしない**） |
 | `PreCompact` | `scripts/harness/session_snapshot.py` | コンテキスト圧縮の**直前**に、直近の実験・実行中ジョブ・git 状態を state/SESSION.md へ退避 |
 | `PostCompact` | `scripts/harness/session_brief.py --event PostCompact` | 圧縮の**直後**に現在地を再注入する |
 

@@ -5,8 +5,8 @@ EDA可視化スクリプト
 Claude が Read ツールで読み込んで対話に使う。
 
 使い方:
-    uv run python scripts/visualize.py --var tenure --theme target_dist
-    uv run python scripts/visualize.py --theme overview
+    uv run python -m scripts.visualize --var tenure --theme target_dist
+    uv run python -m scripts.visualize --theme overview
 """
 
 import argparse

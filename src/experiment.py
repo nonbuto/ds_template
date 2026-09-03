@@ -96,7 +96,7 @@ VIZ_GUARD_WINDOW = 5   # 直近N実験のあいだに1枚も可視化が無け�
 def _check_visualization_guard(window: int = VIZ_GUARD_WINDOW) -> Optional[str]:
     """直近 `window` 件の実験期間中に可視化が生成されたかを機械的に判定する。
 
-    CLAUDE.md 指針#9 の「必須発動条件③（直近5実験で可視化ゼロ）」を、AI の自己申告ではなく
+    `GUIDELINES.md` の `G-MECH`（必須の可視化局面）を、AI の自己申告ではなく
     タイムスタンプ比較で判定する。log.csv の window 件前の実験時刻より新しい .png が
     PLOTS_DIR に1枚も無ければ警告文字列を返す（無ければ None）。
 
@@ -133,9 +133,9 @@ def _check_visualization_guard(window: int = VIZ_GUARD_WINDOW) -> Optional[str]:
     return (
         f"\n⚠️  可視化ガード発動: 直近{window}実験（{since:%Y-%m-%d %H:%M} 以降）で "
         f"{PLOTS_DIR.name}/ に新規の可視化が1枚もありません。\n"
-        f"   CLAUDE.md 指針#9 の必須発動条件③に該当します。次の実験に進む前に実行してください:\n"
-        f"     uv run python scripts/feature_report.py     # importance / ΔOOF\n"
-        f"     uv run python scripts/visualize.py          # 分布・誤差分析\n"
+        f"   GUIDELINES.md の `G-MECH`（可視化が必須の局面）に該当します。次の実験に進む前に:\n"
+        f"     uv run python -m scripts.feature_report       # importance / ΔOOF\n"
+        f"     uv run python -m scripts.visualize --theme overview   # 分布・誤差分析\n"
         f"   （この警告は AI の自己申告ではなくタイムスタンプ比較による機械判定です）"
     )
 

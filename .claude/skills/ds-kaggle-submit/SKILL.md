@@ -45,7 +45,7 @@ disable-model-invocation: true
    以下の形式で現状を提示する（タイムゾーンを必ず明記）:
    ```
    ── 提出枠の状況 ──────────────────────
-   本日使用済み: X / 5 回  （残り Y 回、UTC日付基準・実結果から逆算）
+   本日使用済み: X / N 回  （N は `src/config.py` の `DAILY_SUBMISSION_LIMIT`。残り Y 回、UTC日付基準・実結果から逆算）
    枠リセット: UTC 00:00（JST 09:00）
    コンペ締め切り: YYYY-MM-DD HH:MM UTC（JST: MM-DD HH:MM）
    残り日数: N 日
@@ -66,7 +66,7 @@ disable-model-invocation: true
 
    ```
    `sub_NNN_model_0.XXXXX_YYYYMMDD_HHMM.csv` を提出します。
-   本日 X/5 回目の提出になります。よろしいですか？
+   本日 X/N 回目の提出になります。よろしいですか？
    ```
 
    - ユーザーが事前に「提出します」「試します」と言っていた場合でも、この確認は**省略しない**

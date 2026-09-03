@@ -175,7 +175,7 @@ def main():
                         help="--allow-batch 使用時に必須。なぜ一括投入で良いのかの理由（log.csvに記録される）")
     args = parser.parse_args()
 
-    # ── 一括投入ガード（CLAUDE.md Stage4 / 指針#13）─────────────────────────
+    # ── 一括投入ガード（CLAUDE.md 絶対規約「特徴量は 1 列ずつ計測する」/ `G-STEPWISE`）──
     # 「どの列が効き、どの列が相殺しているか」が分からなくなる事故を防ぐ。
     # 一括はスクリーニング用途に限り、採用・棄却の判断は必ず LOO 分解を経てから行う。
     new_cols = [c.strip() for c in args.new_feature.split(",") if c.strip()]

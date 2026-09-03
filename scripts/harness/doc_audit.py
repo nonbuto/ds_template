@@ -71,7 +71,9 @@ SSOT_MAP = {
     "sub_{exp_id}_{model}": "CONVENTIONS.md",
     "feat(expNNN)": "CONVENTIONS.md",
     "ExperimentTracker(": "CONVENTIONS.md",
-    "本日 X/5 回目の提出": ".claude/skills/ds-kaggle-submit/SKILL.md",
+    # 上限は `src/config.py` の `DAILY_SUBMISSION_LIMIT` が定義元（コンペにより 5 のことも）。
+    # 以前はここが `X/5` を SSoT 語句として固定し、**ガードが config と矛盾する値を守っていた**。
+    "本日 X/N 回目の提出": ".claude/skills/ds-kaggle-submit/SKILL.md",
     "Public LB Top-10 ∪ OOF Top-10": "GUIDELINES.md",
 }
 
@@ -176,18 +178,44 @@ def check(results: list[tuple[str, str, str]]) -> None:
     claude = docs.get("CLAUDE.md", "")
     guidelines = docs.get("GUIDELINES.md", "")
     defined = {m.group(1) for m in re.finditer(r"^#{1,6}.*?\b(G-[A-Z][A-Z-]+)", guidelines, re.M)}
+    # **`.py` の中の参照も対象にする。** 指針の ID は print / docstring からも参照されており、
+    # v6.6 で `指針#N` → `G-*` へ移行した際に **.md しか直していなかった**。
+    # 最も人目に触れるのは `src/experiment.py` の**ブロック時に印字される文面**。
+    code_targets = {str(q.relative_to(ROOT)): q.read_text()
+                    for q in sorted(list(ROOT.glob("src/**/*.py"))
+                                    + list(ROOT.glob("scripts/**/*.py")))
+                    if q.name != "doc_audit.py"}     # この検査自身は「悪い例」を書いている
+    scan = {**docs, **code_targets}
+
     used, undefined = set(), []
-    for rel, text in docs.items():
+    for rel, text in scan.items():
         for m in re.finditer(r"\b(G-[A-Z][A-Z-]+)\b", text):
             used.add(m.group(1))
             if defined and m.group(1) not in defined:
                 undefined.append(f"{rel}: {m.group(1)}")
     old_refs = [f"{rel}:{text[:m.start()].count(chr(10))+1}"
-                for rel, text in docs.items()
+                for rel, text in scan.items()
                 for m in re.finditer(r"指針\s*#[0-9]", text)]
     msg = f"定義 {len(defined)} / 使用 {len(set(used))}、未定義参照 {len(set(undefined))} 件、旧番号 `指針#N` {len(old_refs)} 件"
     CHECKED["C3"] = len(defined)
     results.append(("ERROR" if (undefined or (defined and old_refs)) else "OK", "C3 ID 解決", msg))
+
+    # ── C2 の補助: コード/スキルから「CLAUDE.md の〈節名〉」を参照していないか ──
+    # v6.6 で CLAUDE.md を憲法に絞った際、**中身は GUIDELINES/CONVENTIONS へ移した**のに、
+    # `.py` と スキルの参照は CLAUDE.md の旧節名を指したまま残った。
+    # `_iter_docs` は .md しか見ないので、この経路は検査されていなかった。
+    doc_blob = "\n".join(docs.values())
+    dangling = []
+    for q in sorted(list(ROOT.glob("src/**/*.py")) + list(ROOT.glob("scripts/**/*.py"))):
+        if q.name == "doc_audit.py":
+            continue
+        for m in re.finditer(r"CLAUDE\.md\s*(?:の)?「([^」]{2,40})」", q.read_text()):
+            if m.group(1) not in doc_blob:
+                dangling.append(f"{q.relative_to(ROOT)}: 「{m.group(1)}」")
+    if dangling:
+        results[-1] = ("ERROR", "C3 ID 解決",
+                       msg + f"\n      実在しない節への参照 {len(dangling)} 件: "
+                       + ", ".join(sorted(set(dangling))[:4]))
 
     # ── C4: 実測値の保存（主役）──
     corpus = "\n".join(docs.values())
@@ -378,9 +406,18 @@ def check(results: list[tuple[str, str, str]]) -> None:
         q = ROOT / extra
         if q.exists():
             cmd_targets[extra] = q.read_text()
+    # **`.py` の中の案内文も対象にする。** 同じ誤りが docstring と print に残っていた ——
+    # とくに `src/experiment.py` の可視化ガードは**ブロック時にユーザーへ手順を印字する**
+    # 唯一の場所で、そこが `ModuleNotFoundError` になるコマンドを案内していた。
+    # 「検査が .md にしか届いていない」ことが原因なので、走査対象を広げる（`G-MECH`）。
+    for q in sorted(list(ROOT.glob("src/**/*.py")) + list(ROOT.glob("scripts/**/*.py"))
+                    + list(ROOT.glob("experiments/runs/*.py"))):
+        cmd_targets[str(q.relative_to(ROOT))] = q.read_text()
     for rel, text in cmd_targets.items():
         if rel.startswith("docs/") or rel == "CHANGELOG.md":
             continue                      # 履歴ファイルは当時の記述が正しい
+        if rel == "scripts/harness/doc_audit.py":
+            continue                      # この検査自身が「悪い例」を説明として書いている
         for m in re.finditer(r"uv run python (scripts/[\w/]+\.py)", text):
             cmd_issues.append(f"{rel}: `{m.group(1)}` 形式は src を import できない（-m 形式にする）")
         # `scripts.<名前>` のような雛形記法は対象外（末尾がドット、または直後が < ）
@@ -458,7 +495,37 @@ def check(results: list[tuple[str, str, str]]) -> None:
 
     undocumented = [n for n in setting_names if _is_setting(n) and n not in docs_blob]
     CHECKED["C16"] = len([n for n in setting_names if _is_setting(n)])
-    results.append(("WARNING" if undocumented else "OK", "C16 config 設定の文書化",
+
+    # ── 逆向き: **コードが import している設定が config に実在するか** ──
+    # `/ds-kickoff` や `/ds-kaggle-setup` の指示どおりに config を「ブロックごと置換」すると
+    # キーが消え、**`ImportError` で学習が始まらない**（実測）。
+    # 片方向（config → 文書）だけでは、消えたことを検知できなかった。
+    # **正規表現で名前を集めず AST で読む** —— 他の import 文まで拾わないため。
+    import ast as _ast2
+
+    imported: set[str] = set()
+    for q in sorted(list(ROOT.glob("src/**/*.py")) + list(ROOT.glob("scripts/**/*.py"))
+                    + list(ROOT.glob("experiments/runs/*.py"))):
+        try:
+            tree2 = _ast2.parse(q.read_text())
+        except SyntaxError:
+            continue
+        for node in _ast2.walk(tree2):
+            if isinstance(node, _ast2.ImportFrom) and node.module == "src.config":
+                imported.update(a.name for a in node.names)
+    cfg_tree = _ast2.parse(config_text)
+    defined_in_cfg = {n.id for n in _ast2.walk(cfg_tree)
+                      if isinstance(n, _ast2.Name) and isinstance(n.ctx, _ast2.Store)}
+    defined_in_cfg |= {t.target.id for t in _ast2.walk(cfg_tree)
+                       if isinstance(t, _ast2.AnnAssign) and isinstance(t.target, _ast2.Name)}
+    # 設定値だけでなく**関数（`submission_path` 等）も config から import される**
+    defined_in_cfg |= {n.name for n in _ast2.walk(cfg_tree)
+                       if isinstance(n, (_ast2.FunctionDef, _ast2.ClassDef))}
+    missing = sorted(n for n in imported if n not in defined_in_cfg)
+    if missing:
+        undocumented.extend(f"**{n}（config に存在しない → ImportError）**" for n in missing)
+    results.append(("ERROR" if missing else ("WARNING" if undocumented else "OK"),
+                    "C16 config 設定の文書化",
                     f"{CHECKED['C16']} 件中 未記載 {len(undocumented)} 件"
                     + ("\n      " + ", ".join(undocumented) if undocumented else "")))
 

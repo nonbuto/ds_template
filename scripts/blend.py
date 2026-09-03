@@ -2,18 +2,18 @@
 アンサンブル・ブレンドスクリプト（Stage 6）
 
 保存済みの OOF/test 予測（.npy）を読み込み、最適重みブレンド・Greedy HC を実行する。
-CLAUDE.md の「アンサンブル探索手順（STEP 1〜4）」に対応している。
+手順と棄却分析は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に対応している。
 
 使い方:
     # STEP 1: 相関確認（必ず最初に実施）
-    uv run python scripts/blend.py --mode corr --oofs lgb=path1.npy cb=path2.npy
+    uv run python -m scripts.blend --mode corr --oofs lgb=path1.npy cb=path2.npy
 
     # STEP 2: 最適重みブレンド
-    uv run python scripts/blend.py --mode optimize --oofs lgb=path1.npy cb=path2.npy \
+    uv run python -m scripts.blend --mode optimize --oofs lgb=path1.npy cb=path2.npy \
         --tests lgb=test1.npy cb=test2.npy
 
     # STEP 3: Greedy Hill Climbing
-    uv run python scripts/blend.py --mode greedy --oofs lgb=p1.npy cb=p2.npy xgb=p3.npy \
+    uv run python -m scripts.blend --mode greedy --oofs lgb=p1.npy cb=p2.npy xgb=p3.npy \
         --tests lgb=t1.npy cb=t2.npy xgb=t3.npy
 """
 

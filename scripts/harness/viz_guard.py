@@ -1,7 +1,7 @@
 """
 規律ガード（機械的強制）— CLAUDE.md `G-MECH` / `G-DIAG`
 
-2 つの規律を、AI の自己申告ではなくファイルの実態から判定する:
+5 つの規律を、AI の自己申告ではなくファイルの実態から判定する:
   - **可視化ガード**: 直近 N 実験のあいだに `data/output/plots/` へ新規 .png があるか
     （log.csv のタイムスタンプと .png の更新時刻の比較）
   - **診断記録ガード**: 直近 N 実験で `cv_train_mean` / `cv_val_std` が記録されているか
@@ -20,7 +20,7 @@ AI の自己申告・記憶に依存しないことが唯一の設計目的。
      → tracker を経由せず log.csv へ直接追記する使い捨て実験スクリプトもカバーする
 
 使い方（`src` を import するため -m 形式で起動する）:
-    uv run python -m scripts.harness.viz_guard            # 2つのガードを判定（常に exit 0）
+    uv run python -m scripts.harness.viz_guard            # 5 つのガードを判定（常に exit 0）
     uv run python -m scripts.harness.viz_guard --window 5 # 判定窓（実験数）を変える
 """
 

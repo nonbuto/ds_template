@@ -3532,3 +3532,104 @@ def test_select_confident_refuses_regression(monkeypatch):
     mask, labels = select_confident(np.array([0.99, 0.5, 0.01]), threshold=0.9)
     assert mask.tolist() == [True, False, True]
     assert labels.tolist() == [1, 0]
+
+
+# ──────────────────────────────────────────────────────────
+# 28. 検査が「.md にしか届いていない」問題
+# ──────────────────────────────────────────────────────────
+
+def _audit_in_copy(tmp_path, mutate) -> str:
+    """作業ツリーの複製に手を入れて doc_audit を走らせ、出力を返す。"""
+    import shutil
+    import subprocess
+    import sys as _sys
+
+    work = tmp_path / f"repo_{abs(hash(mutate)) % 10000}"
+    for rel in ("scripts", "src", ".claude", "experiments", "CLAUDE.md", "GUIDELINES.md",
+                "CONVENTIONS.md", "PLAYBOOK.md", "README.md"):
+        srcp = ROOT / rel
+        if srcp.is_dir():
+            shutil.copytree(srcp, work / rel,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.db"))
+        elif srcp.exists():
+            (work / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(srcp, work / rel)
+    mutate(work)
+    return subprocess.run([_sys.executable, "-m", "scripts.harness.doc_audit"],
+                          cwd=work, capture_output=True, text=True).stdout
+
+
+def test_broken_command_in_python_is_detected(tmp_path):
+    """`.py` の中の `uv run python scripts/x.py` も検知すること。
+
+    C14 はこの誤り（`src` を import できず `ModuleNotFoundError`）を潰すために作られたのに、
+    **走査対象が `.md` だけ**だった。その結果、**可視化ガードがブロック時に印字する
+    唯一の解除手順**が動かないコマンドのまま残っていた（実測で 12 箇所）。
+    """
+    def mutate(work):
+        p = work / "src" / "utils" / "postprocess.py"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + '\n\n# 実行例: uv run python scripts/postprocess.py\n', encoding="utf-8")
+
+    out = _audit_in_copy(tmp_path, mutate)
+    assert "postprocess.py" in out and "-m 形式" in out, f"検知していない:\n{out[-800:]}"
+
+
+def test_dangling_doc_reference_in_python_is_detected(tmp_path):
+    """`.py` から存在しない CLAUDE.md の節を参照していたら検知すること。
+
+    v6.6 で CLAUDE.md を憲法に絞った際、中身は GUIDELINES / CONVENTIONS へ移したのに、
+    `.py` の参照は旧節名を指したままだった（`_iter_docs` が `.md` しか見ないため）。
+    """
+    def mutate(work):
+        p = work / "src" / "utils" / "postprocess.py"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + '\n\n# 詳細は CLAUDE.md の「存在しない架空の節」を参照\n', encoding="utf-8")
+
+    out = _audit_in_copy(tmp_path, mutate)
+    assert "存在しない架空の節" in out, f"検知していない:\n{out[-800:]}"
+
+
+def test_missing_config_key_is_detected(tmp_path):
+    """config から設定が消えたら検知すること（`ImportError` になる前に）。
+
+    スキルが「ブロックごと置き換える」と指示していたため、**指示どおりに適用すると
+    6 キーが消えて `ImportError: cannot import name 'GROUP_COL'`** になった。
+    C16 は「config → 文書」の片方向だけで、**消えたことを見ていなかった**。
+    """
+    def mutate(work):
+        p = work / "src" / "config.py"
+        p.write_text("\n".join(ln for ln in p.read_text(encoding="utf-8").splitlines()
+                               if not ln.startswith("GROUP_COL")), encoding="utf-8")
+
+    out = _audit_in_copy(tmp_path, mutate)
+    assert "GROUP_COL" in out and "ImportError" in out, f"検知していない:\n{out[-800:]}"
+
+
+def test_setup_and_kickoff_do_not_replace_the_config_block():
+    """初期化スキルが config を「ブロックごと置換」と指示していないこと。
+
+    現在の config は 12 設定あり、6 キーのスニペットで上書きすると学習が始まらない。
+    **次のコンペの Step 2 で確実に踏む**種類の事故。
+    """
+    kickoff = Path(".claude/skills/ds-kickoff/SKILL.md").read_text(encoding="utf-8")
+    assert "ブロックごと置き換えない" in kickoff, "破壊的な指示のまま"
+    assert "該当行だけ" in kickoff
+    # config が名指ししている設定を kickoff が扱っていること
+    for key in ("DAILY_SUBMISSION_LIMIT", "PUBLIC_TEST_ROWS"):
+        assert key in kickoff, f"config が /ds-kickoff に委ねている {key} が手順に無い"
+
+
+def test_visualization_guard_prints_runnable_commands():
+    """ブロック時に印字される解除手順が、実際に起動できる形式であること。
+
+    ガードが解けない手順を印字している状態は、**ガードへの信頼を最初に壊す**。
+    """
+    import re
+
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    body = src.split("def _check_visualization_guard")[1].split("\ndef ")[0]
+    cmds = re.findall(r"uv run python (\S+)", body)
+    assert cmds, "解除手順が印字されていない"
+    for c in cmds:
+        assert c == "-m", f"`{c}` 形式は src を import できない（-m 形式にする）"

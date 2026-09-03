@@ -17,16 +17,16 @@ Kaggle Notebook で実行可能な .ipynb ファイルに変換する。
 
 使い方:
     # 実験スクリプトから変換（Notebookで実行する .ipynb を生成）
-    uv run python scripts/to_kaggle_nb.py experiments/runs/exp108_s6_realmlp.py
+    uv run python -m scripts.to_kaggle_nb experiments/runs/exp108_s6_realmlp.py
 
     # 出力ファイル名を指定
-    uv run python scripts/to_kaggle_nb.py experiments/runs/exp108_s6_realmlp.py -o kaggle_nb/exp108.ipynb
+    uv run python -m scripts.to_kaggle_nb experiments/runs/exp108_s6_realmlp.py -o kaggle_nb/exp108.ipynb
 
     # Notebook提出コンペ用（submission.csv を output に保存するセルを追加）
-    uv run python scripts/to_kaggle_nb.py experiments/runs/exp108.py --submission-mode
+    uv run python -m scripts.to_kaggle_nb experiments/runs/exp108.py --submission-mode
 
     # Dataset名を明示指定（デフォルト: src/config.py の COMPETITION を使用）
-    uv run python scripts/to_kaggle_nb.py experiments/runs/exp108.py --dataset-name my-ds-template
+    uv run python -m scripts.to_kaggle_nb experiments/runs/exp108.py --dataset-name my-ds-template
 """
 
 from __future__ import annotations
