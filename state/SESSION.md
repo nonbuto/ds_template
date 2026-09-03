@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 13:45:39
-- **git**: `main` / 未コミット 2 件 / HEAD: 3099ba2 refactor: アンサンブル API を 9 個 → 5 個に絞り、使う順番を 1 本道にする
+- **記録時刻**: 2026-09-03 13:50:36
+- **git**: `main` / 未コミット 7 件 / HEAD: 7fc9235 docs: Stage 6 の手順を新しい順路に合わせる（旧 API 前提の記述を更新）
 <!-- END:auto-snapshot -->

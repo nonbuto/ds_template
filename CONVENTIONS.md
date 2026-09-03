@@ -71,12 +71,12 @@
 `metrics.py`（**評価指標と CV 分割器の唯一の定義元**）
 
 **`src/utils/`（共通ヘルパー）**: `ensemble.py`（**順路は 1 本道**: 相関確認 → hillclimb → signed_stack）、
-`logger.py`、`plot_style.py`（日本語フォント設定・可視化の命名規則ヘルパー）、
+`plot_style.py`（日本語フォント設定・`plot_path()` で命名規約どおりの保存先を返す）、
 `finalize.py`（OOF + test 予測 + 提出 CSV を 1 回で保存）、
 `multiseed.py`（multi-seed avg の実行・既存 seed 結果の再利用）、
 `foldcache.py`（fold 単位チェックポイント・中断した学習の再開）、
 `csvlock.py`（log.csv の並行更新をロック + 原子的書き戻し）、
-**`encoders.py`（target encoding は `add_target_encoding_in_fold()` を**モデルの fold ループの内側**で呼ぶ・count encoding）**、
+**`encoders.py`（target encoding は `add_target_encoding_in_fold()` を**モデルの fold ループの内側**で呼ぶ／`add_count_encoding()` は target を使わないので前処理で 1 回でよい）**、
 **`pseudo.py`（fold 内で完結する pseudo-labeling）**、
 **`postprocess.py`（重複行の統一・rank 変換・範囲 clip）**
 

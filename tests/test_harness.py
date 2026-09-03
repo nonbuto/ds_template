@@ -3327,3 +3327,37 @@ def test_stdin_readers_have_a_deadline():
         finally:
             if p.poll() is None:
                 p.kill()
+
+
+def test_unreachable_public_helper_is_detected(tmp_path):
+    """公開ヘルパーに到達経路が無ければ C17 が鳴ること。
+
+    **テンプレートでは「未使用」より「見つけられない」が問題。**
+    利用者のコンペコードから呼ばれる道具なので `src/` 内に呼び出しが無いのは正常だが、
+    scripts からも文書からも辿れないなら**作ったのに知られないまま埋もれる**
+    （導入時の実測で 20 件あった）。
+    """
+    import shutil
+    import subprocess
+    import sys as _sys
+
+    work = tmp_path / "repo"
+    for rel in ("scripts", "src", ".claude", "CLAUDE.md", "GUIDELINES.md",
+                "CONVENTIONS.md", "PLAYBOOK.md", "README.md"):
+        srcp = ROOT / rel
+        if srcp.is_dir():
+            shutil.copytree(srcp, work / rel,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        elif srcp.exists():
+            (work / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(srcp, work / rel)
+
+    target = work / "src" / "utils" / "postprocess.py"
+    target.write_text(target.read_text(encoding="utf-8")
+                      + "\n\ndef orphan_helper_nobody_can_find(x):\n"
+                        '    """誰からも辿れない公開関数。"""\n    return x\n',
+                      encoding="utf-8")
+    r = subprocess.run([_sys.executable, "-m", "scripts.harness.doc_audit"],
+                       cwd=work, capture_output=True, text=True)
+    assert "orphan_helper_nobody_can_find" in r.stdout, \
+        "到達経路の無い公開ヘルパーを検知していない"

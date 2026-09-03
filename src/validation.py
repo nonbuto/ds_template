@@ -260,6 +260,19 @@ def run_all_validations(
     results["no_leakage"] = validate_no_leakage(train_df, test_df, target_col)
     results["missing_train"] = validate_missing_values(train_df)
     results["missing_test"] = validate_missing_values(test_df)
+    # **分類なら必ずクラスバランスも見る。** 書かれていても呼ばれない検証は、
+    # 「検証がある」という誤った安心を作るだけ（`G-MECH`）。
+    try:
+        from src.metrics import is_regression
+
+        if not is_regression() and target_col in train_df.columns:
+            results["class_balance"] = validate_class_balance(train_df, target_col)
+    except Exception:
+        pass          # 検証の失敗で前処理を止めない
+
+    # `validate_feature_ranges` は**期待範囲を渡す必要がある**ので自動では呼べない。
+    # 使うときは呼び出し側で明示する:
+    #     run_all_validations(...); validate_feature_ranges(train, {"age": (0, 120)})
 
     print("=== データバリデーション結果 ===")
     for name, result in results.items():

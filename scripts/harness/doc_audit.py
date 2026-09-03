@@ -112,7 +112,7 @@ CHECKED: dict[str, int] = {}
 
 # チェックの総数。C11 が README の申告値と突き合わせる。
 # 以前は `len(results) + 1` で数えており、**自分より後ろに追加された検査を数え落とした**。
-TOTAL_CHECKS = 16
+TOTAL_CHECKS = 17
 
 
 def _count_test_cases() -> int | None:
@@ -462,12 +462,55 @@ def check(results: list[tuple[str, str, str]]) -> None:
                     f"{CHECKED['C16']} 件中 未記載 {len(undocumented)} 件"
                     + ("\n      " + ", ".join(undocumented) if undocumented else "")))
 
+    # ── C17: 公開ヘルパーに到達経路があるか ──
+    # **テンプレートでは「未使用」より「見つけられない」が問題。** 利用者のコンペコードから
+    # 呼ばれる道具なので、`src/` 内に呼び出しが無いこと自体は正常。問うべきは
+    # 「**利用者がその存在に辿り着けるか**」——(a) scripts/ から呼ばれる実行経路がある、
+    # (b) 文書に名前が出ている、(c) src/ の他モジュールが使っている、のどれか。
+    # どれも無ければ**作ったのに知られないまま埋もれる**（実測で 20 件あった）。
+    import ast as _ast
+
+    scripts_blob = "\n".join(f.read_text(encoding="utf-8")
+                             for f in sorted(ROOT.glob("scripts/**/*.py")))
+    docs_blob2 = "\n".join(text for _, text in _iter_docs())
+    src_files = sorted(ROOT.glob("src/**/*.py"))
+    src_texts = {f: f.read_text(encoding="utf-8") for f in src_files}
+
+    unreachable, n_public = [], 0
+    for f, text in src_texts.items():
+        if f.name == "__init__.py":
+            continue
+        try:
+            tree = _ast.parse(text)
+        except SyntaxError:
+            continue
+        others = "\n".join(t for g, t in src_texts.items() if g != f)
+        for node in tree.body:
+            if not isinstance(node, (_ast.FunctionDef, _ast.ClassDef)):
+                continue
+            if node.name.startswith("_") or node.name == "main":
+                continue
+            n_public += 1
+            pat = re.compile(rf"\b{re.escape(node.name)}\b")
+            # **同一ファイル内の利用も到達経路**（公開関数の返り値の型・下位関数として
+            # 呼ばれているなら、その公開関数から辿り着ける）。定義行そのものは除く。
+            own = "\n".join(ln for ln in text.splitlines()
+                            if not re.match(rf"\s*(def|class)\s+{re.escape(node.name)}\b", ln))
+            if not (pat.search(scripts_blob) or pat.search(docs_blob2)
+                    or pat.search(others) or pat.search(own)):
+                unreachable.append(f"{f.relative_to(ROOT)}::{node.name}")
+    CHECKED["C17"] = n_public
+    results.append(("WARNING" if unreachable else "OK", "C17 公開ヘルパーの到達経路",
+                    f"{n_public} 件中 到達経路なし {len(unreachable)} 件"
+                    + ("\n      " + ", ".join(unreachable) if unreachable else "")))
+
     # ── C15: ガードの空洞検知 ──
     # 「問題 0 件」と「0 件しか検査していない」は別物。後者はガードが死んでいる状態で、
     # 表示上はどちらも ✅ になる。分母を持つチェックについて、それがゼロなら ERROR にする。
     EXPECTED_NONZERO = {"C2": "アンカー参照", "C3": "指針の ID 定義", "C6": "SSoT の語句",
                         "C11": "README の自己申告値", "C13": "エージェント定義",
-                        "C14": "文書中のコマンド", "C16": "config の設定項目"}
+                        "C14": "文書中のコマンド", "C16": "config の設定項目",
+                        "C17": "公開ヘルパー"}
     hollow = [f"{k}（{label}）の検査対象が 0 件 —— ガードが何も見ていない"
               for k, label in EXPECTED_NONZERO.items() if CHECKED.get(k, 0) == 0]
     if len(results) + 1 != TOTAL_CHECKS:      # 自分自身を足した数
