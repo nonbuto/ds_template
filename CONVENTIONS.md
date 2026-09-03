@@ -233,7 +233,7 @@ metric, cv = get_metric(), get_cv()
 
 | 設定 | 意味 | 既定 |
 |---|---|---|
-| `EARLY_STOPPING_ON` | `inner` = train fold の内側で early stopping（リークなし）／`val` = 検証 fold を監視（速いが **OOF が楽観側に寄る**。実測 AUC +0.00467） | `inner` |
+| `EARLY_STOPPING_ON` | `inner_refit` = 内側 15% で本数を決めた後、**学習 fold 100% で本数固定の再学習**（既定）／`inner` = 再学習しない（学習は全データの 68% のみ。速い）／`val` = 検証 fold を監視（**OOF が楽観側に寄る**。実測 +0.00467）。`train.py --early-stopping` で 1 回だけ切り替えられる | `inner_refit` |
 | `EARLY_STOPPING_INNER_SIZE` | `inner` のときに切り出す割合 | 0.15 |
 | `RANDOM_STATE` | 既定のシード（分割・モデル共通） | 42 |
 

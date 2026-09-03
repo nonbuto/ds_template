@@ -33,9 +33,12 @@ CV_STRATEGY = "StratifiedKFold"           # StratifiedKFold / KFold / TimeSeries
                                           # GroupKFold / StratifiedGroupKFold（src/metrics.py の get_cv）
 N_SPLITS = 5
 
-# early stopping の監視先。"inner" = train fold の内側から切り出す（既定・リークなし）／
-# "val" = 検証 fold をそのまま使う（速いが、木の本数がその fold に合わせて選ばれ **OOF が楽観側に寄る**）
-EARLY_STOPPING_ON = "inner"
+# early stopping の監視先と、その後の扱い（tree 系のみ。NN は pytabkit に任せる）
+#   "inner_refit" = 内側 15% で本数を決めた後、**学習 fold 100% で本数固定の再学習**（既定）
+#   "inner"       = 内側 15% で決めた本数のまま（学習は全データの 68% のみ。速い）
+#   "val"         = 検証 fold をそのまま監視（**OOF が楽観側に寄る**。実測 +0.00467）
+# 実測（合成データ・8 seed の対応比較）: refit − inner = +0.00122 ± 0.00049（z=+2.48）／学習時間 約 1.7 倍
+EARLY_STOPPING_ON = "inner_refit"
 EARLY_STOPPING_INNER_SIZE = 0.15
 PUBLIC_POS_RATE: float | None = None      # 陽性率。AUC の床は**少数クラスの件数に支配される**ので、
                                           # 半々と決め打つと不均衡データで最大 4.6 倍過小になる

@@ -969,7 +969,10 @@ def test_early_stopping_does_not_watch_the_oof_fold():
     """
     from src.config import EARLY_STOPPING_ON
 
-    assert EARLY_STOPPING_ON == "inner", "既定が検証 fold を見る設定になっている"
+    # 既定の**値**ではなく「検証 fold を覗かないこと」を検証する
+    # （`inner` / `inner_refit` はどちらも覗かない。前者は速く、後者は学習量を取り戻す）
+    assert EARLY_STOPPING_ON in ("inner", "inner_refit"), \
+        f"既定が検証 fold を見る設定になっている（{EARLY_STOPPING_ON}）"
     src = Path("scripts/train.py").read_text(encoding="utf-8")
     for fn in ("train_fold_lgb", "train_fold_cb", "train_fold_xgb"):
         body = src.split(f"def {fn}")[1].split("\ndef ")[0]
@@ -2989,3 +2992,137 @@ def test_in_fold_te_does_not_run_inner_cv_twice():
     finally:
         encoders.add_target_encoding = original
     assert calls["n"] == 1, f"内側 CV を {calls['n']} 回まわしている"
+
+
+# ──────────────────────────────────────────────────────────
+# 24. early stopping 後の再学習（学習データを取り戻す）
+# ──────────────────────────────────────────────────────────
+
+def _synth_frames(tmp_path, n=1500, n_features=10, seed=0):
+    import pandas as pd
+    from sklearn.datasets import make_classification
+
+    X, y = make_classification(n_samples=n, n_features=n_features, n_informative=5,
+                               flip_y=0.2, random_state=seed)
+    cols = [f"f{i}" for i in range(n_features)]
+    df = pd.DataFrame(X, columns=cols)
+    df["target"] = y
+    df.to_pickle(tmp_path / "train_features.pkl")
+    df[cols].to_pickle(tmp_path / "test_features.pkl")
+    return cols
+
+
+def test_refit_uses_the_whole_fold_train(tmp_path, monkeypatch):
+    """`inner_refit` が **学習 fold 100%** で本数固定の学習をし直すこと。
+
+    `inner` は検証 fold を覗かない代わりに学習 fold からさらに 15% を抜くので、
+    **最終モデルは全データの 0.8 × 0.85 = 68%** でしか学習していない。
+    実測（合成データ・8 seed の対応比較・LightGBM）:
+        Δ(refit − inner) = **+0.00122 ± 0.00049（z=+2.48）**
+        内側の取り分 10% → +0.00128 / 15% → +0.00202 / 25% → +0.00261
+    """
+    import numpy as np
+    import pandas as pd
+
+    from scripts import train as t
+
+    n_rows = {"fit": []}
+    original = t._refit_on_full_fold
+
+    def spy(Est, params, X_tr, y_tr, best_iter, n_key, fit_kwargs=None):
+        n_rows["fit"].append((len(X_tr), best_iter))
+        return original(Est, params, X_tr, y_tr, best_iter, n_key, fit_kwargs)
+
+    monkeypatch.setattr(t, "_refit_on_full_fold", spy)
+    monkeypatch.setattr(t, "EARLY_STOPPING_ON", "inner_refit")
+
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(600, 6)),
+                     columns=[f"f{i}" for i in range(6)])
+    y = pd.Series((np.arange(600) % 2))
+    params = t.build_params("lgb", 2) | {"n_estimators": 120}
+    model, _ = t.train_fold_lgb(X, y, X.iloc[:100], y.iloc[:100], params)
+
+    assert n_rows["fit"], "再学習が呼ばれていない"
+    fitted_rows, best = n_rows["fit"][0]
+    assert fitted_rows == 600, f"学習 fold 全体を使っていない（{fitted_rows} 行）"
+    assert model.n_estimators == best, "early stopping が選んだ本数に固定されていない"
+    assert model.n_estimators < 120, "本数が上限のまま（early stopping が効いていない）"
+
+
+def test_refit_is_off_for_other_modes(tmp_path, monkeypatch):
+    """`inner` / `val` では再学習しないこと（速さのための選択肢が機能すること）。"""
+    import numpy as np
+    import pandas as pd
+
+    from scripts import train as t
+
+    called = {"n": 0}
+    monkeypatch.setattr(t, "_refit_on_full_fold",
+                        lambda *a, **k: called.__setitem__("n", called["n"] + 1) or None)
+
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(400, 5)),
+                     columns=[f"f{i}" for i in range(5)])
+    y = pd.Series(np.arange(400) % 2)
+    params = t.build_params("lgb", 2) | {"n_estimators": 60}
+
+    for mode in ("inner", "val"):
+        monkeypatch.setattr(t, "EARLY_STOPPING_ON", mode)
+        t.train_fold_lgb(X, y, X.iloc[:80], y.iloc[:80], params)
+    assert called["n"] == 0, f"{mode} で再学習している"
+
+
+def test_inner_split_follows_the_model_seed():
+    """内側分割の seed がモデル seed に追従すること。
+
+    固定にすると multi-seed avg で seed を振っても **ES 用の 15% が毎回同じ行**になり、
+    seed 由来の多様性がその分だけ出ない。
+    """
+    import numpy as np
+    import pandas as pd
+
+    from scripts import train as t
+
+    X = pd.DataFrame({"a": range(200)})
+    y = pd.Series(np.arange(200) % 2)
+
+    a = t._split_for_fit(X, y, X, y, {"random_state": 0})[0]
+    b = t._split_for_fit(X, y, X, y, {"random_state": 7})[0]
+    assert not a.index.equals(b.index), "seed を変えても内側分割が同じ"
+
+    # CatBoost 系の名前でも拾えること
+    c = t._split_for_fit(X, y, X, y, {"random_seed": 7})[0]
+    assert c.index.equals(b.index), "random_seed を見ていない"
+
+
+def test_best_iteration_is_read_across_libraries():
+    """各ライブラリの best iteration をライブラリ差を吸収して取り出せること。"""
+    from scripts.train import _best_iteration
+
+    class LGBLike:
+        best_iteration_ = 42
+
+    class XGBLike:
+        best_iteration = 17
+
+    class CBLike:
+        def get_best_iteration(self):
+            return 99
+
+    class NoES:
+        pass
+
+    assert _best_iteration(LGBLike()) == 42
+    assert _best_iteration(XGBLike()) == 17
+    assert _best_iteration(CBLike()) == 99
+    assert _best_iteration(NoES()) is None
+
+
+def test_early_stopping_mode_is_selectable_from_cli():
+    """`--early-stopping` で 1 回だけ方式を変えられること（設定を書き換えずに済む）。"""
+    help_text = subprocess.run(
+        [sys.executable, "-m", "scripts.train", "--help"],
+        cwd=ROOT, capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)}).stdout
+    assert "--early-stopping" in help_text
+    for mode in ("inner_refit", "inner", "val"):
+        assert mode in help_text, f"{mode} が選べない"
