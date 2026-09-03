@@ -96,8 +96,11 @@ def build_search_params(trial, model_type: str, n_cls: int) -> dict:
     # 100 本で選んだ learning_rate を 1000 本で使う構図で、低 lr が構造的に選ばれない。
     # 合成データでの実測: 探索は lr=0.05 を選ぶが、1000 本での最適は lr=0.01（−0.00097）。
     # さらに CatBoost だけ既定 1000 本だったため、モデル間の比較も不公正だった（`G-FAIR`）。
+    # `_nn_kind` を忘れると **`--model tabm` の探索が RealMLP を最適化する**（実測）。
+    # 保存される `best_params_tabm_*.json` は別モデルの HP になる。
     for key in ("objective", "num_class", "metric", "loss_function", "eval_metric",
-                "tree_method", "enable_categorical", "n_estimators", "iterations"):
+                "tree_method", "enable_categorical", "n_estimators", "iterations",
+                "_nn_kind"):
         if key in task:
             params[key] = task[key]
     return params

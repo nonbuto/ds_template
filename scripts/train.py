@@ -239,7 +239,12 @@ def train_fold_nn(X_tr, y_tr, X_val, y_val, params: dict):
     from pytabkit import (RealMLP_TD_Classifier, RealMLP_TD_Regressor,
                           TabM_D_Classifier, TabM_D_Regressor)
 
-    kind = params.pop("_nn_kind", "realmlp")
+    # **呼び出し側の dict を壊さない。** `run_cv` は fold ループの外で params を 1 個作り、
+    # 全 fold に同じ dict を渡す。ここで `pop` すると fold 1 以降は `_nn_kind` を失い、
+    # **`--model tabm` が fold0 だけ TabM・残りは RealMLP** になる（実測）。
+    # 例外も警告も出ず、log.csv には `tabm` と記録される。
+    kind = params.get("_nn_kind", "realmlp")
+    params = {k: v for k, v in params.items() if not k.startswith("_")}
     if kind == "tabm":
         Est = TabM_D_Regressor if is_regression() else TabM_D_Classifier
     else:

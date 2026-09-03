@@ -1,4 +1,4 @@
-"""カテゴリのエンコーディング。**target encoding は fold の外で計算する。**
+"""カテゴリのエンコーディング。**target encoding は「使う fold の内側」で作る。**
 
 **なぜこのモジュールがあるか**: `PLAYBOOK.md` は target encoding を「中核 FE」として
 扱っているのに（前コンペでは 13 列が TE だった）、**`src/` に実装が無く毎回手書き**だった。
@@ -10,14 +10,30 @@
 その列は target そのものになる。実測（合成データ・n=2000）:
 
     素朴な TE（全 train で集計）: OOF AUC = 1.00000   ← 完全なリーク
-    fold 外で集計した TE       : OOF AUC = 0.49–0.51 ← 正しく「情報なし」
+    fold 外で集計した TE       : OOF AUC = 0.50000   ← 正しく「情報なし」
 
-使い方:
+ただし**これだけでは足りない**。同じ「fold 外」でも、作る場所を間違えると漏れる:
 
-    from src.utils.encoders import add_target_encoding
+**この関数は「モデルの fold ループの内側」で呼ぶ。** 前処理で 1 本作って使い回すと、
+**入れ子のリーク**が残る —— 学習 fold A の行の TE は「A 以外の全 fold」で集計されており、
+そこにモデルの**検証 fold B の target が入っている**。つまり学習に使う特徴量が
+検証 fold の答えを含む。実測（効果ゼロのカテゴリ列・400 カテゴリ・8 seed）:
 
-    train_te, test_te = add_target_encoding(train, test, ["city", "device"], y)
-    # train_te は fold 外で、test_te は train 全体で計算される
+    前処理で 1 本作って使い回す : OOF AUC = 0.5194（z vs 0.5 = **+3.28**）
+    fold ループの内側で作る     : OOF AUC = 0.5080（z = +1.77）
+
+素朴な TE（全 train で集計）の 0.654 に比べれば桁違いに小さいが、
+**FE の採否を決める床（0.001 前後）から見れば桁違いに大きい**。
+
+正しい使い方 —— `add_target_encoding_in_fold()` を使う:
+
+    for tr_idx, va_idx in cv.split(X, y):
+        X_tr_te, X_va_te, X_test_te = add_target_encoding_in_fold(
+            X.iloc[tr_idx], y[tr_idx], X.iloc[va_idx], X_test, ["city"])
+        model.fit(X_tr_te, y[tr_idx])
+
+低レベルの `add_target_encoding()` を直接使う場合も、**渡すのは「その fold の学習部分」**
+であって train 全体ではない。
 
 平滑化（smoothing）は `(合計 + 事前平均 × m) / (件数 + m)`。
 件数の少ないカテゴリを事前平均に寄せることで、**少数カテゴリが偶然の target を
@@ -139,3 +155,51 @@ def add_count_encoding(
             out_test[name] = test[col].astype("object").map(counts).fillna(0).to_numpy(dtype=float)
 
     return out_train, out_test
+
+
+def add_target_encoding_in_fold(
+    X_tr: pd.DataFrame,
+    y_tr,
+    X_val: pd.DataFrame,
+    X_test: pd.DataFrame | None = None,
+    columns: list[str] | None = None,
+    inner_cv=None,
+    smoothing: float = DEFAULT_SMOOTHING,
+    suffix: str = "_te",
+):
+    """**モデルの fold ループの内側**で target encoding を作る。これが正しい使い方。
+
+    - 学習部分の行 → 学習部分の**内側 CV** で集計（自分の target を見ない）
+    - 検証 fold と test → **学習部分の全体**で集計（検証 fold の target は使わない）
+
+    こうすると、モデルが学習に使う特徴量に検証 fold の target が入る経路が無くなる。
+    前処理で 1 本作って使い回すと、学習行の TE が「自分の fold 以外の全 fold」で
+    作られるため、**検証 fold の target が学習側に漏れる**（モジュール冒頭の実測を参照）。
+
+    Args:
+        X_tr / y_tr: この fold の学習部分。
+        X_val: この fold の検証部分。
+        X_test: test（省略可）。
+        columns: エンコードするカテゴリ列。
+        inner_cv: 学習部分の内側で使う分割器。省略すると `get_cv()`。
+
+    Returns:
+        `(学習部分, 検証部分, test)` —— test を渡さなければ 3 つ目は None。
+    """
+    from src.metrics import get_cv
+
+    if not columns:
+        raise ValueError("columns を指定してください")
+
+    inner_cv = inner_cv if inner_cv is not None else get_cv()
+    X_tr = X_tr.reset_index(drop=True)
+    y_tr = np.asarray(y_tr)
+
+    # 学習部分は内側 CV で out-of-fold に、検証部分は学習部分の全体で
+    tr_out, val_out = add_target_encoding(X_tr, X_val.reset_index(drop=True), columns, y_tr,
+                                          cv=inner_cv, smoothing=smoothing, suffix=suffix)
+    test_out = None
+    if X_test is not None:
+        _, test_out = add_target_encoding(X_tr, X_test.reset_index(drop=True), columns, y_tr,
+                                          cv=inner_cv, smoothing=smoothing, suffix=suffix)
+    return tr_out, val_out, test_out

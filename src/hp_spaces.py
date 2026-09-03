@@ -86,7 +86,10 @@ def nn_space(trial: optuna.Trial) -> dict[str, Any]:
         "verbosity": 0,
         "n_epochs": trial.suggest_int("n_epochs", 32, 256, log=True),
         "lr": trial.suggest_float("lr", 1e-3, 1e-1, log=True),
-        "hidden_sizes": trial.suggest_categorical(
-            "hidden_sizes", [[256] * 3, [512] * 3, [256] * 4]),
+        # Optuna の categorical は **tuple/スカラーしか永続化できない**（list を渡すと
+        # UserWarning が出て、SQLite に保存した study の再開時に型が一致しなくなる）。
+        # `list(...)` で渡す側に戻す。
+        "hidden_sizes": list(trial.suggest_categorical(
+            "hidden_sizes", [(256,) * 3, (512,) * 3, (256,) * 4])),
         "p_drop": trial.suggest_float("p_drop", 0.0, 0.3),
     }

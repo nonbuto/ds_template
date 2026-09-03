@@ -2065,8 +2065,9 @@ def test_feature_study_includes_split_variance():
 
     src = inspect.getsource(fs.main)
     assert "--n-repeats" not in src or True      # 引数の存在は下の CLI 検査で見る
-    # **分割が揃ったらそれを床に採る**（下位と混ぜない。分割は 1 段上の不確実性）
-    assert "se = se_splits if len(per_split) >= 3" in src, "分割の床を採用していない"
+    # **行由来と分割由来は独立成分なので二乗和で合成する。**
+    # 分割だけを採ると、分割を増やすほど床が 0 に近づき偽陽性が増える（実測 33%→55%）。
+    assert "np.hypot(" in src, "床を二乗和で合成していない"
     assert "np.nanmax([se_rows, se_folds])" in src, "分割が無いときの下限を採っていない"
 
     help_text = subprocess.run(
@@ -2514,24 +2515,6 @@ def test_feature_study_counts_prior_tests(tmp_path, monkeypatch):
         importlib.reload(fs)
 
 
-def test_split_uncertainty_subsumes_the_lower_ones():
-    """分割由来の不確実性が、行・fold のゆらぎより 1 段上にあること。
-
-    行・fold のゆらぎは「**この分割の上で測った Δ を、どれだけ正確に測れたか**」。
-    分割をまたぐと **Δ 自体が変わる**ので、こちらは下位を内側に含む
-    （各分割の Δ は、その分割の行ノイズ込みで得た値だから）。
-
-    実測（効果ゼロの列・8 分割）: Δ = -0.00365 〜 +0.00237、分割をまたいだ SD 0.00195。
-    **同じ分割の中では Δ は 1 つの値に定まるのに、分割を変えると符号ごと動く。**
-    したがって分割が揃っているならそれを床に採り、下位を足し合わせない。
-    """
-    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
-    assert "se = se_splits if len(per_split) >= 3" in src, \
-        "分割が揃っていても下位の床と混ぜている"
-    assert "np.nanmax([se_rows, se_folds])" in src, \
-        "分割が無いときに下位の最大を採っていない"
-
-
 def test_screening_floor_is_a_lower_bound_of_the_adoption_floor():
     """スクリーニングの床が、採用判定の床より小さくなりうること（＝下限であること）。
 
@@ -2554,3 +2537,110 @@ def test_screening_floor_is_a_lower_bound_of_the_adoption_floor():
     delta = float(per_split.mean())
     assert abs(delta) < min_detectable_difference(adoption), \
         "効果ゼロの列が採用判定の床を超えている（前提の確認）"
+
+
+# ──────────────────────────────────────────────────────────
+# 22. DS 視点の指摘（入れ子リーク・床の合成・NN の取り違え）
+# ──────────────────────────────────────────────────────────
+
+def test_nn_kind_is_not_consumed_from_the_shared_params():
+    """`--model tabm` が全 fold で TabM を使うこと。
+
+    `run_cv` は fold ループの**外**で params を 1 個作り、全 fold に同じ dict を渡す。
+    `train_fold_nn` が `params.pop("_nn_kind")` すると、
+    **fold0 だけ TabM・残り 4 fold は RealMLP** になる（実測）。
+    例外も警告も出ず、log.csv には `tabm` と記録される。
+    """
+    from scripts.train import build_params
+
+    params = build_params("tabm", 2)
+    picked = []
+    for _ in range(5):                       # fold ループを模す
+        picked.append(params.get("_nn_kind", "realmlp"))
+    assert set(picked) == {"tabm"}, f"fold ごとに実装が変わる: {picked}"
+
+    src = Path("scripts/train.py").read_text(encoding="utf-8")
+    assert 'params.pop("_nn_kind"' not in src, "共有 dict を破壊している"
+    # モデルへは内部キーを渡さない
+    assert 'if not k.startswith("_")' in src
+
+
+def test_hp_search_keeps_the_nn_kind():
+    """`--model tabm` の HP 探索が TabM を最適化すること。
+
+    写しキーに `_nn_kind` が無いと、探索は既定の RealMLP を学習し、
+    `best_params_tabm_*.json` として**別モデルの HP** が保存される（実測）。
+    """
+    import optuna
+
+    from scripts.optimize_hp import build_search_params
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    for model in ("realmlp", "tabm"):
+        params = build_search_params(optuna.create_study().ask(), model, 2)
+        assert params.get("_nn_kind") == model, f"{model} の探索が別モデルになる: {params.get('_nn_kind')}"
+
+
+def test_split_and_row_uncertainty_are_combined_not_replaced():
+    """分割を増やしても行由来の不確実性が消えないこと。
+
+    前ラウンドで「分割は 1 段上だから下位を含む」と判断したが**誤り**だった。
+    **全分割が同じ行集合を使う**ので、行由来の誤差は全分割に共通に乗り、
+    分割間分散から相殺されて消える。モンテカルロ実測（真の効果ゼロ・2σ 判定）:
+
+        分割数        3      5     10     20
+        分割のみ    33.2%  34.5%  43.9%  55.0%   ← 増やすほど**悪化**
+        二乗和        6.4%   4.9%   4.8%   4.8%   ← 設計値 5% に一致
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    s_row, s_split = 0.0024, 0.0034
+
+    def fpr(m, combine):
+        hits = 0
+        for _ in range(1500):
+            e_row = rng.normal(0, s_row)          # 分割によらず共通
+            d = e_row + rng.normal(0, s_split, m)
+            hits += abs(d.mean()) >= 2 * combine(s_row, d.std(ddof=1) / np.sqrt(m))
+        return hits / 1500
+
+    only_split = fpr(20, lambda r, s: s)
+    combined = fpr(20, lambda r, s: np.hypot(r, s))
+    assert only_split > 0.3, f"この前提が崩れたら再検討（{only_split:.1%}）"
+    assert combined < 0.10, f"合成しても偽陽性が高い（{combined:.1%}）"
+
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "np.hypot(" in src, "床を二乗和で合成していない"
+
+
+def test_target_encoding_must_be_built_inside_the_fold():
+    """fold ループの内側で TE を作る API が用意され、その旨が明示されていること。
+
+    前処理で 1 本作って使い回すと**入れ子のリーク**が残る ——
+    学習 fold A の行の TE は「A 以外の全 fold」で集計されており、
+    そこにモデルの**検証 fold B の target が入っている**。
+    実測（効果ゼロのカテゴリ列・400 カテゴリ・8 seed）:
+        前処理で 1 本 : OOF AUC = 0.5194（z = +3.28）
+        fold 内で作る : OOF AUC = 0.5080（z = +1.77）
+    """
+    import numpy as np
+    import pandas as pd
+
+    from src.utils.encoders import add_target_encoding_in_fold
+
+    rng = np.random.default_rng(0)
+    n = 400
+    X = pd.DataFrame({"c": [f"v{v}" for v in rng.integers(0, 20, n)]})
+    y = rng.integers(0, 2, n)
+    tr, va = np.arange(0, 300), np.arange(300, n)
+    X_test = pd.DataFrame({"c": [f"v{v}" for v in rng.integers(0, 20, 50)]})
+
+    tr_out, va_out, te_out = add_target_encoding_in_fold(
+        X.iloc[tr], y[tr], X.iloc[va], X_test, ["c"])
+    assert "c_te" in tr_out and "c_te" in va_out and "c_te" in te_out
+    assert len(tr_out) == 300 and len(va_out) == 100 and len(te_out) == 50
+    assert tr_out["c_te"].notna().all() and va_out["c_te"].notna().all()
+
+    doc = Path("src/utils/encoders.py").read_text(encoding="utf-8")
+    assert "入れ子のリーク" in doc, "危険が文書化されていない"
