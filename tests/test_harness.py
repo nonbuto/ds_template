@@ -2644,3 +2644,141 @@ def test_target_encoding_must_be_built_inside_the_fold():
 
     doc = Path("src/utils/encoders.py").read_text(encoding="utf-8")
     assert "入れ子のリーク" in doc, "危険が文書化されていない"
+
+
+def test_clip_does_not_propagate_nan(capsys):
+    """`y_train` に欠損があっても予測を全滅させないこと。
+
+    `min`/`max` は NaN を伝播するので、目的変数に欠損が 1 個あるだけで範囲が
+    (nan, nan) になり、`np.clip` が**全予測を NaN にする**。
+    提出直前に呼ばれる関数なので、中身が全部 NaN の CSV ができうる。
+    """
+    import numpy as np
+
+    from src.utils.postprocess import clip_predictions
+
+    out, n = clip_predictions(np.array([1.0, 2.0, 3.0]),
+                              y_train=np.array([np.nan, 1.0, 2.0]))
+    assert np.isfinite(out).all(), f"NaN が伝播している: {out}"
+    assert out.tolist() == [1.0, 2.0, 2.0]
+
+    all_nan, n2 = clip_predictions(np.array([1.0, 2.0]), y_train=np.array([np.nan, np.nan]))
+    assert np.isfinite(all_nan).all() and n2 == 0, "全欠損でも予測を壊さない"
+
+    with pytest.raises(ValueError, match="範囲が逆"):
+        clip_predictions(np.array([1.0]), lo=5.0, hi=1.0)
+
+
+def test_postprocess_refuses_to_return_broken_predictions(monkeypatch):
+    """後処理の結果に有限でない値があれば、黙って返さないこと（提出直前の最後の砦）。"""
+    import numpy as np
+
+    from src.utils import postprocess as pp
+
+    monkeypatch.setattr(pp, "unify_duplicates",
+                        lambda preds, feats, how="mean": (np.array([np.nan] * len(preds)), 0))
+    import pandas as pd
+    with pytest.raises(ValueError, match="有限でない"):
+        pp.apply_postprocess(np.array([0.1, 0.2]), pd.DataFrame({"a": [1, 2]}))
+
+
+@pytest.mark.parametrize("pos_rate,min_ratio", [(0.1, 1.8), (0.02, 4.0)])
+def test_auc_floor_accounts_for_class_imbalance(pos_rate, min_ratio):
+    """AUC の床が陽性率を反映すること。
+
+    AUC の SE は**少数クラスの件数に支配される**。半々と決め打つと不均衡データで
+    最も楽観的な床を返す。実測（n=100,000・AUC=0.9）:
+        陽性率 10% → 真 0.00209 / 半々仮定 0.00101（**2.1 倍過小**）
+        陽性率  2% → 真 0.00463 / 半々仮定 0.00101（**4.6 倍過小**）
+    """
+    from src.noise import single_score_se
+
+    balanced = single_score_se(metric_name="auc", n=100_000, score=0.9)
+    actual = single_score_se(metric_name="auc", n=100_000, score=0.9, pos_rate=pos_rate)
+    assert actual / balanced >= min_ratio, f"陽性率が床に反映されていない（{actual/balanced:.2f} 倍）"
+
+
+def test_empirical_floor_uses_sqrt2_for_comparing_two_submissions():
+    """2 提出の LB 差の床が、1 本の gap の √2 倍であること。
+
+    LB₁ − LB₂ = ΔOOF + (gap₁ − gap₂) なので、差のばらつきは gap の SD の √2 倍。
+    1 本の 2σ を床にすると **1.41 倍甘く**なり、
+    「LB に出るはず」と判断して出した提出が出ない、が体系的に起こる。
+    """
+    import numpy as np
+
+    from src.noise import EmpiricalFloor
+
+    f = EmpiricalFloor(sd=0.001, n=20, oof_lo=0.9, oof_hi=0.97, offset=0.001)
+    assert abs(f.floor - f.single_floor * np.sqrt(2)) < 1e-12
+    assert f.floor > f.single_floor
+
+
+def test_min_detectable_difference_uses_t_for_small_df():
+    """繰り返しが少ないとき、正規の 2σ ではなく t 臨界値を使うこと。
+
+    推奨手順の `--n-repeats 3` は自由度 2。正規の 2σ を当てると
+    **名目 5% のつもりで実際は 18.3%** の偽陽性率になる（正しい t 臨界値は 4.30）。
+    """
+    from src.noise import min_detectable_difference as mdd
+
+    assert mdd(1.0) == 2.0
+    assert mdd(1.0, df=2) > 4.0, "自由度 2 で正規の臨界値を使っている"
+    assert mdd(1.0, df=7) > 2.3
+    # 自由度が増えれば正規に近づく
+    assert 2.0 < mdd(1.0, df=100) < 2.05
+
+
+def test_fold_paired_se_applies_nadeau_bengio():
+    """fold 対応差の SE が、学習集合の重なりを補正していること。
+
+    fold ごとの差は独立ではない（学習集合が重なる）。素の SE/√k は
+    5-fold で 1.50 倍・10-fold で 1.45 倍過小になる。
+    """
+    import numpy as np
+
+    from src.noise import fold_paired_se
+
+    # 差が完全に一定だと SD=0 になるので、ばらつきのある例で比べる
+    a2 = np.array([0.90, 0.915, 0.92, 0.945, 0.94])
+    b2 = np.array([0.899, 0.916, 0.918, 0.947, 0.938])
+    naive2 = float(np.std(a2 - b2, ddof=1) / np.sqrt(len(a2)))
+    got2 = fold_paired_se(a2, b2)
+    assert got2 > naive2 * 1.3, f"補正が効いていない（{got2/naive2:.2f} 倍）"
+    # 差が一定なら SE は 0（補正しても 0 のまま。浮動小数の丸めは許容する）
+    assert fold_paired_se(np.arange(5) * 0.01, np.arange(5) * 0.01 - 0.001) < 1e-12
+
+
+def test_build_verdict_refuses_when_floor_is_unavailable():
+    """床が出せないときに判定を出さないこと。
+
+    `se_rows` と `se_folds` が両方 NaN だと `nanmax` が NaN を返し、
+    `abs(delta) < nan` が False になるので**必ず「候補」側に落ちていた**。
+    `src/noise.py` の `verdict()` はこれを潰しているのに、
+    実際に判定を出す `build_verdict` には同じガードが無かった。
+    """
+    from scripts.feature_study import build_verdict
+
+    for bad in (float("nan"), 0.0, -1.0):
+        v = build_verdict(delta=0.0001, floor=bad, z=float("nan"),
+                          gap_delta=0.0, is_screening=False)
+        assert "床を推定できません" in v, f"床 {bad} で判定を出している: {v}"
+
+
+def test_pseudo_labeling_rejects_regression(monkeypatch):
+    """回帰で pseudo-labeling を黙って実行しないこと。
+
+    回帰では確信度が定義できない。予測値をそのまま確信度として扱うと、
+    値が大きい行ほど確信度が高いという無意味な基準で選び、
+    しかも 0/1 の擬似ラベルを連続値ターゲットに混ぜる（例外は出なかった）。
+    """
+    import pandas as pd
+
+    from src.utils import pseudo
+
+    import src.metrics as m
+    monkeypatch.setattr(m, "PROBLEM_TYPE", "regression")
+
+    with pytest.raises(ValueError, match="分類専用"):
+        pseudo.make_fold_pseudo(pd.DataFrame({"f": [1, 2]}), [0.5, 1.5],
+                                pd.DataFrame({"f": [3]}), lambda *a, **k: (None, None))

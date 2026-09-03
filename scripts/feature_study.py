@@ -60,6 +60,13 @@ def build_verdict(delta: float, floor: float, z: float, gap_delta: float,
     `is_screening`（分割 1 回）のときは**床が下限でしかない**ので、
     「採用推奨」とは言い切らず、次に何をするかを指定する。
     """
+    if not np.isfinite(floor) or floor <= 0:
+        # **床が出せないときに判定を出さない。** `src/noise.py` の `verdict()` は
+        # これを明示的に潰しているのに、実際に判定を出すこの関数には無かった。
+        # `se_rows` と `se_folds` が両方 NaN だと `nanmax` が NaN を返し、
+        # `abs(delta) < nan` が False になるので**必ず「候補」側に落ちていた**。
+        return "床を推定できませんでした（fold 数・指標・記録の精度を確認してください）"
+
     if abs(delta) < floor:
         # **「測れていない」と「効果がない」を混同しない。**
         # 前者は床を下げれば測れる可能性があり、後者は測った上で差が無い。
@@ -253,7 +260,9 @@ def main():
           if len(per_split) >= 3 else float(np.nanmax([se_rows, se_folds])))
     split_deltas = (", ".join(f"{d:+.5f}" for d in per_split) if len(per_split) > 1
                     else "（--n-repeats 2 以上で分割を引き直せます）")
-    floor = min_detectable_difference(se)
+    # 分割から推定した SE は自由度 m−1。少ない繰り返しに正規の 2σ を当てると
+    # 名目 5% のつもりで実際は 18%（m=3）になる（`min_detectable_difference` の docstring）。
+    floor = min_detectable_difference(se, df=(len(per_split) - 1) if len(per_split) >= 3 else None)
     z = delta / se if se > 0 else float("nan")
 
     # ── スクリーニングと採用判定を分ける ──

@@ -96,6 +96,19 @@ def make_fold_pseudo(
         逆に「全 train で学習したモデルで pseudo を作る」実装は、
         必ず OOF を楽観側に寄せる（そして LB では再現しない）。
     """
+    from src.metrics import is_regression
+
+    if is_regression():
+        # **回帰では「確信度」が定義できない。** 予測値をそのまま確信度として扱うと、
+        # 値が大きい行ほど確信度が高いという無意味な基準で選び、しかも 0/1 の
+        # 擬似ラベルを連続値ターゲットに混ぜることになる（例外は出ない）。実測:
+        #   予測 [-3.2, 0.4, 120.0, 0.51] → 確信度 [4.2, 0.6, 120.0, 0.51] / ラベル [0,0,1,1]
+        raise ValueError(
+            "make_fold_pseudo は分類専用です（回帰では確信度が定義できません）。\n"
+            "   回帰で擬似ラベルを使うなら、予測値そのものを擬似ターゲットにし、"
+            "sample_weight で減衰させる別の設計が要ります。"
+        )
+
     params = dict(params or {})
     # 擬似ラベルを作るためのモデルは、この fold の学習部分だけで作る
     model, _ = train_fn(X_tr, y_tr, X_tr, y_tr, params)

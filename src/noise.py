@@ -74,6 +74,7 @@ def auc_se(auc: float, n_pos: int, n_neg: int) -> float:
 
 def single_score_se(y_true=None, y_pred=None, *, metric_name: str | None = None,
                     n: int | None = None, score: float | None = None,
+                    pos_rate: float = 0.5,
                     n_boot: int = DEFAULT_N_BOOT, seed: int = 0) -> float:
     """**1 つのスコア**の標本ゆらぎ（1σ）。
 
@@ -88,8 +89,18 @@ def single_score_se(y_true=None, y_pred=None, *, metric_name: str | None = None,
             raise ValueError("予測を渡さない場合は metric_name / n / score が必要です")
         if metric_name.lower() != "auc":
             raise ValueError(f"解析式は auc のみ対応です（{metric_name} は予測を渡してください）")
-        half = max(int(n) // 2, 1)
-        return auc_se(score, half, half)
+        # **AUC の SE は少数クラスの件数に支配される。** 陽性率を半々と決め打つと
+        # 不均衡データで最も楽観的な床を返す。実測（n=100,000・AUC=0.9）:
+        #   陽性率 50% → 0.00101（真値と一致）
+        #   陽性率 10% → 真 0.00209 / 半々仮定 0.00101（**2.1 倍過小**）
+        #   陽性率  2% → 真 0.00463 / 半々仮定 0.00101（**4.6 倍過小**）
+        # このモジュールは「表の値が 7〜32 倍過小だった」ことを問題にして作られたので、
+        # 同じ型の過小評価を残さない。
+        if not 0.0 < pos_rate < 1.0:
+            raise ValueError(f"pos_rate は 0 と 1 の間で指定してください（{pos_rate}）")
+        n_pos = max(int(round(n * pos_rate)), 1)
+        n_neg = max(int(n) - n_pos, 1)
+        return auc_se(score, n_pos, n_neg)
 
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -153,11 +164,38 @@ def fold_paired_se(scores_a, scores_b) -> float:
     d = d[~np.isnan(d)]
     if d.size < 2:
         return float("nan")
-    return float(np.std(d, ddof=1) / np.sqrt(d.size))
+    # **fold の差は独立ではない**（学習集合が重なる）。素の SE/√k は k-fold で
+    # 1.45〜1.50 倍過小になる。Nadeau-Bengio の補正 (1/k + n_test/n_train) を使う。
+    # k-fold では n_test/n_train = 1/(k-1)。
+    k = d.size
+    correction = np.sqrt(1.0 / k + 1.0 / (k - 1))
+    return float(np.std(d, ddof=1) * correction)
 
 
-def min_detectable_difference(se: float, sigma: float = SIGMA_MULTIPLIER) -> float:
-    """「突破」と呼んでよい最小の差（既定 2σ）。"""
+def min_detectable_difference(se: float, sigma: float = SIGMA_MULTIPLIER,
+                              df: int | None = None) -> float:
+    """「突破」と呼んでよい最小の差（既定 2σ）。
+
+    `df`（自由度）を渡すと **t 分布の臨界値**を使う。少ない繰り返しから推定した SE に
+    正規の 2σ を当てると、名目 5% のつもりで実際はずっと甘くなる:
+
+        n_repeats=3 → |t|>2 となる確率 18.3%（正しい t 臨界値は 4.30）
+        n_repeats=5 → 11.6%（同 2.78）
+        n_repeats=8 →  8.5%（同 2.36）
+
+    推奨手順の `--n-repeats 3` がまさにここに当たるので、既定で補正する。
+    """
+    if df is not None and df >= 1:
+        try:
+            from scipy import stats
+
+            # sigma を両側の有意水準に読み替えてから t 臨界値へ
+            from math import erf, sqrt
+
+            alpha = 2.0 * (1.0 - 0.5 * (1.0 + erf(sigma / sqrt(2.0))))
+            return float(stats.t.ppf(1.0 - alpha / 2.0, df) * se)
+        except ImportError:
+            pass
     return float(sigma * se)
 
 
@@ -236,7 +274,17 @@ class EmpiricalFloor:
 
     @property
     def floor(self) -> float:
-        """LB に現れることを期待してよい最小の ΔOOF（2σ）。"""
+        """**2 つの提出の LB 差**が見えるために必要な最小の ΔOOF。
+
+        LB₁ − LB₂ = (ΔOOF) + (gap₁ − gap₂) なので、差のばらつきは gap の SD の **√2 倍**。
+        1 本の gap の 2σ を床にすると **1.41 倍甘く**なり、
+        「LB に出るはず」と判断して出した提出が出ない、が体系的に起こる。
+        """
+        return min_detectable_difference(self.sd * np.sqrt(2.0))
+
+    @property
+    def single_floor(self) -> float:
+        """1 本の提出の LB 位置がどれだけぶれるか（2σ）。比較ではなく位置の話。"""
         return min_detectable_difference(self.sd)
 
     def ratio(self, delta: float) -> float:
@@ -244,7 +292,7 @@ class EmpiricalFloor:
         return abs(delta) / self.floor if self.floor > 0 else float("inf")
 
     def __str__(self) -> str:
-        return (f"LB 反映の床: {self.floor:.5f}（直近 {self.n} 提出の gap SD={self.sd:.5f}、"
+        return (f"LB 反映の床: {self.floor:.5f}（2 提出の差。直近 {self.n} 提出の gap SD={self.sd:.5f}、"
                 f"OOF {self.oof_range[0]:.5f}〜{self.oof_range[1]:.5f}、"
                 f"オフセット {self.offset:+.5f}）")
 

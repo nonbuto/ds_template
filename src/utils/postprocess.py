@@ -85,10 +85,18 @@ def clip_predictions(preds: np.ndarray, lo: float | None = None,
     p = np.asarray(preds, dtype=float)
     if y_train is not None:
         y = np.asarray(y_train, dtype=float)
-        lo = float(y.min()) if lo is None else lo
-        hi = float(y.max()) if hi is None else hi
+        # **`min`/`max` は NaN を伝播する。** 目的変数に欠損が 1 個あるだけで
+        # 範囲が (nan, nan) になり、`np.clip` が**全予測を NaN にする**。
+        # 提出直前に呼ばれる関数なので、中身が全部 NaN の CSV ができうる
+        # （`_assert_row_alignment` は行数しか見ないので止まらない）。
+        if np.isnan(y).all():
+            return p, 0
+        lo = float(np.nanmin(y)) if lo is None else lo
+        hi = float(np.nanmax(y)) if hi is None else hi
     if lo is None and hi is None:
         return p, 0
+    if lo is not None and hi is not None and lo > hi:
+        raise ValueError(f"clip の範囲が逆です（lo={lo} > hi={hi}）。全行が hi に潰れます")
     out = np.clip(p, lo, hi)
     return out, int((out != p).sum())
 
@@ -130,5 +138,13 @@ def apply_postprocess(
     if clip and is_regression():
         out, n_clip = clip_predictions(out, y_train=y_train)
         notes.append(f"範囲 clip: {n_clip:,} 行" if n_clip else "clip 対象なし")
+
+    # **提出直前の最後の砦。** ここまでの後処理のどれかが NaN を作っていたら、
+    # 気づかずに提出することになる（スコアは出るが中身は壊れている）。
+    if not np.isfinite(out).all():
+        raise ValueError(
+            f"後処理の結果に有限でない値が {int((~np.isfinite(out)).sum()):,} 件あります。"
+            f"適用した処理: {' / '.join(notes)}"
+        )
 
     return out, " / ".join(notes) if notes else "後処理なし"
