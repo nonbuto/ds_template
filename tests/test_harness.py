@@ -3361,3 +3361,88 @@ def test_unreachable_public_helper_is_detected(tmp_path):
                        cwd=work, capture_output=True, text=True)
     assert "orphan_helper_nobody_can_find" in r.stdout, \
         "到達経路の無い公開ヘルパーを検知していない"
+
+
+# ──────────────────────────────────────────────────────────
+# 26. ガードの費用対効果（安いのは、何もしていないからではないか）
+# ──────────────────────────────────────────────────────────
+
+def _post_tool_use_command() -> str:
+    import json as _json
+
+    hooks = _json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    for h in hooks["hooks"]["PostToolUse"]:
+        for c in h["hooks"]:
+            if "viz_guard" in c["command"]:
+                return c["command"]
+    raise AssertionError("PostToolUse に viz_guard の hook が無い")
+
+
+def test_post_tool_use_hook_does_not_use_a_time_window():
+    """可視化ガードの起動判定が「時間の窓」でないこと。
+
+    以前は「log.csv が 20 秒以内に更新されていたら走る」だった。すると:
+      A) 前景で学習 → Bash 終了直後に更新 → 窓の内（動く）
+      B) **背景で学習** → 完了時に Bash 呼び出しが無い → 窓の外（**動かない**）
+      C) 学習後に別作業を挟む → 次の Bash が 20 秒超 → 窓の外（**動かない**）
+    実測: このセッションの 1,319 回の発火機会に対し**一度も実際には走らなかった**。
+    **コストが安いのは、ほとんど何もしていないから**だった。
+    """
+    cmd = _post_tool_use_command()
+    assert "-lt 20" not in cmd, "20 秒の時間窓が残っている"
+    assert "-nt" in cmd and "viz_guard_seen" in cmd, "更新検知（マーカー比較）になっていない"
+
+
+@pytest.mark.slow
+def test_post_tool_use_hook_runs_once_per_log_change(tmp_path):
+    """log.csv が変わったときだけ 1 回走り、平時は走らないこと。
+
+    実測: マーカーなし 676 ms（走る）→ 変化なし 4 ms（走らない）→
+    更新後 697 ms（再び走る）→ 4 ms。
+    背景実行で時間が空いても、次の Bash で必ず 1 回走る（旧実装は永久に走らなかった）。
+    """
+    import os
+    import shutil
+    import subprocess
+    import time
+
+    work = tmp_path / "repo"
+    for rel in ("scripts", "src", ".claude"):
+        shutil.copytree(ROOT / rel, work / rel,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (work / "experiments").mkdir(parents=True, exist_ok=True)
+    log = work / "experiments" / "log.csv"
+    log.write_text("experiment_id,oof_score\n")
+
+    cmd = _post_tool_use_command()
+
+    def elapsed() -> float:
+        t0 = time.time()
+        subprocess.run(["bash", "-c", cmd], cwd=work, capture_output=True)
+        return time.time() - t0
+
+    first = elapsed()          # マーカーが無い → 走る
+    second = elapsed()         # 変化なし → 走らない
+    time.sleep(1.1)
+    os.utime(log, None)        # 背景の学習が log を更新したと想定
+    time.sleep(1.0)            # その後しばらくしてから次の Bash（旧実装なら窓の外）
+    third = elapsed()
+    fourth = elapsed()
+
+    assert first > 0.2, f"初回にガードが走っていない（{first*1000:.0f} ms）"
+    assert second < 0.2, f"変化が無いのに走っている（{second*1000:.0f} ms）"
+    assert third > 0.2, f"log.csv 更新後に走っていない（{third*1000:.0f} ms）"
+    assert fourth < 0.2, f"2 回目も走っている（{fourth*1000:.0f} ms）"
+
+
+def test_guard_costs_are_bounded():
+    """毎ツール前に走るゲートが軽いこと（重い import を遅延していること）。
+
+    実測: PreToolUse 32 ms（提出ゲート）。`uv run` の起動だけで 23 ms なので、
+    ゲート自身の処理は 10 ms 程度。numpy/pandas を読むと 650 ms 級になる
+    （viz_guard がそれ。だから毎回は走らせない）。
+    """
+    src = Path("scripts/harness/submit_gate.py").read_text(encoding="utf-8")
+    head = src.split("\ndef ")[0]
+    for heavy in ("import numpy", "import pandas", "from src.experiment"):
+        assert heavy not in head, f"提出ゲートがトップレベルで {heavy} している"

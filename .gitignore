@@ -75,3 +75,6 @@ kaggle_nb/push*/
 *.pem
 *credentials*.json
 kaggle.json
+
+# 可視化ガードの最終検査マーカー（hook が touch する）
+experiments/.viz_guard_seen
