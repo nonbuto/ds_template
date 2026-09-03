@@ -924,9 +924,7 @@ def test_submit_gate_asks_when_internal_check_fails(monkeypatch):
                         lambda cmd: (_ for _ in ()).throw(RuntimeError("kaggle CLI 異常")))
     payload = _json.dumps({"tool_name": "Bash",
                            "tool_input": {"command": f"{SUB} -c x -f y.csv -m t"}})
-    stdin = io.StringIO(payload)
-    stdin.isatty = lambda: False
-    monkeypatch.setattr(_sys, "stdin", stdin)
+    monkeypatch.setattr(g, "_read_stdin_with_deadline", lambda timeout=1.0: payload)
     buf = io.StringIO()
     monkeypatch.setattr(_sys, "stdout", buf)
     g.main()
@@ -938,11 +936,16 @@ def test_submit_gate_asks_when_internal_check_fails(monkeypatch):
 def test_submission_limit_has_single_definition():
     """提出上限の定義元が 1 つであること（表示ごとに違う値になるのを防ぐ）。"""
     from src.config import DAILY_SUBMISSION_LIMIT
-    from scripts.harness import deadline_status, submit_gate
+    from scripts.harness import deadline_status
 
-    assert submit_gate.DAILY_LIMIT == deadline_status.DAILY_LIMIT == DAILY_SUBMISSION_LIMIT
+    assert deadline_status.DAILY_LIMIT == DAILY_SUBMISSION_LIMIT
     src = Path("scripts/harness/deadline_status.py").read_text(encoding="utf-8")
     assert "DAILY_LIMIT = 10" not in src, "ハーネス側に上限が直書きされている"
+    # **submit_gate はトップレベルで import しない**（config 破損でゲートごと落ちるため）
+    gate_src = Path("scripts/harness/submit_gate.py").read_text(encoding="utf-8")
+    head = gate_src.split("def ")[0]
+    assert "from scripts.harness.deadline_status import" not in head, \
+        "トップレベル import に戻っている（config 破損で fail-open する）"
 
 
 def test_viz_guard_reaches_the_conversation():
@@ -3126,3 +3129,200 @@ def test_early_stopping_mode_is_selectable_from_cli():
     assert "--early-stopping" in help_text
     for mode in ("inner_refit", "inner", "val"):
         assert mode in help_text, f"{mode} が選べない"
+
+
+# ──────────────────────────────────────────────────────────
+# 25. プロセス制御 —— どう終わり、何が残るか
+# ──────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("command,expected,label", [
+    (f"uv run --no-project {SUB} -c x -f a.csv", True, "uv のオプション付き"),
+    (f"timeout 60 {SUB} -c x -f a.csv", True, "timeout でラップ"),
+    (f"nice {SUB} -c x -f a.csv", True, "nice でラップ"),
+    (f"sudo -u me {SUB} -c x -f a.csv", True, "sudo のオプション付き"),
+    (f"env -i {SUB} -c x -f a.csv", True, "env -i"),
+    (f"xargs -I{{}} {SUB} -c x -f {{}}", True, "xargs のオプション付き"),
+    (f"uv --directory . run {SUB} -c x", True, "uv のサブコマンド前オプション"),
+    (f"grep -rn '{SUB}' CONVENTIONS.md", False, "grep（誤検知してはいけない）"),
+    ("kaggle competitions submissions -c x", False, "submissions は提出ではない"),
+])
+def test_submit_gate_ignores_wrapper_flags(command, expected, label):
+    """ラッパーの**オプション**をコマンド本体と誤認しないこと。
+
+    以前はラッパーを透過して「コマンド本体」を追っていたため、そこにオプションが来ると
+    本体と誤認して**次の演算子まで全部読み飛ばして**いた。実測で 6 パターンが素通り
+    （`uv run --no-project` が最も現実的）。
+    コマンド位置を追うのをやめ、全トークン位置で三つ組を探せば、
+    **ラッパーの一覧を網羅する必要そのものが消える**。
+    """
+    from scripts.harness.submit_gate import is_submit_command
+    assert is_submit_command(command) is expected, label
+
+
+def test_submit_gate_does_not_import_config_at_module_level():
+    """提出ゲートが config 破損で **fail-open** しないこと。
+
+    `deadline_status` をトップレベルで import すると `src/config.py` を読むので、
+    config を編集中・venv が壊れている・`uv sync` 途中のいずれでも
+    **main() に到達する前**に落ちる。PreToolUse がツールを止めるのは exit 2 だけなので、
+    exit 1 で落ちた提出コマンドは**確認なしで実行される**。
+    **ゲートが壊れたときだけゲートが消える**という最悪の形だった。
+    """
+    src = Path("scripts/harness/submit_gate.py").read_text(encoding="utf-8")
+    head = src.split("\ndef ")[0]
+    assert "from scripts.harness.deadline_status import" not in head
+    assert "from src.config import" not in head
+
+
+@pytest.mark.slow
+def test_submit_gate_asks_even_when_config_is_broken(tmp_path):
+    """config を壊した複製で、提出コマンドが確認を求められること（実際に走らせる）。"""
+    import json as _json
+    import shutil
+    import subprocess
+    import sys as _sys
+
+    work = tmp_path / "repo"
+    shutil.copytree(ROOT, work, ignore=shutil.ignore_patterns(
+        "__pycache__", "*.pyc", ".git", ".venv*", "kaggle_nb", "data", "*.db"))
+    (work / "src" / "config.py").write_text(
+        (work / "src" / "config.py").read_text() + "\nthis is not python(((\n")
+
+    r = subprocess.run([_sys.executable, "-m", "scripts.harness.submit_gate"], cwd=work,
+                       input=_json.dumps({"tool_name": "Bash",
+                                          "tool_input": {"command": f"{SUB} -c x -f y.csv"}}),
+                       capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(work)})
+    assert r.returncode == 0, f"exit {r.returncode}（hook が落ちると素通りする）"
+    decision = _json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"]
+    assert decision == "ask", f"config 破損で {decision} になっている"
+
+
+def test_submit_gate_rejects_truncated_submission(tmp_path, monkeypatch):
+    """切り詰められた提出ファイルを通さないこと。
+
+    `to_csv` は非原子的なので、書き込み中に落ちると**途中まで書かれた CSV** が残る。
+    ゲートは行数を**表示するだけ**で `sample_submission.csv` と突き合わせていなかった
+    （実測: 301 行のはずが 38 行でも `decision=ask` で提出できた）。
+    """
+    from scripts.harness import submit_gate
+
+    monkeypatch.setattr(submit_gate, "_expected_rows", lambda: 300)
+    src = Path("scripts/harness/submit_gate.py").read_text(encoding="utf-8")
+    assert "_expected_rows()" in src and "fatal = True" in src
+    assert "行数が sample_submission と違います" in src
+
+
+def test_finalize_writes_atomically():
+    """提出 CSV / npy が一時ファイル経由で書かれること。
+
+    途中で落ちると「壊れたファイルが存在する」状態になり、
+    推論成果物ガードの glob は「ある」と判定して通す（`FoldCache` で塞いだのと同じ穴）。
+    """
+    src = Path("src/utils/finalize.py").read_text(encoding="utf-8")
+    assert "_save_atomic(" in src and "os.replace(tmp, path)" in src
+    assert "sub.to_csv(sub_path, index=False)" not in src, "非原子書き込みが残っている"
+
+
+def test_heartbeat_is_written_atomically():
+    """ハートビートが原子的に書かれること。
+
+    truncate 書きだと読み手（statusline / job_status）が書き換えの途中を読む。
+    実測（書き手 1・読み手 1・3 秒）: **77,054 回中 1,807 回（2.3%）がパース失敗**。
+    """
+    import json as _json
+    import tempfile
+    import threading
+    import time
+
+    from src.experiment import _write_json_atomic
+
+    path = Path(tempfile.mkdtemp()) / "hb.json"
+    _write_json_atomic(path, {"folds_done": 0})
+    state = {"stop": False, "bad": 0, "reads": 0}
+
+    def writer():
+        i = 0
+        while not state["stop"]:
+            _write_json_atomic(path, {"folds_done": i, "pad": "x" * 200})
+            i += 1
+
+    def reader():
+        while not state["stop"]:
+            state["reads"] += 1
+            try:
+                _json.loads(path.read_text())
+            except Exception:
+                state["bad"] += 1
+
+    threads = [threading.Thread(target=f) for f in (writer, reader)]
+    for t in threads:
+        t.start()
+    time.sleep(1.0)
+    state["stop"] = True
+    for t in threads:
+        t.join()
+
+    assert state["reads"] > 100, "読み取り回数が少なすぎて判定できない"
+    assert state["bad"] == 0, f"{state['reads']:,} 回中 {state['bad']} 回が壊れた状態を読んだ"
+
+
+def test_foldcache_signature_includes_early_stopping():
+    """`--early-stopping` を変えたら別のキャッシュになること。
+
+    実測: `--early-stopping val` で作った fold を `inner_refit` の実験として
+    `--resume` が再利用し、**表示上は普通に完走した**。
+    「val を覗いた条件」の予測を「覗かない条件」の OOF として log.csv に記録することになる。
+    """
+    src = Path("scripts/train.py").read_text(encoding="utf-8")
+    assert '"early_stopping": EARLY_STOPPING_ON' in src, "signature に方式が入っていない"
+    # 事後に区別できるよう log にも残す
+    assert '"_early_stopping": EARLY_STOPPING_ON' in src, "log に学習プロトコルが残らない"
+
+    from src.utils.foldcache import _signature_hash
+    base = {"features": ["a"], "params": {}, "n_splits": 5, "split_seed": None}
+    refit = _signature_hash({**base, "early_stopping": "inner_refit"})
+    leaky = _signature_hash({**base, "early_stopping": "val"})
+    assert refit != leaky, "方式が違ってもハッシュが同じ（キャッシュを取り違える）"
+
+
+def test_temp_copies_exclude_all_virtualenvs():
+    """複製が `.venv-autogluon` のような別 venv も除外すること。
+
+    `.venv` の完全一致だと 580 MB が毎回コピーされる。
+    実測: 504 MB / 1.8 秒 → 1.8 MB / 0.0 秒。
+    """
+    for path in ("tests/_e2e_pipeline.py", "tests/_mutation_check.py"):
+        src = Path(path).read_text(encoding="utf-8")
+        assert '".venv*"' in src, f"{path} が別 venv を除外していない"
+
+    # e2e は失敗時も複製を消す
+    e2e = Path("tests/_e2e_pipeline.py").read_text(encoding="utf-8")
+    assert "finally:" in e2e and "shutil.rmtree(work.parent" in e2e
+
+
+def test_stdin_readers_have_a_deadline():
+    """常時走るスクリプトが stdin で無限に待たないこと。
+
+    `isatty()` だけでは足りない —— 端末でなくても、パイプが開いたまま EOF が
+    来なければ `read()` は戻らない。statusLine は 30 秒ごと、提出ゲートは
+    **毎回の Bash の前**に走る。
+    """
+    import subprocess
+    import sys as _sys
+
+    for mod in ("scripts.harness.statusline", "scripts.harness.submit_gate"):
+        src = Path(mod.replace(".", "/") + ".py").read_text(encoding="utf-8")
+        assert "_read_stdin_with_deadline" in src, f"{mod} が期限つき読み取りでない"
+
+        p = subprocess.Popen([_sys.executable, "-m", mod], cwd=ROOT,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                             env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)})
+        try:
+            p.wait(timeout=15)          # stdin を閉じずに待つ
+        except subprocess.TimeoutExpired:
+            p.kill()
+            pytest.fail(f"{mod} が stdin でブロックしている")
+        finally:
+            if p.poll() is None:
+                p.kill()

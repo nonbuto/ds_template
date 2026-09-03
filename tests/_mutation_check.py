@@ -93,7 +93,9 @@ def run_tests(work: Path) -> bool:
 def main() -> int:
     work = Path(tempfile.mkdtemp()) / "repo"
     shutil.copytree(ROOT, work, ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".git", ".venv", "kaggle_nb", "data", "*.db"))
+        # `.venv` の完全一致だと **`.venv-autogluon`（580 MB）が毎回コピーされる**。
+        # 実測: 504 MB / 1.8 秒 → 1.8 MB / 0.0 秒
+        "__pycache__", "*.pyc", ".git", ".venv*", "kaggle_nb", "data", "*.db"))
 
     print(f"  {'検知':<6} {'変異':<40}")
     print("  " + "-" * 50)

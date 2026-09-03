@@ -19,6 +19,7 @@ Stage 3（作業用HP、20〜30試行）と Stage 5（本格HP、100試行以上
 
 import argparse
 import json
+import time
 
 import numpy as np
 import optuna
@@ -180,13 +181,25 @@ def main():
     study_name = f"{args.model}_{args.tag}_{sig}"
     storage = f"sqlite:///{study_dir / f'{study_name}.db'}"
 
-    study = optuna.create_study(
-        direction="maximize" if greater_is_better() else "minimize",   # 指標の向きに追従
-        sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE),
-        study_name=study_name,
-        storage=storage,
-        load_if_exists=True,
-    )
+    # **初回の並行起動で SQLite の schema race が起きる。** DB が無い状態から
+    # 4 プロセス同時に開くと `table studies already exists` で 1〜3 個が即死する
+    # （trial が 1 つも走る前）。CLAUDE.md は並行実行を前提にしているのでリトライする。
+    study = None
+    for attempt in range(5):
+        try:
+            study = optuna.create_study(
+                direction="maximize" if greater_is_better() else "minimize",
+                sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE),
+                study_name=study_name,
+                storage=storage,
+                load_if_exists=True,
+            )
+            break
+        except Exception as exc:            # sqlalchemy の OperationalError 等
+            if attempt == 4:
+                raise
+            print(f"  ⏳ study の作成が競合しました（{type(exc).__name__}）。再試行 {attempt + 1}/4")
+            time.sleep(0.3 * (attempt + 1))
     done = len(study.trials)
     if done:
         print(f"  既存 study を再開: 完了済み {done} 試行 → 追加 {args.n_trials} 試行")

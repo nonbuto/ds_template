@@ -326,6 +326,41 @@ def _previous_experiment_scores(exclude_id: Optional[str] = None,
 RUNNING_DIR = EXPERIMENTS_DIR / ".running"
 
 
+def _sweep_dead_heartbeats() -> int:
+    """死んだプロセスの `.running/*.json` を片付ける。戻り値は削除した件数。
+
+    自動掃除がどこにも無く、statusline が `💀残骸N` を人が消すまで出し続けていた。
+    実験の開始時に掃除すれば、放置されない。
+    """
+    if not RUNNING_DIR.exists():
+        return 0
+    removed = 0
+    for path in RUNNING_DIR.glob("*.json"):
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not _is_claimed_and_alive(f"{RUNNING_MARK_PREFIX} pid={state.get('pid')}）"):
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    """JSON を一時ファイル経由で原子的に書く（読み手が途中を見ないように）。"""
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def _heartbeat_path(exp_id: str) -> Path:
     return RUNNING_DIR / f"{exp_id}.json"
 
@@ -347,7 +382,11 @@ def _heartbeat_write(exp_id: str, **fields) -> None:
                 state = {}
         state.update(fields)
         state["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        # **原子的に書く。** truncate 書きだと、読み手（statusline / job_status）が
+        # 書き換えの途中を読んで JSON パースに失敗する。
+        # 実測（書き手 1・読み手 1・3 秒）: 77,054 回中 **1,807 回（2.3%）が失敗**。
+        # `csvlock` と `FoldCache` は既に tmp + os.replace を使っているので揃える。
+        _write_json_atomic(path, state)
     except Exception:
         pass   # ハートビートの失敗で学習を止めない
 
@@ -366,14 +405,14 @@ def _save_feature_snapshot(exp_id: str, feature_names: list[str],
 
     PARAMS_DIR.mkdir(parents=True, exist_ok=True)
     path = PARAMS_DIR / f"features_{exp_id}.json"
-    path.write_text(json.dumps({
+    _write_json_atomic(path, {
         "experiment_id": exp_id,
         "model": model,
         "oof_score": oof_score,
         "n_features": len(feature_names),
         "features": list(feature_names),
         "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    })
 
 
 PUB_OOF_GAP_WINDOW = 5        # 直近N実験を見る
@@ -647,8 +686,14 @@ def _claim_experiment_id(experiment_name: str, model: str, description: str) -> 
             has_purpose = bool((r.get("experiment_question") or "").strip())
             no_score = (not (r.get("oof_score") or "").strip()
                         and not (r.get("cv_val_mean") or "").strip())
-            if not (has_purpose and no_score):
+            # **クラッシュが残した行も回収する。** 以前は `has_purpose`（= `/ds-new-experiment`
+            # の予約行）でないと `_is_claimed_and_alive` に到達せず、SIGKILL で落ちた実験の
+            # 行が**永久に回収されなかった**（実測: 落ちるたびに ID が 1 つ飛び、
+            # スコア列が空のゾンビ行が台帳に積まれる）。
+            if not no_score:
                 continue
+            if not has_purpose and not (r.get("notes") or "").startswith(RUNNING_MARK_PREFIX):
+                continue      # 目的も実行中マークも無い行は、単に未完の記録として触らない
             # **既に別プロセスが走り出している予約行は取らない。**
             # 以前はここで印を付けずに return していたため、ロックを抜けた瞬間に
             # 次のプロセスが同じ予約行を見つけ、8 プロセス同時で全員が同じ ID を名乗った
@@ -742,6 +787,7 @@ class ExperimentTracker:
         if notes:
             self.notes = notes
 
+        _sweep_dead_heartbeats()
         self._started_at = datetime.now()
         self._experiment_id = _claim_experiment_id(
             self.experiment_name, self.model, self.description)

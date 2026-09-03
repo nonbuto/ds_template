@@ -41,7 +41,9 @@ def build_workdir(task: str) -> Path:
     """タスク別に、合成データと config を仕込んだ作業ディレクトリを作る。"""
     work = Path(tempfile.mkdtemp()) / "repo"
     shutil.copytree(ROOT, work, ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".git", ".venv", "kaggle_nb", "data"))
+        # `.venv` の完全一致だと **`.venv-autogluon`（580 MB）が毎回コピーされる**。
+        # 実測: 504 MB / 1.8 秒 → 1.8 MB / 0.0 秒
+        "__pycache__", "*.pyc", ".git", ".venv*", "kaggle_nb", "data"))
     raw = work / "data" / "raw"
     raw.mkdir(parents=True)
     for d in ("processed", "output/submissions", "output/oof", "output/models",
@@ -116,8 +118,20 @@ def check_submission(work: Path, task: str) -> None:
 
 
 def run_task(task: str) -> None:
+    """1 タスク分を通す。**失敗しても複製を残さない**（`try/finally`）。
+
+    以前は成功時にしか `rmtree` しておらず、`run()` が `sys.exit(1)` する経路や
+    assert で落ちる経路で複製が残り続けた（実測で 46 件・20.8 GB が残っていた）。
+    """
     print(f"\n──── {task} ────")
     work = build_workdir(task)
+    try:
+        _run_task_body(work, task)
+    finally:
+        shutil.rmtree(work.parent, ignore_errors=True)
+
+
+def _run_task_body(work: Path, task: str) -> None:
     run(work, "scripts.preprocess")
     run(work, "scripts.train", "--model", "lgb")
     check_submission(work, task)
@@ -147,7 +161,6 @@ def run_task(task: str) -> None:
     out = run(work, "scripts.blend", "--mode", "corr", "--oofs",
               f"a={oof[0]}", f"b={oof[-1]}")
     assert "単体OOFスコア" in out
-    shutil.rmtree(work.parent, ignore_errors=True)
 
 
 if __name__ == "__main__":

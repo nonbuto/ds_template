@@ -35,6 +35,27 @@ class RunOutputs:
     submission: Optional[Path]
 
 
+def _save_atomic(writer, path: Path, payload, suffix: str) -> None:
+    """一時ファイルに書いてから `os.replace` で差し替える。
+
+    **提出ファイルが途中まで書かれた状態で残ると、提出ゲートは通してしまう**
+    （行数を表示するだけで sample_submission と突き合わせていなかった）。
+    `np.save` は拡張子が `.npy` でないと勝手に付け足すので、一時名も同じ拡張子で終える。
+    """
+    import os
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=suffix)
+    os.close(fd)
+    try:
+        writer(Path(tmp), payload)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def _assert_row_alignment(n_sample: int, test: np.ndarray) -> None:
     """test 予測の行数が `sample_submission.csv` と一致することを確かめる。
 
@@ -120,8 +141,10 @@ def save_run_outputs(
     oof_path = OOF_DIR / f"oof_{exp_id}_{tag}.npy"
     test_path = OOF_DIR / f"test_{exp_id}_{tag}.npy"
     if save_npy:
-        np.save(oof_path, oof)
-        np.save(test_path, test)
+        # **原子的に書く。** 途中で落ちると「壊れたファイルが存在する」状態になり、
+        # 推論成果物ガードの glob は「ある」と判定して通す（`FoldCache` で塞いだのと同じ穴）。
+        _save_atomic(np.save, oof_path, oof, suffix=".npy")
+        _save_atomic(np.save, test_path, test, suffix=".npy")
 
     sub_path: Optional[Path] = None
     sample_path = RAW_DATA_DIR / "sample_submission.csv"
@@ -139,7 +162,7 @@ def save_run_outputs(
             TARGET_COL: _to_submission_values(test, mode),
         })
         sub_path = submission_path(model=tag, oof_score=oof_score, exp_id=exp_id)
-        sub.to_csv(sub_path, index=False)
+        _save_atomic(lambda pth, df: df.to_csv(pth, index=False), sub_path, sub, suffix=".csv")
 
     print(
         f"\n💾 成果物を保存しました（学習→提出まで 1 フロー）\n"

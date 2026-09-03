@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 11:17:41
-- **git**: `main` / 未コミット 4 件 / HEAD: 122b494 fix: 過補正の是正と「直したつもり」3 件（L-37）
+- **記録時刻**: 2026-09-03 13:29:43
+- **git**: `main` / 未コミット 10 件 / HEAD: d544776 feat: early stopping 後に学習 fold 全体で再学習する（`inner_refit` を既定に）— L-38
 <!-- END:auto-snapshot -->

@@ -156,15 +156,27 @@ def _deadline_and_slots() -> str:
     return " ".join(out)
 
 
-def main() -> int:
-    # **端末から起動されたときは stdin を読まない。** `sys.stdin.read()` は
-    # パイプが閉じられるまで戻らないので、手で叩くと固まる（submit_gate と同じ事故）。
-    # statusLine は 30 秒ごとに走るため、ここで詰まると影響が大きい。
+def _read_stdin_with_deadline(timeout: float = 1.0) -> str:
+    """stdin を**期限つき**で読む。閉じられないパイプで固まらないようにする。
+
+    `isatty()` だけでは足りない —— 端末でなくても、パイプが開いたまま EOF が
+    来なければ `read()` は戻らない。statusLine は 30 秒ごと、提出ゲートは
+    **毎回の Bash の前**に走るので、ここで詰まると全体が止まる。
+    """
+    import select
+    import sys as _sys
+
     try:
-        if not sys.stdin.isatty():
-            sys.stdin.read()      # hook 入力は使わないが、読み捨てて詰まりを防ぐ
+        if _sys.stdin.isatty():
+            return ""
+        ready, _, _ = select.select([_sys.stdin], [], [], timeout)
+        return _sys.stdin.read() if ready else ""
     except Exception:
-        pass
+        return ""
+
+
+def main() -> int:
+    _read_stdin_with_deadline()   # hook 入力は使わないが、読み捨てて詰まりを防ぐ
     try:
         parts = [p for p in (_experiment(), _jobs(), _deadline_and_slots()) if p]
         print(SEP.join(parts) if parts else "ds-template")

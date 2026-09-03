@@ -529,10 +529,15 @@ def main():
         model=args.model,
         features=f"{len(FEATURES)}features",
     )
+    # 学習条件は description に載せる（log.csv から事後に区別できるようにする）
     split_note = (f"{args.n_splits}-fold"
-                  + (f" / split_seed={args.split_seed}" if args.split_seed is not None else ""))
+                  + (f" / split_seed={args.split_seed}" if args.split_seed is not None else "")
+                  + f" / es={EARLY_STOPPING_ON}")
     tracker.start_run(description=f"{args.model} CV学習（{len(FEATURES)}特徴量 / {split_note}）")
-    tracker.log_params(params)
+    # HP だけでなく**学習プロトコル**も記録する。これが無いと、
+    # 同じ HP でも別条件で走った実験を事後に区別できない（`G-FAIR`）。
+    tracker.log_params({**params, "_early_stopping": EARLY_STOPPING_ON,
+                        "_n_splits": args.n_splits, "_split_seed": args.split_seed})
 
     # CV学習
     cv = get_cv(n_splits=args.n_splits, seed=args.split_seed)
@@ -555,7 +560,12 @@ def main():
     cache = FoldCache(tag=f"{args.model}_{len(FEATURES)}f", seed=RANDOM_STATE,
                       n_splits=args.n_splits, enabled=args.resume,
                       signature={"features": FEATURES, "params": params,
-                                 "n_splits": args.n_splits, "split_seed": args.split_seed})
+                                 "n_splits": args.n_splits, "split_seed": args.split_seed,
+                                 # **early stopping の方式も条件の一部。** 入れないと
+                                 # `--early-stopping val` で作った fold を
+                                 # `inner_refit` の実験として `--resume` が再利用し、
+                                 # 表示上は普通に完走する（実測）。
+                                 "early_stopping": EARLY_STOPPING_ON})
     if args.resume:
         print(cache.report())
 

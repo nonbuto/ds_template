@@ -31,12 +31,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # scripts/harness/ から見たリポジトリルート
 sys.path.insert(0, str(ROOT))
 
-from scripts.harness.deadline_status import (  # noqa: E402
-    DAILY_LIMIT,
-    count_todays_submissions,
-    parse_deadline,
-    read_deadline_from_competition_md,
-)
+# **`deadline_status` はトップレベルで import しない。**
+# それは `src/config.py` を読む → config を編集中・venv が壊れている・`uv sync` 途中の
+# いずれでも **main() に到達する前に落ちる**。PreToolUse hook がツールを止めるのは
+# exit 2 のときだけなので、exit 1 で落ちた提出コマンドは**確認なしで実行される**。
+# **ゲートが壊れたときだけゲートが消える**という最悪の形だった。
+# `build_brief()` の中で import すれば、既存の try/except が捕まえて ask に倒せる。
 
 ENV_ASSIGN_RE = re.compile(r"^\w+=")
 SUBCOMMANDS = {"competitions", "c"}
@@ -87,28 +87,31 @@ def _scan(command: str, depth: int) -> bool:
                 return True
             continue
 
-        k = 0
-        while k < len(tokens):
-            tok = tokens[k]
-            if tok in OPERATORS or ENV_ASSIGN_RE.match(tok) or Path(tok).name in WRAPPERS:
-                k += 1
-                continue
+        # ── **コマンド位置を追わず、全トークン位置で三つ組を探す** ──
+        # 以前はラッパー（`uv` `nohup` …）を透過して「コマンド本体」を追っていたが、
+        # そこに来るのが**ラッパーのオプション**だと本体と誤認し、次の演算子まで
+        # 全部読み飛ばしていた。実測で素通りした形:
+        #     uv run --no-project kaggle competitions submit …   ← 最も現実的
+        #     timeout 60 … / nice … / sudo -u me … / env -i … / xargs -I{} …
+        # 位置を追うのをやめれば、ラッパーの一覧を網羅する必要そのものが消える。
+        #
+        # 誤検知は増えない: クォートの中身は shlex が **1 トークンに融合**するので、
+        # `grep 'kaggle competitions submit' doc.md` は
+        # `['grep', 'kaggle competitions submit', 'doc.md']` となり三つ組にならない。
+        for k, tok in enumerate(tokens):
             if (Path(tok).name == "kaggle"
                     and tokens[k + 1:k + 2] and tokens[k + 1] in SUBCOMMANDS
                     and tokens[k + 2:k + 3] == ["submit"]):
                 return True
-            # `bash -c "…"` の "…" は実行されるので、中身をもう一段見る
+            # `bash -c "…"` の "…" は文字列ではなく**実行されるコマンド**なので中を見る
             if Path(tok).name in SHELL_WRAPPERS:
                 for j in range(k + 1, len(tokens)):
+                    if tokens[j] in OPERATORS:
+                        break
                     if tokens[j] == "-c" and j + 1 < len(tokens):
                         if _scan(tokens[j + 1], depth + 1):
                             return True
                         break
-                    if tokens[j] in OPERATORS:
-                        break
-            # コマンド本体が来たので、次の演算子までは引数。読み飛ばす
-            while k < len(tokens) and tokens[k] not in OPERATORS:
-                k += 1
     return False
 
 
@@ -135,6 +138,20 @@ def _git_status() -> str:
     if not out:
         return "clean ✅"
     return f"⚠️ 未コミット {len(out.splitlines())} 件（提出前は clean が規約）"
+
+
+def _expected_rows() -> int | None:
+    """`sample_submission.csv` の行数（ヘッダ除く）。取れなければ None。"""
+    try:
+        from src.config import RAW_DATA_DIR
+
+        path = RAW_DATA_DIR / "sample_submission.csv"
+        if not path.exists():
+            return None
+        with path.open() as f:
+            return sum(1 for _ in f) - 1
+    except Exception:
+        return None
 
 
 def _floor_lines(filename: str) -> list[str]:
@@ -197,6 +214,12 @@ def _floor_lines(filename: str) -> list[str]:
 
 def build_brief(command: str) -> tuple[str, bool]:
     """提出内容の実測ブリーフを組み立てる。戻り値は (本文, 致命的エラーか)。"""
+    # ここで import する（トップレベルだと config 破損でゲートごと落ちる → 上の注記）
+    from scripts.harness.deadline_status import (
+        DAILY_LIMIT, count_todays_submissions, parse_deadline,
+        read_deadline_from_competition_md,
+    )
+
     lines: list[str] = ["Kaggle 提出の確認（数値はすべて実測値です）", ""]
     fatal = False
 
@@ -219,6 +242,13 @@ def build_brief(command: str) -> tuple[str, bool]:
                    "⚠️ submission_path() 由来ではない可能性（sub_ で始まっていない）"
             lines.append(f"対象ファイル : {abs_path.name}")
             lines.append(f"               {n_rows:,} 行 / {size_kb:,.0f} KB / {conv}")
+            # **行数を表示するだけでなく突き合わせる。** 書き込み中に落ちた提出ファイルは
+            # 途中まで書かれた状態で残り、ゲートは行数を表示するだけで通していた（実測）。
+            expected = _expected_rows()
+            if expected is not None and n_rows != expected:
+                lines.append(f"               ❌ 行数が sample_submission と違います"
+                             f"（{n_rows:,} ≠ {expected:,}）。書き込み中の中断を疑ってください")
+                fatal = True
             lines.extend(_floor_lines(abs_path.name))
 
     # ── 本日の提出枠（UTC）──
@@ -268,6 +298,25 @@ def build_brief(command: str) -> tuple[str, bool]:
     return "\n".join(lines), fatal
 
 
+def _read_stdin_with_deadline(timeout: float = 1.0) -> str:
+    """stdin を**期限つき**で読む。閉じられないパイプで固まらないようにする。
+
+    `isatty()` だけでは足りない —— 端末でなくても、パイプが開いたまま EOF が
+    来なければ `read()` は戻らない。statusLine は 30 秒ごと、提出ゲートは
+    **毎回の Bash の前**に走るので、ここで詰まると全体が止まる。
+    """
+    import select
+    import sys as _sys
+
+    try:
+        if _sys.stdin.isatty():
+            return ""
+        ready, _, _ = select.select([_sys.stdin], [], [], timeout)
+        return _sys.stdin.read() if ready else ""
+    except Exception:
+        return ""
+
+
 def main() -> int:
     # 端末から起動された（＝hook 入力が来ない）場合は待たずに終わる。
     # `json.load(sys.stdin)` は stdin が閉じられないとブロックし続けるため、
@@ -278,10 +327,15 @@ def main() -> int:
               '  echo \'{"tool_name":"Bash","tool_input":{"command":"..."}}\''
               " | uv run python -m scripts.harness.submit_gate", file=sys.stderr)
         return 0
+    # **期限つきで読む。** パイプが開いたまま EOF が来ないと `json.load` は戻らず、
+    # PreToolUse は**毎回の Bash の前**に走るので全ツールが止まる。
+    raw = _read_stdin_with_deadline()
+    if not raw.strip():
+        return 0   # hook の入力が来ないときは素通しする（作業を止めない）
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(raw)
     except Exception:
-        return 0   # hook の入力が読めないときは素通しする（作業を止めない）
+        return 0
 
     if payload.get("tool_name") != "Bash":
         return 0
