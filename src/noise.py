@@ -199,7 +199,8 @@ def min_detectable_difference(se: float, sigma: float = SIGMA_MULTIPLIER,
     return float(sigma * se)
 
 
-def verdict(delta: float, se: float, sigma: float = SIGMA_MULTIPLIER) -> str:
+def verdict(delta: float, se: float, sigma: float = SIGMA_MULTIPLIER,
+            df: float | None = None) -> str:
     """効果量と床から、1 行の判定文を作る。
 
     **「測れていない」と「効果がない」を混同しない。** 前者は床を下げれば測れる可能性があり、
@@ -214,7 +215,9 @@ def verdict(delta: float, se: float, sigma: float = SIGMA_MULTIPLIER) -> str:
         return (f"床が算出できません（SE={se:.2e} ≈ 0）。fold 数を増やすか、"
                 "記録の精度を確認してください")
     z = delta / se
-    floor = min_detectable_difference(se, sigma)
+    # `df` を渡さないと、**少数標本から推定した SE に正規の 2σ** を当てることになる。
+    # `end_run` の診断は fold 差 5 個から SE を出すので、ここが効く。
+    floor = min_detectable_difference(se, sigma, df=df)
     if abs(delta) < floor:
         return (f"⬜ 測れていない（|Δ|={abs(delta):.5f} < {sigma:.0f}σ={floor:.5f}、z={z:+.2f}）"
                 "—— seed / fold を増やすか集約へ")

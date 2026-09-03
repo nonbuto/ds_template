@@ -452,7 +452,7 @@ def _pub_gap_threshold(rows: list) -> float:
     観測された gap の**前半のばらつき**を床の代理として使う
     （後半のばらつきを混ぜると、検知したい変化そのものが閾値を押し上げる）。
     """
-    from src.config import PUBLIC_TEST_ROWS
+    from src.config import PUBLIC_POS_RATE, PUBLIC_TEST_ROWS
     from src.noise import min_detectable_difference, single_score_se
 
     gaps, scores = [], []
@@ -466,8 +466,11 @@ def _pub_gap_threshold(rows: list) -> float:
 
     if PUBLIC_TEST_ROWS and scores:
         try:
+            # **陽性率を渡す。** 半々と決め打つと不均衡データで床が最大 4.6 倍過小になり、
+            # このガードは「鳴りにくい方向」へずれる（実測: 陽性率 2% で 0.00463 vs 0.00101）。
             se = single_score_se(metric_name="auc", n=PUBLIC_TEST_ROWS,
-                                 score=float(np.median(scores)))
+                                 score=float(np.median(scores)),
+                                 pos_rate=PUBLIC_POS_RATE or 0.5)
             return min_detectable_difference(se)
         except ValueError:
             pass          # auc 以外は解析式が無いので観測ベースへ落ちる
@@ -1005,7 +1008,10 @@ class ExperimentTracker:
                       else float("nan"))
                 print(f"     前実験 OOF={prev:.5f} → 今回 {oof_score:.5f}  ΔOOF={d:+.5f}")
                 if se == se:      # NaN でない
-                    print(f"     fold対応差の床: 1σ={se:.5f}  → {noise_verdict(d, se)}")
+                    # fold 差から推定した SE の自由度は fold 数 − 1。
+                    # 正規の 2σ を当てると少数標本で甘くなる（`min_detectable_difference`）
+                    df = max(len(self._fold_val_scores) - 1, 1)
+                    print(f"     fold対応差の床: 1σ={se:.5f}  → {noise_verdict(d, se, df=df)}")
                 else:
                     print("     fold対応差の床: 算出不可（前実験の fold スコアが無い/fold 数が違う）"
                           "\n     → 行単位で測るなら src.noise.paired_se(y, oof_new, oof_prev)")

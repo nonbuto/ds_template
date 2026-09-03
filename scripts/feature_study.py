@@ -50,6 +50,23 @@ from src.experiment import ExperimentTracker
 GAP_NOTABLE = 0.0005      # 過学習の兆候（gap の拡大）。効果量とは別軸で見る
 
 
+def _welch_df(se_boot: float, se_splits: float, n_splits: int) -> float | None:
+    """合成した SE の**有効自由度**（Welch–Satterthwaite）。
+
+    ブートストラップ由来の成分は `DEFAULT_N_BOOT-1` の自由度を持ち、
+    分割由来は `n_splits-1` しか持たない。両者を合成した SE に
+    「小さい方の自由度」を当てると過補正になる（検出力が 5.7% まで落ちた）。
+    """
+    from src.noise import DEFAULT_N_BOOT
+
+    a, b = float(se_boot), float(se_splits)
+    if not (np.isfinite(a) and np.isfinite(b)) or (a == 0 and b == 0):
+        return None
+    num = (a**2 + b**2) ** 2
+    den = a**4 / max(DEFAULT_N_BOOT - 1, 1) + b**4 / max(n_splits - 1, 1)
+    return float(num / den) if den > 0 else None
+
+
 def build_verdict(delta: float, floor: float, z: float, gap_delta: float,
                   is_screening: bool) -> str:
     """ΔOOF・床・gap から判定文を作る。
@@ -256,13 +273,27 @@ def main():
     #
     # 分割が 1 回しかないときは分割成分を推定できないので、行・fold の大きい方を
     # 採り「下限」と明示する（`is_screening`）。
-    se = (float(np.hypot(np.nanmax([se_rows, se_folds]), se_splits))
-          if len(per_split) >= 3 else float(np.nanmax([se_rows, se_folds])))
+    # 合成した SE の自由度は成分ごとに違う。**支配的な `se_rows` は 400 回の
+    # ブートストラップから推定されており自由度は実質無限大**なのに、
+    # `df = m-1` を全体に当てると精度の高い成分まで不確かと見なす二重の罰になる。
+    # 実測（σ_row=0.0024 / σ_split=0.0034、真の効果 +0.008、m=3）:
+    #     t(m−1) を全体に当てる : 偽陽性 0.0% / **検出力 5.7%**  ← 直前の実装
+    #     Welch の有効自由度     : 偽陽性 5.5% / 検出力 62.7%
+    #     正規 2σ               : 偽陽性 6.6% / 検出力 72.8%
+    # 「偽陽性 33%」を「検出力 5.7%」で置き換えては意味がない（`G-PERSIST`）。
+    _hi = float(np.nanmax([se_rows, se_folds])) if np.isfinite([se_rows, se_folds]).any() else np.nan
+    if len(per_split) >= 3:
+        # 片方だけ欠けても分割の床は活かす（両方欠けたときだけ床なしにする）
+        hi_safe = 0.0 if not np.isfinite(_hi) else _hi
+        se = float(np.hypot(hi_safe, se_splits))
+        df_eff = _welch_df(hi_safe, se_splits, len(per_split))
+    else:
+        se, df_eff = _hi, None
     split_deltas = (", ".join(f"{d:+.5f}" for d in per_split) if len(per_split) > 1
                     else "（--n-repeats 2 以上で分割を引き直せます）")
     # 分割から推定した SE は自由度 m−1。少ない繰り返しに正規の 2σ を当てると
     # 名目 5% のつもりで実際は 18%（m=3）になる（`min_detectable_difference` の docstring）。
-    floor = min_detectable_difference(se, df=(len(per_split) - 1) if len(per_split) >= 3 else None)
+    floor = min_detectable_difference(se, df=df_eff)
     z = delta / se if se > 0 else float("nan")
 
     # ── スクリーニングと採用判定を分ける ──

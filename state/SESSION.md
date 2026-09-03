@@ -74,6 +74,6 @@
 
 <!-- BEGIN:auto-snapshot (scripts/harness/session_snapshot.py が生成・手で編集しない) -->
 ## 自動スナップショット（圧縮直前に機械記録・上限行数の対象外）
-- **記録時刻**: 2026-09-03 10:17:34
-- **git**: `main` / 未コミット 3 件 / HEAD: d120ed5 fix: DS 検査の中重要度 6 件（clip の NaN 全滅 / 陽性率 / √2 / t 分布 / NB 補正 / 回帰 pseudo）
+- **記録時刻**: 2026-09-03 10:28:57
+- **git**: `main` / 未コミット 10 件 / HEAD: 54f992c docs: 旧 TE API の誤用余地を塞ぐ（「fold 外」という言葉が誤解を招いていた）
 <!-- END:auto-snapshot -->

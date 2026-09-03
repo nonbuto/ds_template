@@ -74,6 +74,14 @@ def cb_space(trial: optuna.Trial) -> dict[str, Any]:
     }
 
 
+# NN の隠れ層構成。Optuna にはキー（文字列）を選ばせ、ここで実体に戻す。
+_HIDDEN_SIZES: dict[str, list[int]] = {
+    "256x3": [256] * 3,
+    "512x3": [512] * 3,
+    "256x4": [256] * 4,
+}
+
+
 def nn_space(trial: optuna.Trial) -> dict[str, Any]:
     """pytabkit（RealMLP / TabM）の探索空間。
 
@@ -86,10 +94,11 @@ def nn_space(trial: optuna.Trial) -> dict[str, Any]:
         "verbosity": 0,
         "n_epochs": trial.suggest_int("n_epochs", 32, 256, log=True),
         "lr": trial.suggest_float("lr", 1e-3, 1e-1, log=True),
-        # Optuna の categorical は **tuple/スカラーしか永続化できない**（list を渡すと
-        # UserWarning が出て、SQLite に保存した study の再開時に型が一致しなくなる）。
-        # `list(...)` で渡す側に戻す。
-        "hidden_sizes": list(trial.suggest_categorical(
-            "hidden_sizes", [(256,) * 3, (512,) * 3, (256,) * 4])),
+        # Optuna の categorical は**選択肢そのものがスカラー**でないと警告を出す。
+        # tuple にしても「要素がコンテナ」である限り警告は消えない（実測）。
+        # 文字列を選ばせて展開表で戻すと、SQLite に入るのはスカラー文字列になり
+        # study 再開時の型一致も保証される。
+        "hidden_sizes": list(_HIDDEN_SIZES[
+            trial.suggest_categorical("hidden_sizes", list(_HIDDEN_SIZES))]),
         "p_drop": trial.suggest_float("p_drop", 0.0, 0.3),
     }

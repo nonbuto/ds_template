@@ -65,6 +65,8 @@ def add_target_encoding(
     groups=None,
     smoothing: float = DEFAULT_SMOOTHING,
     suffix: str = "_te",
+    *,
+    is_fold_subset: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """target encoding を計算して列を足す（**低レベル API**）。
 
@@ -93,6 +95,19 @@ def add_target_encoding(
         だから渡すものが「その fold の学習部分」でなければ意味を成さない。
     """
     from src.metrics import get_cv, get_groups, is_regression
+
+    # **リークするかどうかを呼び出し側の記憶に任せない**（`G-MECH`）。
+    # 「渡したのは fold の学習部分です」という自己申告を必須にする。
+    # 前処理で 1 行書けば実測 +0.019 AUC の楽観が静かに戻る種類の誤用なので、
+    # 文書の警告だけでは足りない。
+    if not is_fold_subset:
+        raise ValueError(
+            "add_target_encoding は**その fold の学習部分**を受け取る低レベル API です。\n"
+            "   train 全体を渡して 1 本作り、それをモデルの CV で使い回すと\n"
+            "   **入れ子のリーク**になります（効果ゼロの列で OOF AUC 0.5194 / z=+3.28）。\n"
+            "   → 通常は add_target_encoding_in_fold() を fold ループの内側で呼んでください。\n"
+            "   意図して低レベル API を使う場合は is_fold_subset=True を明示してください。"
+        )
 
     y = np.asarray(y)
     cv = cv if cv is not None else get_cv()
@@ -205,9 +220,24 @@ def add_target_encoding_in_fold(
 
     # 学習部分は内側 CV で out-of-fold に、検証部分は学習部分の全体で
     tr_out, val_out = add_target_encoding(X_tr, X_val.reset_index(drop=True), columns, y_tr,
-                                          cv=inner_cv, smoothing=smoothing, suffix=suffix)
+                                          cv=inner_cv, smoothing=smoothing, suffix=suffix,
+                                          is_fold_subset=True)
     test_out = None
     if X_test is not None:
-        _, test_out = add_target_encoding(X_tr, X_test.reset_index(drop=True), columns, y_tr,
-                                          cv=inner_cv, smoothing=smoothing, suffix=suffix)
+        # **内側 CV を 2 回まわさない。** test 側は学習部分全体の mapping を使うだけなので、
+        # `_smoothed_map` を 1 回作って map すれば足りる（実測で 1.88 倍の無駄だった）。
+        test_out = X_test.reset_index(drop=True).copy()
+        from src.metrics import is_regression as _is_reg
+
+        classes = [] if _is_reg() else sorted(np.unique(y_tr).tolist())
+        targets = ([(f"c{c}", (y_tr == c).astype(float)) for c in classes]
+                   if len(classes) > 2 else [("", y_tr.astype(float))])
+        for col in columns:
+            keys = X_tr[col].astype("object")
+            for tag, tgt in targets:
+                name = f"{col}{suffix}" + (f"_{tag}" if tag else "")
+                prior = float(tgt.mean())
+                mapping = _smoothed_map(keys, tgt, prior, smoothing)
+                mapped = test_out[col].astype("object").map(mapping)
+                test_out[name] = mapped.fillna(prior).to_numpy(dtype=float)
     return tr_out, val_out, test_out

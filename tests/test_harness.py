@@ -2181,7 +2181,7 @@ def test_target_encoding_does_not_leak():
     effect = {f"c{i}": i / 7 for i in range(8)}
     y = (rng.random(n) < np.array([0.2 + 0.6 * effect[c] for c in df.city])).astype(int)
 
-    te, _ = add_target_encoding(df, None, ["row_id", "city"], y)
+    te, _ = add_target_encoding(df, None, ["row_id", "city"], y, is_fold_subset=True)
 
     leaked = roc_auc_score(y, te["row_id_te"])
     assert abs(leaked - 0.5) < 0.05, f"一意な列から情報が漏れている（AUC={leaked:.5f}）"
@@ -2201,7 +2201,8 @@ def test_target_encoding_test_side_uses_full_train():
     test = pd.DataFrame({"k": ["a", "b", "zzz"]})       # zzz は train に無い
     y = np.array([1] * 20 + [0] * 20)
 
-    _, te_test = add_target_encoding(train, test, ["k"], y, smoothing=0.0)
+    _, te_test = add_target_encoding(train, test, ["k"], y, smoothing=0.0,
+                                     is_fold_subset=True)
     vals = te_test["k_te"].to_numpy()
     assert vals[0] > vals[1], "a(全部1) が b(全部0) より高くない"
     assert abs(vals[2] - y.mean()) < 1e-9, "未知カテゴリが事前平均になっていない"
@@ -2806,7 +2807,9 @@ def test_nested_te_leak_is_measurably_removed():
     cv = StratifiedKFold(5, shuffle=True, random_state=0)
 
     def oof_preprocessed():
-        te, _ = add_target_encoding(df, None, ["c"], y, cv=cv, smoothing=10.0)
+        # わざと誤用する（前処理で 1 本作って使い回す）。ガードは明示で外す
+        te, _ = add_target_encoding(df, None, ["c"], y, cv=cv, smoothing=10.0,
+                                    is_fold_subset=True)
         oof = np.zeros(n)
         for tr, va in cv.split(df, y):
             m = DecisionTreeClassifier(max_depth=6, random_state=0)
@@ -2842,3 +2845,147 @@ def test_low_level_te_api_warns_about_its_scope():
     assert "その fold の学習部分" in doc
     assert "入れ子" in doc
     assert "add_target_encoding_in_fold" in doc, "正しい API へ誘導していない"
+
+    # **文書だけでなく実行時に止める**（`G-MECH`: 呼び出し側の記憶に任せない）
+    import pandas as pd
+    with pytest.raises(ValueError, match="fold の学習部分"):
+        add_target_encoding(pd.DataFrame({"k": ["a", "b"]}), None, ["k"], [0, 1])
+
+
+# ──────────────────────────────────────────────────────────
+# 23. 過補正の是正（偽陽性を潰して検出力を失わない）
+# ──────────────────────────────────────────────────────────
+
+def test_welch_df_restores_detection_power():
+    """合成した SE に「小さい方の自由度」を当てないこと。
+
+    支配的な `se_rows` は 400 回のブートストラップから推定され自由度は実質無限大なのに、
+    `df = m−1` を全体に当てると精度の高い成分まで不確かと見なす二重の罰になる。
+    実測（σ_row=0.0024 / σ_split=0.0034、真の効果 +0.008、m=3）:
+
+        t(m−1) を全体に当てる : 偽陽性 0.0% / **検出力 5.7%**
+        Welch の有効自由度     : 偽陽性 5.5% / 検出力 62.7%
+
+    **「偽陽性 33%」を「検出力 5.7%」で置き換えては意味がない**（`G-PERSIST`）。
+    """
+    import numpy as np
+
+    from scripts.feature_study import _welch_df
+    from src.noise import min_detectable_difference as mdd
+
+    for m in (3, 5, 10):
+        se_sp = 0.0034 / np.sqrt(m)
+        df_eff = _welch_df(0.0024, se_sp, m)
+        assert df_eff > m - 1, f"m={m}: 有効自由度 {df_eff:.1f} が m-1 以下"
+        se = float(np.hypot(0.0024, se_sp))
+        assert mdd(se, df=df_eff) < mdd(se, df=m - 1), f"m={m}: 床が縮んでいない"
+
+    # 片方の成分が 0 でも壊れない
+    assert _welch_df(0.0, 0.001, 5) is not None
+    assert _welch_df(np.nan, 0.001, 5) is None
+
+
+def test_floor_survives_when_one_component_is_missing():
+    """行・fold の一方が NaN でも、分割の床は活かすこと。
+
+    `nanmax([nan, nan])` は NaN を返し `hypot(nan, x)` も NaN になるので、
+    有効な分割の床があるのに「床を推定できません」になっていた。
+    """
+    import numpy as np
+
+    src = Path("scripts/feature_study.py").read_text(encoding="utf-8")
+    assert "hi_safe = 0.0 if not np.isfinite(_hi) else _hi" in src
+    assert np.isfinite(np.hypot(0.0, 0.002)), "前提の確認"
+
+
+def test_verdict_accepts_degrees_of_freedom():
+    """`verdict()` が自由度を受け取り、少数標本で床を広げること。
+
+    `end_run` の診断は fold 差 5 個から SE を出すので、正規の 2σ では甘くなる。
+    `feature_study` で潰した問題が、**毎回必ず表示される診断**では残っていた。
+    """
+    from src.noise import verdict
+
+    loose = verdict(0.001, 0.0004)                 # 正規 2σ
+    strict = verdict(0.001, 0.0004, df=4)          # fold 5 個から推定
+    assert "改善" in loose and "測れていない" in strict
+
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    assert "noise_verdict(d, se, df=df)" in src, "end_run が自由度を渡していない"
+
+
+def test_public_pos_rate_reaches_the_guard():
+    """陽性率が Public 過剰浮上ガードの閾値まで届いていること。
+
+    `pos_rate` を API に足しても**呼び出し元が渡さなければ**床は半々仮定のまま
+    （不均衡で最大 4.6 倍過小 ＝ 警告が鳴りにくい）。
+    """
+    from src import config
+
+    assert hasattr(config, "PUBLIC_POS_RATE")
+    src = Path("src/experiment.py").read_text(encoding="utf-8")
+    assert "pos_rate=PUBLIC_POS_RATE or 0.5" in src, "ガードが陽性率を使っていない"
+
+
+def test_optuna_categorical_choices_are_scalars():
+    """Optuna の選択肢がスカラーであること（コンテナだと警告が出続ける）。
+
+    `list` → `tuple` にしても**要素がコンテナである限り警告は消えない**。
+    前回「直した」と報告したが実際には出続けていた。
+    """
+    import warnings
+
+    import optuna
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    from src.hp_spaces import nn_space
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        params = nn_space(optuna.create_study().ask())     # 警告が出れば例外になる
+    assert isinstance(params["hidden_sizes"], list)
+    assert all(isinstance(v, int) for v in params["hidden_sizes"])
+
+
+def test_low_level_te_requires_explicit_acknowledgement():
+    """旧 TE API が**実行時に**誤用を止めること（文書の警告だけにしない）。
+
+    `G-MECH`: 「規約を読んだか」は観測できないが「明示的に申告したか」は観測できる。
+    前処理で 1 行書けば実測 +0.019 AUC の楽観が静かに戻る種類の誤用。
+    """
+    import pandas as pd
+
+    from src.utils.encoders import add_target_encoding
+
+    df = pd.DataFrame({"k": ["a", "b"] * 10})
+    y = [0, 1] * 10
+    with pytest.raises(ValueError, match="fold の学習部分"):
+        add_target_encoding(df, None, ["k"], y)
+
+    out, _ = add_target_encoding(df, None, ["k"], y, is_fold_subset=True)
+    assert "k_te" in out
+
+
+def test_in_fold_te_does_not_run_inner_cv_twice():
+    """test を渡しても内側 CV を 2 回まわさないこと（実測 1.88 倍の無駄だった）。"""
+    import numpy as np
+    import pandas as pd
+
+    from src.utils import encoders
+
+    calls = {"n": 0}
+    original = encoders.add_target_encoding
+
+    def counting(*a, **kw):
+        calls["n"] += 1
+        return original(*a, **kw)
+
+    encoders.add_target_encoding = counting
+    try:
+        X = pd.DataFrame({"c": [f"v{i % 5}" for i in range(60)]})
+        y = np.arange(60) % 2
+        encoders.add_target_encoding_in_fold(X.iloc[:40], y[:40], X.iloc[40:50],
+                                             X.iloc[50:], ["c"])
+    finally:
+        encoders.add_target_encoding = original
+    assert calls["n"] == 1, f"内側 CV を {calls['n']} 回まわしている"

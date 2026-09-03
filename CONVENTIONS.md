@@ -227,6 +227,7 @@ metric, cv = get_metric(), get_cv()
 | `GROUP_COL` | `GroupKFold` 系で**同じ値の行を同じ fold に入れる**列名 | `None` |
 | `DAILY_SUBMISSION_LIMIT` | 1 日あたりの提出上限（**コンペにより 5 のこともある**） | 10 |
 | `PUBLIC_TEST_ROWS` | Public LB の行数。分かると**ノイズ床を解析式で出せる**（`src/noise.py`）。未設定なら観測値から推定する | `None` |
+| `PUBLIC_POS_RATE` | 陽性率。**AUC の床は少数クラスの件数に支配される**ので、半々と決め打つと不均衡データで最大 4.6 倍過小になる | `None` |
 
 学習の挙動を変えるもの（**変えたら過去の実験と OOF が比較できなくなる**）:
 
