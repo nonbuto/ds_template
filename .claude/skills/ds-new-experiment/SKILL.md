@@ -120,9 +120,21 @@ argument-hint: <実験名>
 
 4. `src/config.py` の `EXPERIMENT_NAME` を更新
 
-5. `experiments/log.csv` に今回の実験行を予約追記する
-   - `experiment_name`, `experiment_question`（Q1の回答）, `success_criteria`（Q2）, `abort_criteria`（Q3）を記録
-   - スコア列は空欄のまま（`/ds-kaggle-submit` で埋める）
+5. `experiments/log.csv` に今回の実験行を**コマンドで**予約する（手で書かない）
+
+   ```bash
+   uv run python -m scripts.harness.reserve_experiment \
+       --name "<実験名>" --question "<Q1の回答>" \
+       --success "<Q2の回答>" --abort "<Q3の回答>"
+   ```
+
+   次に学習を回すと `ExperimentTracker` がこの行に結果をマージする（目的とスコアが 1 行に揃う）。
+   スコア列は空欄のまま（`/ds-kaggle-submit` で埋める）。
+
+   > **なぜコマンドにしたか**: 以前は「予約追記する」と書くだけで**手段が無かった**。
+   > 前コンペ 271 実験の実測で `experiment_question` / `success_criteria` /
+   > `abort_criteria` の記入率は **35%**、機械化されている `learning` は **88%**。
+   > **手で書けと言うだけの規律は守られない**（`G-MECH`）。
 
 6. **`state/SESSION.md` を更新する**（セッション引き継ぎのため）
    - `現在のステージ`: 現在の Stage 番号と状況

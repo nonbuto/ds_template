@@ -179,6 +179,13 @@ STEP E【確認結果の記録】
 
 可視化確認が完了したら `scripts/feature_study.py` でΔOOFを計測し、結果を `/ds-fe-hypothesis update H-NNN` で記録する。
 
+> **スクリーニングと採用判定を分ける。**
+> `uv run python -m scripts.feature_study --new-feature <列>` の既定（`--n-repeats 1`）は
+> **候補を絞るためのスクリーニング**で、表示される床は**下限**でしかない
+> （分割由来の分散を含まないため。実測でそれが最大成分になる）。
+> **採用を決めるときは `--n-repeats 3` 以上で測り直す。**
+> 判定文自体が「`--n-repeats 3` で測り直してから採否を決める」と次の行動を指定する。
+
 ---
 
 ## モード2: 検証結果の記録（`/ds-fe-hypothesis update H-NNN`）

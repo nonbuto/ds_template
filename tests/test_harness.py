@@ -3633,3 +3633,78 @@ def test_visualization_guard_prints_runnable_commands():
     assert cmds, "解除手順が印字されていない"
     for c in cmds:
         assert c == "-m", f"`{c}` 形式は src を import できない（-m 形式にする）"
+
+
+def test_experiment_reservation_has_a_command(tmp_path, monkeypatch):
+    """実験の目的・成功基準・撤退基準を**コマンドで**予約できること。
+
+    以前は `/ds-new-experiment` が「log.csv に予約追記する」と指示しながら
+    **手段を用意していなかった**。前コンペ 271 実験の実測:
+
+        experiment_question / success_criteria / abort_criteria : **35%**
+        learning（end_run / submit が支える）                    : **88%**
+
+    **手で書けと言うだけの規律は守られない**（`G-MECH`）。
+    """
+    import csv as _csv
+    import subprocess
+    import sys as _sys
+
+    from src.experiment import LOG_CSV_COLUMNS
+
+    log = tmp_path / "log.csv"
+    with open(log, "w", newline="") as f:
+        _csv.DictWriter(f, fieldnames=LOG_CSV_COLUMNS).writeheader()
+
+    # 予約コマンドは既定パスに書くので、config を差し替えた環境で走らせる
+    runner = tmp_path / "run.py"
+    runner.write_text(
+        "import sys; sys.path.insert(0, %r)\n"
+        "import src.experiment as ex; from pathlib import Path\n"
+        "ex.LOG_CSV_PATH = Path(%r)\n"
+        "sys.argv = ['x', '--name', 't', '--question', 'Qです',\n"
+        "            '--success', 'Sです', '--abort', 'Aです']\n"
+        "from scripts.harness import reserve_experiment as r\n"
+        "import src.experiment\n"
+        "r.main()\n" % (str(ROOT), str(log)), encoding="utf-8")
+    r = subprocess.run([_sys.executable, str(runner)], capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)})
+    assert r.returncode == 0, r.stderr[-800:]
+
+    with open(log, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["experiment_question"] == "Qです"
+    assert rows[0]["success_criteria"] == "Sです"
+    assert rows[0]["abort_criteria"] == "Aです"
+    assert not rows[0]["oof_score"], "スコア列は空でなければならない"
+
+
+def test_reserved_row_is_inherited_by_start_run(tmp_path, monkeypatch):
+    """予約行の ID を `start_run` が引き継ぐこと（目的とスコアが 1 行に揃う）。"""
+    import csv as _csv
+    from datetime import datetime
+
+    from src import experiment as ex
+    from src.utils.csvlock import locked_csv
+
+    monkeypatch.setattr(ex, "LOG_CSV_PATH", tmp_path / "log.csv")
+    monkeypatch.setattr(ex, "RUNNING_DIR", tmp_path / "running")
+    ex._ensure_log_csv()
+    with locked_csv(ex.LOG_CSV_PATH, ex.LOG_CSV_COLUMNS) as rows:
+        rows.append({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                     "experiment_id": "001", "experiment_name": "t",
+                     "experiment_question": "Qです", "success_criteria": "Sです",
+                     "abort_criteria": "Aです"})
+
+    assert ex._claim_experiment_id("t", "lgb", "説明") == "001", "予約行を引き継いでいない"
+    with open(ex.LOG_CSV_PATH, newline="") as f:
+        row = list(_csv.DictReader(f))[0]
+    assert row["experiment_question"] == "Qです", "目的が失われた"
+
+
+def test_new_experiment_skill_points_to_the_command():
+    """`/ds-new-experiment` が予約コマンドを案内していること（手段の無い指示にしない）。"""
+    skill = Path(".claude/skills/ds-new-experiment/SKILL.md").read_text(encoding="utf-8")
+    assert "scripts.harness.reserve_experiment" in skill
+    assert "手で書かない" in skill

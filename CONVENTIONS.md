@@ -55,6 +55,7 @@
 | `scripts/visualize.py` | 2 | EDA可視化→`data/output/plots/`に画像保存 |
 | `scripts/feature_report.py` | 随時 | 特徴量重要度・ΔOOF棒グラフを画像生成 |
 | `scripts/harness/deadline_status.py` | 随時 | 現在UTC・締切・残り時間・本日の提出使用枠を一括表示 |
+| `scripts/harness/reserve_experiment.py` | 4・5・6 | 実験の目的・成功基準・撤退基準を log.csv に**予約行**として記録する（`/ds-new-experiment` が呼ぶ）。手書きだと記入率が 35% に落ちた |
 | `scripts/av_check.py` | 4 | AV診断（train/test 分布シフトの検出） |
 | `scripts/harness/doc_audit.py` | 随時 | ドキュメント階層の検査（重複・SSoT違反・参照切れ） |
 | `scripts/harness/viz_guard.py` | 随時 | 可視化・診断記録・推論成果物の機械チェック |

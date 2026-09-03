@@ -4,17 +4,22 @@
 保存済みの OOF/test 予測（.npy）を読み込み、最適重みブレンド・Greedy HC を実行する。
 手順と棄却分析は `PLAYBOOK.md#アンサンブル探索の手順stage-6` に対応している。
 
-使い方:
-    # STEP 1: 相関確認（必ず最初に実施）
-    uv run python -m scripts.blend --mode corr --oofs lgb=path1.npy cb=path2.npy
+使い方（**この順に進む**。詳細は `PLAYBOOK.md#アンサンブル探索の手順stage-6`）:
 
-    # STEP 2: 最適重みブレンド
-    uv run python -m scripts.blend --mode optimize --oofs lgb=path1.npy cb=path2.npy \
-        --tests lgb=test1.npy cb=test2.npy
+    # ① 相関確認 —— 高すぎる候補は追加しない
+    uv run python -m scripts.blend --mode corr --oofs lgb=p1.npy cb=p2.npy
 
-    # STEP 3: Greedy Hill Climbing
-    uv run python -m scripts.blend --mode greedy --oofs lgb=p1.npy cb=p2.npy xgb=p3.npy \
-        --tests lgb=t1.npy cb=t2.npy xgb=t3.npy
+    # ② 構成を決める（Caruana: 復元あり + サブセット bagging）
+    uv run python -m scripts.blend --mode hillclimb --oofs lgb=p1.npy cb=p2.npy \
+        --tests lgb=t1.npy cb=t2.npy
+
+    # ③ 結合方式を上げる（符号制約なし線形。弱い候補を引き算に使える）
+    uv run python -m scripts.blend --mode stack --oofs lgb=p1.npy cb=p2.npy \
+        --tests lgb=t1.npy cb=t2.npy
+
+補助・互換:
+    --mode optimize --n-seeds 8   # simplex の重み探索。天井帯の重み bagging（G-CEILING）
+    --mode greedy                 # 非復元・等重みの旧実装。過去実験の再現用
 """
 
 import argparse
@@ -132,11 +137,11 @@ def main():
         )
 
     # ──────────────────────────────────────────────
-    # STEP 1: 相関確認
+    # ① 相関確認
     # ──────────────────────────────────────────────
     if args.mode == "corr":
         names = list(oofs.keys())
-        print(f"\n【STEP 1: 相関確認】 モデル数: {len(names)}")
+        print(f"\n【① 相関確認】 モデル数: {len(names)}")
         print(f"{'モデルA':20s} {'モデルB':20s} {'相関':>8s} {'判定':>15s}")
         print("─" * 65)
         for i in range(len(names)):
@@ -156,14 +161,14 @@ def main():
     tests = {n: _as_1d(n, a) for n, a in parse_npy_args(args.tests).items()} if args.tests else {}
 
     # ──────────────────────────────────────────────
-    # STEP 2: 最適重みブレンド
+    # 補助: simplex の重み探索（天井帯の重み bagging 用）
     # ──────────────────────────────────────────────
     if args.mode == "optimize":
         names = list(oofs.keys())
         oofs_matrix = np.column_stack([oofs[n] for n in names])
         tests_matrix = np.column_stack([tests[n] for n in names]) if tests else None
 
-        print("\n【STEP 2: 最適重みブレンド】")
+        print("\n【補助: simplex 重み探索】※ 順路は ① corr → ② hillclimb → ③ stack")
         w_opt, best_score = optimize_weights(oofs_matrix, y, _ascending_metric(),
                                              n_seeds=args.n_seeds)
 
@@ -190,7 +195,7 @@ def main():
     # Caruana 型 ensemble selection（復元あり + サブセット bagging）
     # ──────────────────────────────────────────────
     if args.mode == "hillclimb":
-        print("\n【Caruana ensemble selection】")
+        print("\n【② Caruana ensemble selection】")
         weights, ens_oof, _ = hillclimb(oofs, y, _ascending_metric(),
                                         n_iter=args.n_iter, n_bags=args.n_bags)
         final_score = get_metric()(y, ens_oof)          # 表示は素の指標値
@@ -213,7 +218,7 @@ def main():
     # 符号制約なしスタッキング（simplex では表現できない結合）
     # ──────────────────────────────────────────────
     if args.mode == "stack":
-        print("\n【符号制約なしスタッキング】")
+        print("\n【③ 符号制約なしスタッキング】")
         coefs, ens_oof, ens_test, final_score = signed_stack(oofs, tests, y)
         for name, c in sorted(coefs.items(), key=lambda t: -abs(t[1])):
             print(f"  {name:20s}: coef={c:+.4f}")
@@ -226,10 +231,10 @@ def main():
         return
 
     # ──────────────────────────────────────────────
-    # STEP 3: Greedy Hill Climbing（非復元・等重み。互換のため残す）
+    # 互換: 非復元・等重みの旧実装（過去実験の再現用）（非復元・等重み。互換のため残す）
     # ──────────────────────────────────────────────
     if args.mode == "greedy":
-        print("\n【STEP 3: Greedy Hill Climbing】")
+        print("\n【互換: 非復元 Greedy】※ 新規は --mode hillclimb を使う")
         selected, ens_oof, ens_test, _ = greedy_ensemble(
             oofs=oofs, tests=tests, y=y, metric_fn=_ascending_metric(),
         )

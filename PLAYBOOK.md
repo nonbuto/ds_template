@@ -404,14 +404,22 @@ STEP 3【結合方式を上げる — signed_stack】
     `--mode optimize --n-seeds 8`（重み bagging → `G-CEILING` の集約戦略 (a)）
 
 STEP 5【Pseudo-labeling】
-  アンサンブルの多様性が飽和した場合に有効な代替戦略。
-  test の高信頼度サンプルに疑似ラベルを付与し、train に追加して再学習する:
+  アンサンブルの多様性が飽和した場合の代替戦略。**手書きしない** ——
+  `src/utils/pseudo.py` の `make_fold_pseudo()` を **fold ループの内側**で呼ぶ:
+
   ```python
-  test_proba = <最良モデルの test 予測>
-  mask = test_proba.max(axis=1) >= threshold  # 閾値: 0.95 を最初に試す
-  pseudo_df = test[mask].copy()               # 疑似ラベルサンプル
-  # 各 fold の train に pseudo を追加して学習。OOF は元 train のみで評価
+  from src.utils.pseudo import make_fold_pseudo, describe_pseudo
+
+  for tr_idx, va_idx in cv.split(X, y):
+      X_aug, y_aug, w_aug = make_fold_pseudo(
+          X.iloc[tr_idx], y.iloc[tr_idx], X_test, train_one_fold, threshold=0.95)
+      model.fit(X_aug, y_aug, sample_weight=w_aug)
   ```
+
+  **「全 train で学習したモデルで pseudo を作る」実装は OOF を必ず楽観側に寄せる**
+  （その予測が検証 fold の情報を含むため）。上の関数は**この fold の学習部分だけ**から作る。
+  採用件数は毎回表示される —— **前コンペでは 1 本も入っていないのに「寄与ゼロ」と結論していた**
+  （追試で z=+4.21 の改善と判明）。「効かなかった」の前に「実行されていたか」を見る。
   探索順序:
     1. threshold=0.95 で OOF 改善を確認
     2. 改善あれば threshold=0.99/0.90 も比較（OOF-LB 乖離に注意）
@@ -2378,3 +2386,40 @@ C16 の片方向も実害があった。初期化スキルが config を「ブ�
 **一般化**: 検査を作ったら「**その検査は、同じ誤りが起こりうる場所すべてに届いているか**」を問う。
 届く範囲を決めているのは、たいてい実装の都合（`_iter_docs` が `.md` を返すから）であって、
 守りたい範囲ではない。
+
+### L-44 「手で書け」と指示するだけの規律は、機械化された列との差で 2.5 倍開く
+
+*対応する指針: `G-MECH` / `G-PURPOSE`*
+
+**教訓 (v7 完成検査)**: `/ds-new-experiment` は
+「`experiments/log.csv` に今回の実験行を予約追記する」と指示していたが、
+**その手段（コマンド・ヘルパー）を一度も用意していなかった**。
+消費側（`_claim_experiment_id`）だけがあり、生成側が無い。
+
+前コンペ 271 実験の実測:
+
+| 列 | 記入率 | 支えているもの |
+|---|---|---|
+| `experiment_question` | **35%** | 手作業 |
+| `success_criteria` | 35% | 手作業 |
+| `abort_criteria` | 35% | 手作業 |
+| `learning` | **88%** | `end_run` / `/ds-kaggle-submit` の経路 |
+
+**同じ台帳の中で、機械が支える列と手作業の列が 2.5 倍開いた。**
+`G-PURPOSE`（目的を先に言語化する）は v6 からある規律なのに、
+それを支える機構だけが無かった。
+
+**恒久対応**: `scripts/harness/reserve_experiment.py` を作り、スキルから呼ぶ導線を通した。
+
+```bash
+uv run python -m scripts.harness.reserve_experiment \
+    --name "<実験名>" --question "<何を明らかにするか>" \
+    --success "<成功基準>" --abort "<撤退基準>"
+```
+
+予約行の ID は `ExperimentTracker.start_run()` が引き継ぐので、
+**目的とスコアが 1 行に揃う**（後から「なぜこの実験をしたか」を辿れる）。
+
+**一般化**: 規律を足すときは「**それを実行する手段はどこにあるか**」を必ず確認する。
+手段が無い規律は、守られないのではなく**守りようがない**。
+記入率の差（35% vs 88%）は、意志の差ではなく機構の有無の差だった。
