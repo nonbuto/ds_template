@@ -1,4 +1,4 @@
-# DS Template v6.6 — Kaggle Competition Workspace
+# DS Template v7.0 — Kaggle Competition Workspace
 
 Claude Code と連携して動く Kaggle コンペ用データサイエンステンプレートです。
 「実験の目的を先に言語化する」「1列ずつΔOOFを計測する」「学びをサイクルとして蓄積する」という
@@ -17,7 +17,12 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
   - v6: 4層化・恒久ID・`doc_audit` 新設 ／ v6.1: 導線の実装漏れ修正 ／ v6.2: 自己診断の追加
   - v6.3: 本番投入前の最終点検 ／ v6.4: README ドリフトの機械検知（C11）
   - v6.5: 規律の機械化（hook 6 種 × ガード 5 種）・学習成果を失わない仕組み・死蔵の解消
-  - **v6.6: CLAUDE.md を憲法へ（3,342 字）・判断指針を GUIDELINES.md へ分離・構成の是正**
+  - v6.6: CLAUDE.md を憲法へ（3,342 字）・判断指針を GUIDELINES.md へ分離・構成の是正
+- **v7.0: 「動いている」と「正しい」を分ける** — s6e8（Predicting Smartphone Addiction,
+  rank 645/3531）の総括から、**例外を出さずに結論だけ間違う欠陥を 40 件以上**修正。
+  判断の床を固定値の表から実測へ（`src/noise.py`）、テストを字面 grep から振る舞い検証へ
+  （変異注入を常設）、ガードが壊れたことを検知する側を持つ（`doc_audit` C15/C16/C17）。
+  **実戦での走行距離はまだゼロ**（実戦済みは `field-tested` ブランチ / `v6.4` タグ）
 
 ---
 
@@ -34,7 +39,7 @@ Claude Code と連携して動く Kaggle コンペ用データサイエンステ
 | ドキュメント階層 | L0 CLAUDE.md（憲法）/ GUIDELINES.md（判断指針 `G-*`）/ CONVENTIONS.md（辞書）/ PLAYBOOK.md（手順・教訓）/ `.claude/skills/`（対話） |
 | `doc_audit` のチェック | **C1-C17**（C4 は**固定 37 個の数値**の保存、C12 は指針の索引と本文、C13 はエージェント定義、C14 は文書中のコマンド、C15 は**ガード自身が空洞化していないか**、C16 は config 設定の文書化、C17 は**公開ヘルパーに到達経路があるか**＝作ったのに知られないまま埋もれていないかを検査） |
 | 規律の機械化 | hook 6 種 + statusLine + ガード 7 種 + サブエージェント 4 種（調査・提案・審査のみ／`tools` で学習実行を封じる） |
-| ハーネスのテスト | **230 件**（うち `slow` 2 件: e2e パイプライン / 変異注入）。`uv run pytest` |
+| ハーネスのテスト | **231 件**（うち `slow` 2 件: e2e パイプライン / 変異注入）。`uv run pytest` |
 | 判断の床 | 固定値の表ではなく `src/noise.py` が**その場で実測**する（行・fold・分割・提出実績の 4 経路） |
 
 > この表の数値は `uv run python -m scripts.harness.doc_audit` の C11 が実態と突き合わせる。

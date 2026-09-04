@@ -450,11 +450,26 @@ def check(results: list[tuple[str, str, str]]) -> None:
         ]
         if actual_tests is not None:      # pytest が動かない環境では検査しない
             claims.append((r"ハーネスのテスト \| \*\*(\d+)\s*件", actual_tests, "テスト件数"))
+
+        # **README の版表記が CHANGELOG の最新版と一致するか。**
+        # 数値の表だけ更新して**タイトルの版を直し忘れる**（実際に v6.6 のまま push した）。
+        # 版表記は「この repo が何であるか」の第一行で、clone した人が最初に見る。
+        changelog = (ROOT / "CHANGELOG.md")
+        if changelog.exists():
+            m_latest = re.search(r"^##\s*v([\d.]+)", changelog.read_text(), re.M)
+            m_title = re.search(r"^#\s*DS Template v([\d.]+)", readme, re.M)
+            if m_latest and m_title and m_latest.group(1) != m_title.group(1):
+                drift.append(f"README の版表記: README は v{m_title.group(1)} / "
+                             f"CHANGELOG の最新は v{m_latest.group(1)}")
+            version_checked = bool(m_latest and m_title)
+        else:
+            version_checked = False
         for pattern, actual, label in claims:
             m = re.search(pattern, readme)
             if m and int(m.group(1).replace(",", "")) != actual:
                 drift.append(f"{label}: README は {m.group(1)} / 実測 {actual}")
-        CHECKED["C11"] = sum(1 for pattern, _, _ in claims if re.search(pattern, readme))
+        CHECKED["C11"] = (sum(1 for pattern, _, _ in claims if re.search(pattern, readme))
+                          + int(version_checked))
         listed = len(re.findall(r"^\|\s*`/ds-[a-z-]+`\s*\|", readme, re.M))
         if listed and listed != actual_skills:
             drift.append(f"スキル一覧: README は {listed} 件 / 実測 {actual_skills} 件")

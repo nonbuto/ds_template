@@ -3708,3 +3708,44 @@ def test_new_experiment_skill_points_to_the_command():
     skill = Path(".claude/skills/ds-new-experiment/SKILL.md").read_text(encoding="utf-8")
     assert "scripts.harness.reserve_experiment" in skill
     assert "手で書かない" in skill
+
+
+def test_readme_version_matches_changelog(tmp_path):
+    """README の版表記が CHANGELOG の最新版と一致すること。
+
+    数値の表（テスト件数・チェック数・文字数）は C11 が見ていたが、
+    **タイトルの版表記を見ていなかった** —— 実際に v7.0 を push したのに
+    README の 1 行目が `v6.6` のままだった（ユーザーが GitHub で気づいた）。
+    版表記は「この repo が何であるか」の第一行で、**clone した人が最初に見る**。
+    """
+    import re
+    import shutil
+    import subprocess
+    import sys as _sys
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+    changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+    title = re.search(r"^#\s*DS Template v([\d.]+)", readme, re.M)
+    latest = re.search(r"^##\s*v([\d.]+)", changelog, re.M)
+    assert title and latest, "版表記の形式が変わった（検査が空洞化する）"
+    assert title.group(1) == latest.group(1), \
+        f"README は v{title.group(1)} / CHANGELOG の最新は v{latest.group(1)}"
+
+    # **ズレたら doc_audit が鳴ること**（検査自体が生きているかを見る）
+    work = tmp_path / "repo"
+    for rel in ("scripts", "src", ".claude", "experiments", "CLAUDE.md", "GUIDELINES.md",
+                "CONVENTIONS.md", "PLAYBOOK.md", "README.md", "CHANGELOG.md"):
+        srcp = ROOT / rel
+        if srcp.is_dir():
+            shutil.copytree(srcp, work / rel,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.db"))
+        elif srcp.exists():
+            (work / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(srcp, work / rel)
+
+    p = work / "README.md"
+    p.write_text(re.sub(r"^#\s*DS Template v[\d.]+", "# DS Template v0.1",
+                        p.read_text(encoding="utf-8"), count=1, flags=re.M), encoding="utf-8")
+    out = subprocess.run([_sys.executable, "-m", "scripts.harness.doc_audit"],
+                         cwd=work, capture_output=True, text=True).stdout
+    assert "版表記" in out, f"版のズレを検知していない:\n{out[-600:]}"
